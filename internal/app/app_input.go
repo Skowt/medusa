@@ -825,7 +825,11 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Eagerly restore agent tabs for all group workspaces on startup.
 		for i := range a.groups {
 			for j := range a.groups[i].Workspaces {
-				ws := &a.groups[i].Workspaces[j].Primary
+				gw := &a.groups[i].Workspaces[j]
+				// Propagate secondary roots for sandbox git-dir whitelisting
+				// (SecondaryRoots is transient/json:"-" and empty after load).
+				gw.Primary.SecondaryRoots = gw.AllRoots()
+				ws := &gw.Primary
 				if workspaceHasLiveTabs(ws) {
 					if restoreCmd := a.center.RestoreTabsFromWorkspace(ws); restoreCmd != nil {
 						cmds = append(cmds, restoreCmd)

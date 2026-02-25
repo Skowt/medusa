@@ -359,6 +359,9 @@ func (a *App) handleRenameGroupWorkspace(msg messages.RenameGroupWorkspace) []te
 	}
 
 	newPrimary := &stored.Primary
+	// Propagate secondary roots for sandbox git-dir whitelisting
+	// (SecondaryRoots is transient/json:"-" and empty after load).
+	newPrimary.SecondaryRoots = stored.AllRoots()
 	newPrimaryID := string(newPrimary.ID())
 
 	// 9. Update in-memory UI state.
