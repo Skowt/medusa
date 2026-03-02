@@ -8,8 +8,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 func (a *App) safeCmd(cmd tea.Cmd) tea.Cmd {

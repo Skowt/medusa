@@ -12,9 +12,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	appPty "github.com/andyrewlee/medusa/internal/pty"
-	"github.com/andyrewlee/medusa/internal/safego"
+	"github.com/Skowt/medusa/internal/logging"
+	appPty "github.com/Skowt/medusa/internal/pty"
+	"github.com/Skowt/medusa/internal/safego"
 )
 
 // PTY constants

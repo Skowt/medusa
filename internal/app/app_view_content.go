@@ -7,8 +7,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/andyrewlee/medusa/internal/messages"
-	"github.com/andyrewlee/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 func (a *App) centerPaneStyle() lipgloss.Style {

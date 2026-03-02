@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 // ShowProfileManager is sent when the user clicks "Manage Profiles" in settings.

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // SessionStore persists conversation messages per tab as append-only JSONL files.

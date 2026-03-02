@@ -5,8 +5,8 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 var sandboxActions = []config.SandboxAction{

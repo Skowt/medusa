@@ -6,16 +6,16 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/messages"
-	"github.com/andyrewlee/medusa/internal/ui/center"
-	"github.com/andyrewlee/medusa/internal/ui/common"
-	"github.com/andyrewlee/medusa/internal/ui/compositor"
-	"github.com/andyrewlee/medusa/internal/ui/dashboard"
-	"github.com/andyrewlee/medusa/internal/ui/layout"
-	"github.com/andyrewlee/medusa/internal/ui/sidebar"
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/ui/center"
+	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/ui/compositor"
+	"github.com/Skowt/medusa/internal/ui/dashboard"
+	"github.com/Skowt/medusa/internal/ui/layout"
+	"github.com/Skowt/medusa/internal/ui/sidebar"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // HarnessOptions configures the headless UI harness.

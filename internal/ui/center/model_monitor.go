@@ -6,10 +6,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/ui/common"
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // MonitorSnapshot captures a tab display for the monitor grid.

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/data"
 )
 
 func TestDashboardCreatingWorkspaceRow(t *testing.T) {

@@ -7,13 +7,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/git"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/messages"
-	"github.com/andyrewlee/medusa/internal/tmux"
-	"github.com/andyrewlee/medusa/internal/ui/common"
-	"github.com/andyrewlee/medusa/internal/ui/diff"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/ui/diff"
 )
 
 // createVimTab creates a new tab that opens a file in vim

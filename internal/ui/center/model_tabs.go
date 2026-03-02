@@ -7,12 +7,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/messages"
-	appPty "github.com/andyrewlee/medusa/internal/pty"
-	"github.com/andyrewlee/medusa/internal/tmux"
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/messages"
+	appPty "github.com/Skowt/medusa/internal/pty"
+	"github.com/Skowt/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 func nextAssistantName(assistant string, tabs []*Tab) string {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/mattn/go-runewidth"
 
-	"github.com/andyrewlee/medusa/internal/perf"
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/perf"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // Canvas is a fixed-size buffer of styled cells.

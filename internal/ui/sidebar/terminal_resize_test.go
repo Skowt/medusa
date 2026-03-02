@@ -3,8 +3,8 @@ package sidebar
 import (
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 func TestTerminalResizesOnKeymapHintToggle(t *testing.T) {

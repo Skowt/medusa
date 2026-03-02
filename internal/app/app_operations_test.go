@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 func TestLoadProjects_StoreFirstMerge(t *testing.T) {

@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/server"
-	"github.com/andyrewlee/medusa/internal/service"
-	"github.com/andyrewlee/medusa/web"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/server"
+	"github.com/Skowt/medusa/internal/service"
+	"github.com/Skowt/medusa/web"
 )
 
 func main() {

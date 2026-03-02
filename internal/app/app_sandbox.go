@@ -3,8 +3,8 @@ package app
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 // handleSandboxRulesEditorResult processes the sandbox rules editor result.

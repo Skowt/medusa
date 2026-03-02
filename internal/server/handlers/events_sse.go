@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // SSEEvents handles Server-Sent Events for global state changes.

@@ -9,8 +9,8 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/process"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/process"
 )
 
 // Terminal wraps a PTY with an associated command

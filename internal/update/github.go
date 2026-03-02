@@ -12,7 +12,7 @@ import (
 
 const (
 	// GitHubOwner is the GitHub owner for medusa.
-	GitHubOwner = "andyrewlee"
+	GitHubOwner = "Skowt"
 	// GitHubRepo is the GitHub repo for medusa.
 	GitHubRepo = "medusa"
 	// GitHubAPIBase is the base URL for GitHub API.

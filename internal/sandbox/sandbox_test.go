@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/config"
 )
 
 func TestGenerateSBPL(t *testing.T) {

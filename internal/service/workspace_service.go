@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/git"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/process"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/process"
 )
 
 // WorkspaceService manages workspace creation, deletion, and metadata.

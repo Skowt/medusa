@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/andyrewlee/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/config"
 )
 
 // GenerateSBPL produces a macOS Seatbelt (SBPL) profile that restricts

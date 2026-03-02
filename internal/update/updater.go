@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // CheckResult contains the result of an update check.
@@ -82,7 +82,7 @@ func (u *Updater) Upgrade(release *Release) error {
 
 	// Check if go install user
 	if IsGoInstall() {
-		return fmt.Errorf("installed via 'go install'; run: go install github.com/andyrewlee/medusa/cmd/medusa@latest")
+		return fmt.Errorf("installed via 'go install'; run: go install github.com/Skowt/medusa/cmd/medusa@latest")
 	}
 
 	// Find the platform asset

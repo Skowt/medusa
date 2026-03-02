@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/git"
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // ProjectService manages registered git repositories and their workspaces.

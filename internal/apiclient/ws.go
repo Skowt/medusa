@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/logging"
 	"github.com/gorilla/websocket"
 )
 

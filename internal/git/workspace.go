@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/data"
 )
 
 // CreateWorkspace creates a new workspace backed by a git worktree

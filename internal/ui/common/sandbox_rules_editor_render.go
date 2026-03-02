@@ -6,7 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/andyrewlee/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/config"
 )
 
 func (e *SandboxRulesEditor) View() string {

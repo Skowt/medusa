@@ -16,9 +16,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/app"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/safego"
+	"github.com/Skowt/medusa/internal/app"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/safego"
 )
 
 // Version info set by GoReleaser via ldflags

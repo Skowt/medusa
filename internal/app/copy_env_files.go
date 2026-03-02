@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // copyEnvFiles copies .env* files from src to dst, one level deep.

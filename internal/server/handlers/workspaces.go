@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/service"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/service"
 )
 
 // GetWorkspace returns workspace details.

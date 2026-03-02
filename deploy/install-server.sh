@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # Medusa Server Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/andyrewlee/medusa/main/deploy/install-server.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/deploy/install-server.sh | bash
 
-REPO="andyrewlee/medusa"
+REPO="Skowt/medusa"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.medusa"
 

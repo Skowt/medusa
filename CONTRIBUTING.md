@@ -3,7 +3,7 @@
 ## Development
 
 ```bash
-git clone https://github.com/andyrewlee/medusa.git
+git clone https://github.com/Skowt/medusa.git
 cd medusa
 make run
 ```

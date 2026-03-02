@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/messages"
-	"github.com/andyrewlee/medusa/internal/permissions"
-	"github.com/andyrewlee/medusa/internal/ui/center"
-	"github.com/andyrewlee/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/permissions"
+	"github.com/Skowt/medusa/internal/ui/center"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 // newTestApp builds a minimal App suitable for rename tests. It wires up only

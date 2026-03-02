@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/andyrewlee/medusa/internal/service"
+	"github.com/Skowt/medusa/internal/service"
 )
 
 // ListGroups returns all project groups.

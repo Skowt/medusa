@@ -3,9 +3,9 @@ package dashboard
 import (
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/git"
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 func makeProject() data.Project {

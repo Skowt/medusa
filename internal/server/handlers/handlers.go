@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/andyrewlee/medusa/internal/service"
+	"github.com/Skowt/medusa/internal/service"
 )
 
 // Handlers holds all HTTP handler methods.

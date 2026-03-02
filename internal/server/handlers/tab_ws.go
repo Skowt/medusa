@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/service"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/service"
 	"github.com/gorilla/websocket"
 )
 

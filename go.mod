@@ -1,4 +1,4 @@
-module github.com/andyrewlee/medusa
+module github.com/Skowt/medusa
 
 go 1.24.2
 

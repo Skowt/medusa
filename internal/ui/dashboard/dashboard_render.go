@@ -5,7 +5,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/andyrewlee/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 // renderRow renders a single dashboard row

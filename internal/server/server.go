@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/server/handlers"
-	"github.com/andyrewlee/medusa/internal/server/middleware"
-	"github.com/andyrewlee/medusa/internal/service"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/server/handlers"
+	"github.com/Skowt/medusa/internal/server/middleware"
+	"github.com/Skowt/medusa/internal/service"
 )
 
 // Config holds server configuration.

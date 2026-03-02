@@ -5,11 +5,11 @@
 <p align="center">Run parallel coding agents from any device — web, mobile, desktop</p>
 
 <p align="center">
-  <a href="https://github.com/andyrewlee/medusa/releases">
-    <img src="https://img.shields.io/github/v/release/andyrewlee/medusa?style=flat-square" alt="Latest release" />
+  <a href="https://github.com/Skowt/medusa/releases">
+    <img src="https://img.shields.io/github/v/release/Skowt/medusa?style=flat-square" alt="Latest release" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/andyrewlee/medusa?style=flat-square" alt="License" />
+    <img src="https://img.shields.io/github/license/Skowt/medusa?style=flat-square" alt="License" />
   </a>
   <img src="https://img.shields.io/badge/Go-1.24.2-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go version" />
   <a href="https://discord.gg/Dswc7KFPxs">
@@ -48,13 +48,13 @@ Server mode uses Claude Code's structured JSON streaming for a rich conversation
 ### TUI mode (original)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andyrewlee/medusa/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | sh
 ```
 
 Or with Go:
 
 ```bash
-go install github.com/andyrewlee/medusa/cmd/medusa@latest
+go install github.com/Skowt/medusa/cmd/medusa@latest
 ```
 
 Then run `medusa` to open the dashboard.
@@ -64,7 +64,7 @@ Then run `medusa` to open the dashboard.
 #### Option 1: Build from source
 
 ```bash
-git clone https://github.com/andyrewlee/medusa.git
+git clone https://github.com/Skowt/medusa.git
 cd medusa
 
 # Build the web UI
@@ -80,7 +80,7 @@ go build -o medusa-server ./cmd/medusa-server/
 #### Option 2: Install script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andyrewlee/medusa/main/deploy/install-server.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/deploy/install-server.sh | bash
 medusa-server --port 8420
 ```
 
@@ -235,7 +235,7 @@ Worktree metadata is stored in `~/.medusa/workspaces/<workspace-id>/workspace.js
 ## Development
 
 ```bash
-git clone https://github.com/andyrewlee/medusa.git
+git clone https://github.com/Skowt/medusa.git
 cd medusa
 
 # TUI

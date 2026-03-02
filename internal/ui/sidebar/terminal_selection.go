@@ -3,8 +3,8 @@ package sidebar
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 // handleTabBarClick handles mouse click events on the tab bar

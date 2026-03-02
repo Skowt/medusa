@@ -1,6 +1,6 @@
 [Unit]
 Description=Medusa Agent Server
-Documentation=https://github.com/andyrewlee/medusa
+Documentation=https://github.com/Skowt/medusa
 After=network.target
 
 [Service]

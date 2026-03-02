@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/safego"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/safego"
 )
 
 // ScriptType identifies the type of script

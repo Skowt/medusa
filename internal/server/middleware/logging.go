@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // responseWriter wraps http.ResponseWriter to capture the status code.

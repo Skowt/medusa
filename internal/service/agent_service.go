@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/logging"
-	appPty "github.com/andyrewlee/medusa/internal/pty"
-	"github.com/andyrewlee/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/logging"
+	appPty "github.com/Skowt/medusa/internal/pty"
+	"github.com/Skowt/medusa/internal/tmux"
 )
 
 // AgentService manages non-Claude agents (Codex, Gemini, Amp, etc.) via PTY/tmux.

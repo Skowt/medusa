@@ -11,8 +11,8 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/andyrewlee/medusa/internal/process"
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/process"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // pollInterval is the fallback polling interval for WaitFor* methods.

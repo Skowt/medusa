@@ -7,11 +7,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/messages"
-	appPty "github.com/andyrewlee/medusa/internal/pty"
-	"github.com/andyrewlee/medusa/internal/tmux"
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/messages"
+	appPty "github.com/Skowt/medusa/internal/pty"
+	"github.com/Skowt/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // detachTab is the core implementation for detaching a tab (closes PTY, keeps tmux session).

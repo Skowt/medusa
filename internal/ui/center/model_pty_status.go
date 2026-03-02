@@ -6,8 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/ui/compositor"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/ui/compositor"
 )
 
 // HasRunningAgents returns whether any tab has an active agent across workspaces.

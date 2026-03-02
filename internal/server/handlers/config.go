@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/andyrewlee/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/config"
 )
 
 // GetConfig returns the current UI settings.

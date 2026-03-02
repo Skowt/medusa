@@ -6,12 +6,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/messages"
-	"github.com/andyrewlee/medusa/internal/permissions"
-	"github.com/andyrewlee/medusa/internal/supervisor"
-	"github.com/andyrewlee/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/permissions"
+	"github.com/Skowt/medusa/internal/supervisor"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 // initPermissionWatcher creates and registers the permission watcher.

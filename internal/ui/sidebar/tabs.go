@@ -7,9 +7,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/git"
-	"github.com/andyrewlee/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 // SidebarTab represents a tab type in the sidebar

@@ -1,6 +1,6 @@
 package app
 
-import "github.com/andyrewlee/medusa/internal/data"
+import "github.com/Skowt/medusa/internal/data"
 
 func snapshotWorkspaceForSave(ws *data.Workspace) *data.Workspace {
 	if ws == nil {

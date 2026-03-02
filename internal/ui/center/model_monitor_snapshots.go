@@ -9,9 +9,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/safego"
-	"github.com/andyrewlee/medusa/internal/ui/common"
-	"github.com/andyrewlee/medusa/internal/ui/compositor"
+	"github.com/Skowt/medusa/internal/safego"
+	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/ui/compositor"
 )
 
 type monitorSnapshotTick struct {

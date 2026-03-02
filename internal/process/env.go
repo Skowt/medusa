@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/data"
 )
 
 // EnvBuilder builds environment variables for script execution

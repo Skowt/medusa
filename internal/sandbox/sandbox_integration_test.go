@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/config"
 )
 
 // skipIfNoSandboxExec skips the test if sandbox-exec is not available.

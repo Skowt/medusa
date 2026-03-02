@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/data"
 )
 
 // TabState represents the lifecycle state of a tab.

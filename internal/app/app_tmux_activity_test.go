@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/tmux"
 )
 
 func TestIsChatSession_NonMedusaPrefix(t *testing.T) {
