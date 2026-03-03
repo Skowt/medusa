@@ -538,9 +538,7 @@ func (m *Model) Focused() bool {
 func (m *Model) SetWorkspace(ws *data.Workspace) {
 	m.workspace = ws
 	m.infoCursor = 0
-	if ws == nil {
-		m.infoTabActive = false
-	}
+	m.infoTabActive = false
 }
 
 // InfoCursor returns the current cursor position on the Info tab.
