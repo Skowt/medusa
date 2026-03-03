@@ -24,7 +24,7 @@ func (a *App) loadWorkspaces() tea.Cmd {
 		}
 
 		var workspaces []*data.Workspace
-		for _, entry := range entries {
+		for i, entry := range entries {
 			ws, err := a.workspaces.Load(data.WorkspaceID(entry.ID))
 			if err != nil {
 				logging.Warn("Failed to load workspace %s: %v", entry.Name, err)
@@ -33,6 +33,35 @@ func (a *App) loadWorkspaces() tea.Cmd {
 			if ws == nil {
 				continue
 			}
+
+			// Migrate old-layout single-repo workspaces to uniform {ws_name}/{repo_name}/.
+			if a.config != nil && len(ws.Repos) == 1 && len(ws.Worktrees) == 1 {
+				wtRoot := ws.Worktrees[0].Root
+				expectedParent := filepath.Join(a.config.Paths.WorkspacesRoot, ws.Name)
+				if filepath.Dir(wtRoot) != expectedParent {
+					newWtRoot := filepath.Join(expectedParent, ws.Repos[0].Name)
+					if mErr := git.MoveWorkspace(ws.Repos[0].Path, wtRoot, newWtRoot); mErr != nil {
+						logging.Warn("Migration: failed to move workspace %s: %v", ws.Name, mErr)
+					} else {
+						oldID := ws.ID()
+						ws.Worktrees[0].Root = newWtRoot
+						if sErr := a.workspaces.Save(ws); sErr != nil {
+							logging.Warn("Migration: failed to save workspace %s: %v", ws.Name, sErr)
+							_ = git.MoveWorkspace(ws.Repos[0].Path, newWtRoot, wtRoot)
+							ws.Worktrees[0].Root = wtRoot // restore
+						} else {
+							newID := ws.ID()
+							if oldID != newID {
+								_ = a.workspaces.Delete(oldID)
+								_ = a.registry.UpdateWorkspace(string(oldID), ws.Name, string(newID))
+								entries[i].ID = string(newID)
+							}
+							logging.Info("Migration: moved workspace %s to uniform layout", ws.Name)
+						}
+					}
+				}
+			}
+
 			// Apply profile from registry
 			ws.Profile = entry.Profile
 			workspaces = append(workspaces, ws)
@@ -41,6 +70,7 @@ func (a *App) loadWorkspaces() tea.Cmd {
 		return messages.WorkspacesLoaded{Workspaces: workspaces}
 	}
 }
+
 
 // fetchRemoteBase fetches the remote base branch asynchronously.
 func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string) tea.Cmd {
@@ -147,12 +177,13 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 		}
 
 		if len(repos) == 1 {
-			// Single-repo workspace
+			// Single-repo workspace — uniform {ws_name}/{repo_name}/ layout
 			repo := repos[0]
 			base := bases[0]
 			workspacePath := filepath.Join(
 				a.config.Paths.WorkspacesRoot,
 				name,
+				repo.Name,
 			)
 
 			ws = data.NewWorkspace(name, name, base, repo.Path, workspacePath)
@@ -213,8 +244,9 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 		if err := a.workspaces.Save(ws); err != nil {
 			// Rollback
 			if len(repos) == 1 {
-				_ = git.RemoveWorkspace(repos[0].Path, ws.Root())
+				_ = git.RemoveWorkspace(repos[0].Path, ws.Worktrees[0].Root)
 				_ = git.DeleteBranch(repos[0].Path, name)
+				_ = os.RemoveAll(ws.Root())
 			} else {
 				specs := make([]git.RepoSpec, len(repos))
 				for i, repo := range repos {
@@ -286,38 +318,26 @@ func (a *App) deleteWorkspace(ws *data.Workspace) tea.Cmd {
 	return func() tea.Msg {
 		var branchWarning string
 
-		if ws.IsMultiRepo() {
-			// Multi-repo: remove all worktrees
-			specs := make([]git.RepoSpec, len(ws.Repos))
-			for i, repo := range ws.Repos {
-				specs[i] = git.RepoSpec{
-					RepoPath:      repo.Path,
-					RepoName:      repo.Name,
-					WorkspacePath: ws.Worktrees[i].Root,
-					Branch:        ws.Name,
-				}
-			}
-			_, branchErrs := git.RemoveGroupWorkspace(specs)
-			if len(branchErrs) > 0 {
-				msgs := make([]string, len(branchErrs))
-				for i, e := range branchErrs {
-					msgs[i] = e.Error()
-				}
-				branchWarning = "Failed to delete branches: " + joinStrings(msgs, "; ")
-			}
-			// Clean up the workspace root directory
-			_ = os.RemoveAll(ws.Root())
-		} else {
-			// Single-repo: remove worktree and branch
-			repo := ws.PrimaryRepo()
-			if err := git.RemoveWorkspace(repo.Path, ws.Root()); err != nil {
-				return messages.WorkspaceDeleteFailed{Workspace: ws, Err: err}
-			}
-			if err := git.DeleteBranch(repo.Path, ws.Branch()); err != nil {
-				branchWarning = fmt.Sprintf("Failed to delete branch %q: %v", ws.Branch(), err)
-				logging.Warn("%s", branchWarning)
+		// Remove all worktrees (uniform layout: always iterate)
+		specs := make([]git.RepoSpec, len(ws.Repos))
+		for i, repo := range ws.Repos {
+			specs[i] = git.RepoSpec{
+				RepoPath:      repo.Path,
+				RepoName:      repo.Name,
+				WorkspacePath: ws.Worktrees[i].Root,
+				Branch:        ws.Name,
 			}
 		}
+		_, branchErrs := git.RemoveGroupWorkspace(specs)
+		if len(branchErrs) > 0 {
+			msgs := make([]string, len(branchErrs))
+			for i, e := range branchErrs {
+				msgs[i] = e.Error()
+			}
+			branchWarning = "Failed to delete branches: " + joinStrings(msgs, "; ")
+		}
+		// Clean up the workspace root directory
+		_ = os.RemoveAll(ws.Root())
 
 		_ = a.workspaces.Delete(ws.ID())
 		_ = a.registry.RemoveWorkspace(string(ws.ID()))
@@ -381,6 +401,6 @@ func (a *App) unwatchAllWorkspaces() {
 		return
 	}
 	for _, ws := range a.allWorkspaces {
-		a.fileWatcher.Unwatch(ws.Root())
+		a.fileWatcher.Unwatch(ws.PrimaryWorktreeRoot())
 	}
 }

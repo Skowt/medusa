@@ -264,8 +264,8 @@ func (m *ProjectTree) reloadTree() {
 	}
 
 	m.root = &ProjectTreeNode{
-		Name:   filepath.Base(m.workspace.Root()),
-		Path:   m.workspace.Root(),
+		Name:   filepath.Base(m.workspace.PrimaryWorktreeRoot()),
+		Path:   m.workspace.PrimaryWorktreeRoot(),
 		IsDir:  true,
 		Depth:  -1, // Root is at depth -1 so children are at 0
 		Parent: nil,

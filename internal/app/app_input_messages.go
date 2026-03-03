@@ -58,7 +58,7 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	// Request git status for all workspaces (skip when sidebar is hidden)
 	if !a.layout.SidebarHidden() {
 		for _, ws := range a.allWorkspaces {
-			cmds = append(cmds, a.requestGitStatus(ws.Root()))
+			cmds = append(cmds, a.requestGitStatus(ws.PrimaryWorktreeRoot()))
 		}
 	}
 
@@ -156,9 +156,9 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 
 	// Refresh git status and set up file watching (skip when sidebar is hidden)
 	if msg.Workspace != nil && !a.layout.SidebarHidden() {
-		cmds = append(cmds, a.requestGitStatus(msg.Workspace.Root()))
+		cmds = append(cmds, a.requestGitStatus(msg.Workspace.PrimaryWorktreeRoot()))
 		if a.fileWatcher != nil {
-			_ = a.fileWatcher.Watch(msg.Workspace.Root())
+			_ = a.fileWatcher.Watch(msg.Workspace.PrimaryWorktreeRoot())
 		}
 	}
 	// Watch workspace permissions if enabled
@@ -296,11 +296,11 @@ func (a *App) handleWorkspacePreviewed(msg messages.WorkspacePreviewed) []tea.Cm
 		cmds = append(cmds, startCmd)
 	}
 	if msg.Workspace != nil && a.statusManager != nil {
-		if cached := a.statusManager.GetCached(msg.Workspace.Root()); cached != nil {
+		if cached := a.statusManager.GetCached(msg.Workspace.PrimaryWorktreeRoot()); cached != nil {
 			a.sidebar.SetGitStatus(cached)
 		} else {
 			a.sidebar.SetGitStatus(nil)
-			a.dashboard.InvalidateStatus(msg.Workspace.Root())
+			a.dashboard.InvalidateStatus(msg.Workspace.PrimaryWorktreeRoot())
 		}
 	} else {
 		a.sidebar.SetGitStatus(nil)
@@ -1057,9 +1057,9 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 				if termCmd := a.sidebarTerminal.SetWorkspace(a.activeWorkspace); termCmd != nil {
 					sidebarCmds = append(sidebarCmds, termCmd)
 				}
-				sidebarCmds = append(sidebarCmds, a.requestGitStatus(a.activeWorkspace.Root()))
+				sidebarCmds = append(sidebarCmds, a.requestGitStatus(a.activeWorkspace.PrimaryWorktreeRoot()))
 				if a.fileWatcher != nil {
-					_ = a.fileWatcher.Watch(a.activeWorkspace.Root())
+					_ = a.fileWatcher.Watch(a.activeWorkspace.PrimaryWorktreeRoot())
 				}
 			}
 		}
@@ -1097,7 +1097,7 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 func (a *App) handleCreateWorkspace(msg messages.CreateWorkspace) []tea.Cmd {
 	var cmds []tea.Cmd
 	if len(msg.Repos) > 0 && msg.Name != "" {
-		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
+		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name, msg.Repos[0].Name)
 		pending := data.NewWorkspace(msg.Name, msg.Name, "", msg.Repos[0].Path, workspacePath)
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -1119,7 +1119,7 @@ func (a *App) handleCreateWorkspace(msg messages.CreateWorkspace) []tea.Cmd {
 func (a *App) handleGitStatusResult(msg messages.GitStatusResult) tea.Cmd {
 	newDashboard, cmd := a.dashboard.Update(msg)
 	a.dashboard = newDashboard
-	if a.activeWorkspace != nil && msg.Root == a.activeWorkspace.Root() {
+	if a.activeWorkspace != nil && msg.Root == a.activeWorkspace.PrimaryWorktreeRoot() {
 		a.sidebar.SetGitStatus(msg.Status)
 	}
 	return cmd
@@ -1235,7 +1235,7 @@ func (a *App) handleActionBarCommitResult(msg messages.ActionBarCommitResult) te
 	var cmds []tea.Cmd
 	cmds = append(cmds, a.toast.ShowSuccess(fmt.Sprintf("Committed %s", short)))
 	if a.activeWorkspace != nil {
-		cmds = append(cmds, a.requestGitStatus(a.activeWorkspace.Root()))
+		cmds = append(cmds, a.requestGitStatus(a.activeWorkspace.PrimaryWorktreeRoot()))
 	}
 	return a.safeBatch(cmds...)
 }
@@ -1252,7 +1252,7 @@ func (a *App) handleActionBarMergeResult(msg messages.ActionBarMergeResult) tea.
 	var cmds []tea.Cmd
 	cmds = append(cmds, a.toast.ShowSuccess("Merged to main"))
 	if a.activeWorkspace != nil {
-		cmds = append(cmds, a.requestGitStatus(a.activeWorkspace.Root()))
+		cmds = append(cmds, a.requestGitStatus(a.activeWorkspace.PrimaryWorktreeRoot()))
 	}
 	return a.safeBatch(cmds...)
 }

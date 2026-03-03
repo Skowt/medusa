@@ -80,7 +80,7 @@ func (r *ScriptRunner) RunSetup(ws *data.Workspace) error {
 	// Run each setup command sequentially
 	for _, cmdStr := range config.SetupWorkspace {
 		cmd := exec.Command("sh", "-c", cmdStr)
-		cmd.Dir = ws.Root()
+		cmd.Dir = ws.PrimaryWorktreeRoot()
 		cmd.Env = env
 
 		var stderr bytes.Buffer
@@ -127,7 +127,7 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 	env := r.envBuilder.BuildEnv(ws)
 
 	cmd := exec.Command("sh", "-c", cmdStr)
-	cmd.Dir = ws.Root()
+	cmd.Dir = ws.PrimaryWorktreeRoot()
 	cmd.Env = env
 	SetProcessGroup(cmd)
 

@@ -27,7 +27,7 @@ func (a *App) handleGitStatusTick() []tea.Cmd {
 	var cmds []tea.Cmd
 	// Refresh git status for the active workspace (sidebar uses it)
 	if a.activeWorkspace != nil && !a.layout.SidebarHidden() {
-		cmds = append(cmds, a.requestGitStatusCached(a.activeWorkspace.Root()))
+		cmds = append(cmds, a.requestGitStatusCached(a.activeWorkspace.PrimaryWorktreeRoot()))
 	}
 	// Round-robin refresh one non-active workspace per tick for dashboard git changes.
 	// This avoids spawning N git subprocesses simultaneously.
@@ -36,16 +36,12 @@ func (a *App) handleGitStatusTick() []tea.Cmd {
 		for i := 0; i < n; i++ {
 			idx := (a.gitStatusRR + i) % n
 			ws := a.allWorkspaces[idx]
-			// Skip the active workspace (already handled above) and multi-repo
-			// workspaces whose Root() is not itself a git repository.
+			// Skip the active workspace (already handled above).
 			if a.activeWorkspace != nil && ws.Root() == a.activeWorkspace.Root() {
 				continue
 			}
-			if ws.IsMultiRepo() {
-				continue
-			}
 			a.gitStatusRR = (idx + 1) % n
-			cmds = append(cmds, a.requestGitStatusCached(ws.Root()))
+			cmds = append(cmds, a.requestGitStatusCached(ws.PrimaryWorktreeRoot()))
 			break
 		}
 	}

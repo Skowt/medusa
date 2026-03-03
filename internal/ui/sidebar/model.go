@@ -377,7 +377,7 @@ func (m *Model) refreshStatus() tea.Cmd {
 		return nil
 	}
 
-	root := m.workspace.Root()
+	root := m.workspace.PrimaryWorktreeRoot()
 	return func() tea.Msg {
 		status, err := git.GetStatus(root)
 		return messages.GitStatusResult{Root: root, Status: status, Err: err}

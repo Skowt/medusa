@@ -560,8 +560,8 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.handleShowSetWorkspaceProfileDialog(messages.ShowSetWorkspaceProfileDialog{Workspace: msg.Workspace})
 			break
 		}
-		// For multi-repo workspaces, trust the workspace root (parent of all repo worktrees)
-		if msg.Workspace != nil && msg.Workspace.IsMultiRepo() {
+		// Trust the workspace root (parent of all repo worktrees) — always needed with uniform layout
+		if msg.Workspace != nil {
 			profileDir := ""
 			if msg.Workspace.Profile != "" {
 				profileDir = filepath.Join(a.config.Paths.ProfilesRoot, msg.Workspace.Profile)
