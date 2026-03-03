@@ -105,13 +105,8 @@ func TestScriptRunnerRunSetupAndEnv(t *testing.T) {
 }`)
 
 	runner := NewScriptRunner(6200, 10)
-	wt := &data.Workspace{
-		Name:   "feature-1",
-		Branch: "feature-1",
-		Repo:   repo,
-		Root:   wsRoot,
-		Env:    map[string]string{"CUSTOM_VAR": "hello"},
-	}
+	wt := data.NewWorkspace("feature-1", "feature-1", "main", repo, wsRoot)
+	wt.Env = map[string]string{"CUSTOM_VAR": "hello"}
 
 	if err := runner.RunSetup(wt); err != nil {
 		t.Fatalf("RunSetup() error = %v", err)
@@ -135,7 +130,7 @@ func TestScriptRunnerRunSetupFailure(t *testing.T) {
 }`)
 
 	runner := NewScriptRunner(6200, 10)
-	wt := &data.Workspace{Repo: repo, Root: wsRoot}
+	wt := data.NewWorkspace("test", "", "", repo, wsRoot)
 
 	if err := runner.RunSetup(wt); err == nil {
 		t.Fatalf("expected RunSetup() to fail for failing command")
@@ -151,7 +146,7 @@ func TestScriptRunnerRunScriptConfigAndWorkspaceScripts(t *testing.T) {
 }`)
 
 	runner := NewScriptRunner(6200, 10)
-	wt := &data.Workspace{Repo: repo, Root: wsRoot}
+	wt := data.NewWorkspace("test", "", "", repo, wsRoot)
 
 	_, err := runner.RunScript(wt, ScriptRun)
 	if err != nil {
@@ -180,7 +175,7 @@ func TestScriptRunnerRunScriptMissing(t *testing.T) {
 	writeWorkspaceConfig(t, repo, `{}`)
 
 	runner := NewScriptRunner(6200, 10)
-	wt := &data.Workspace{Repo: repo, Root: wsRoot}
+	wt := data.NewWorkspace("test", "", "", repo, wsRoot)
 
 	if _, err := runner.RunScript(wt, ScriptRun); err == nil {
 		t.Fatalf("expected RunScript() to fail when no script configured")
@@ -196,7 +191,7 @@ func TestScriptRunnerStop(t *testing.T) {
 }`)
 
 	runner := NewScriptRunner(6200, 10)
-	wt := &data.Workspace{Repo: repo, Root: wsRoot}
+	wt := data.NewWorkspace("test", "", "", repo, wsRoot)
 
 	if _, err := runner.RunScript(wt, ScriptRun); err != nil {
 		t.Fatalf("RunScript() error = %v", err)

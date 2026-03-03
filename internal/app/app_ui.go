@@ -197,7 +197,16 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			if !a.tmuxAvailable {
 				return true, a.toast.ShowError("tmux required to create tabs. " + a.tmuxInstallHint)
 			}
-			return true, func() tea.Msg { return messages.ShowSelectAssistantDialog{} }
+			ws := a.activeWorkspace
+			return true, func() tea.Msg {
+				return messages.LaunchAgent{
+					Assistant:       "claude",
+					Workspace:       ws,
+					AllowEdits:      a.config.UI.LastAllowEdits,
+					Isolated:        a.config.UI.LastIsolated,
+					SkipPermissions: a.config.UI.LastSkipPermissions,
+				}
+			}
 		}
 		return true, nil
 

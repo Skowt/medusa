@@ -53,7 +53,9 @@ func (d *Dialog) Cursor() *tea.Cursor {
 			prefix.WriteString(msgStyle.Render(d.message))
 			prefix.WriteString("\n\n")
 		}
-		input = &d.input
+		if !d.inputHidden {
+			input = &d.input
+		}
 	case DialogSelect:
 		if d.filterEnabled {
 			if d.message != "" {
@@ -137,11 +139,13 @@ func (d *Dialog) renderLines() []string {
 			appendLines(msgStyle.Render(d.message))
 			appendBlank(1)
 		}
-		appendLines(d.input.View())
-		// Show validation error if present
-		if d.validationErr != "" {
-			errStyle := lipgloss.NewStyle().Foreground(ColorError)
-			appendLines(errStyle.Render(d.validationErr))
+		if !d.inputHidden {
+			appendLines(d.input.View())
+			// Show validation error if present
+			if d.validationErr != "" {
+				errStyle := lipgloss.NewStyle().Foreground(ColorError)
+				appendLines(errStyle.Render(d.validationErr))
+			}
 		}
 		// Render checkbox if configured
 		if d.checkboxLabel != "" {
@@ -238,9 +242,6 @@ func (d *Dialog) renderLines() []string {
 }
 
 func (d *Dialog) renderOptionsLines(baseLine int) []string {
-	if d.id == "agent-picker" {
-		return d.renderAgentPickerOptions(baseLine)
-	}
 	if d.verticalLayout {
 		return d.renderVerticalOptionsLines(baseLine)
 	}

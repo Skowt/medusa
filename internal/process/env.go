@@ -26,14 +26,14 @@ func (b *EnvBuilder) BuildEnv(ws *data.Workspace) []string {
 	// Add workspace-specific variables
 	env = append(env,
 		fmt.Sprintf("MEDUSA_WORKSPACE_NAME=%s", ws.Name),
-		fmt.Sprintf("MEDUSA_WORKSPACE_ROOT=%s", ws.Root),
-		fmt.Sprintf("MEDUSA_WORKSPACE_BRANCH=%s", ws.Branch),
-		fmt.Sprintf("ROOT_WORKSPACE_PATH=%s", ws.Repo),
+		fmt.Sprintf("MEDUSA_WORKSPACE_ROOT=%s", ws.Root()),
+		fmt.Sprintf("MEDUSA_WORKSPACE_BRANCH=%s", ws.Branch()),
+		fmt.Sprintf("ROOT_WORKSPACE_PATH=%s", ws.PrimaryRepo().Path),
 	)
 
 	// Add port allocation
 	if b.portAllocator != nil {
-		port, rangeEnd := b.portAllocator.PortRange(ws.Root)
+		port, rangeEnd := b.portAllocator.PortRange(ws.Root())
 		env = append(env,
 			fmt.Sprintf("MEDUSA_PORT=%d", port),
 			fmt.Sprintf("MEDUSA_PORT_RANGE=%d-%d", port, rangeEnd),
@@ -53,12 +53,12 @@ func (b *EnvBuilder) BuildEnvMap(ws *data.Workspace) map[string]string {
 	envMap := make(map[string]string)
 
 	envMap["MEDUSA_WORKSPACE_NAME"] = ws.Name
-	envMap["MEDUSA_WORKSPACE_ROOT"] = ws.Root
-	envMap["MEDUSA_WORKSPACE_BRANCH"] = ws.Branch
-	envMap["ROOT_WORKSPACE_PATH"] = ws.Repo
+	envMap["MEDUSA_WORKSPACE_ROOT"] = ws.Root()
+	envMap["MEDUSA_WORKSPACE_BRANCH"] = ws.Branch()
+	envMap["ROOT_WORKSPACE_PATH"] = ws.PrimaryRepo().Path
 
 	if b.portAllocator != nil {
-		port, rangeEnd := b.portAllocator.PortRange(ws.Root)
+		port, rangeEnd := b.portAllocator.PortRange(ws.Root())
 		envMap["MEDUSA_PORT"] = fmt.Sprintf("%d", port)
 		envMap["MEDUSA_PORT_RANGE"] = fmt.Sprintf("%d-%d", port, rangeEnd)
 	}

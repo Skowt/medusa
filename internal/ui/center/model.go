@@ -83,6 +83,11 @@ type Tab struct {
 	ptyRestartSince    time.Time
 	autoRestartAttempt int // tracks auto-restart attempts after session death
 
+	// Per-tab agent settings (configured at tab creation time)
+	AllowEdits      bool
+	Isolated        bool
+	SkipPermissions bool
+
 	// Snapshot cache for VTermLayer - avoid recreating snapshot when terminal unchanged
 	cachedSnap       *compositor.VTermSnapshot
 	cachedVersion    uint64
@@ -142,6 +147,7 @@ type Model struct {
 	// Info tab (virtual tab for workspace info)
 	infoTabActive bool
 	infoContent   string
+	infoCursor    int
 
 	// Layout
 	width           int
@@ -197,6 +203,7 @@ const (
 	tabHitPlus
 	tabHitPlusSelect
 	tabHitInfo
+	tabHitModeIcon
 	tabHitPrev
 	tabHitNext
 )
@@ -221,6 +228,7 @@ type actionBarButton struct {
 type tabHit struct {
 	kind   tabHitKind
 	index  int
+	label  string // tooltip text for mode icon clicks
 	region common.HitRegion
 }
 
@@ -529,9 +537,15 @@ func (m *Model) Focused() bool {
 // SetWorkspace sets the active workspace
 func (m *Model) SetWorkspace(ws *data.Workspace) {
 	m.workspace = ws
+	m.infoCursor = 0
 	if ws == nil {
 		m.infoTabActive = false
 	}
+}
+
+// InfoCursor returns the current cursor position on the Info tab.
+func (m *Model) InfoCursor() int {
+	return m.infoCursor
 }
 
 // SetInfoContent sets the content displayed when the Info tab is active.
@@ -540,8 +554,13 @@ func (m *Model) SetInfoContent(content string) {
 }
 
 // IsInfoTabActive returns whether the Info tab is currently selected.
+// Also returns true when a workspace is active but has no agent tabs,
+// since the Info tab is auto-selected in that case.
 func (m *Model) IsInfoTabActive() bool {
-	return m.infoTabActive
+	if m.infoTabActive {
+		return true
+	}
+	return m.workspace != nil && len(m.getTabs()) == 0
 }
 
 // SelectInfoTab activates the Info tab.

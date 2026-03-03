@@ -129,21 +129,9 @@ func ValidateBaseRef(ref string) error {
 
 // ValidateAssistant validates an assistant name
 func ValidateAssistant(assistant string) error {
-	valid := map[string]bool{
-		"claude":   true,
-		"codex":    true,
-		"gemini":   true,
-		"amp":      true,
-		"opencode": true,
-		"droid":    true,
-		"cursor":   true,
-		"term":     true,
-	}
-
-	if !valid[assistant] {
+	if assistant != "claude" && assistant != "term" {
 		return &ValidationError{Field: "assistant", Message: fmt.Sprintf("unknown assistant '%s'", assistant)}
 	}
-
 	return nil
 }
 

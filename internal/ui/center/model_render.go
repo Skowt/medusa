@@ -141,6 +141,17 @@ func (m *Model) helpItem(key, desc string) string {
 func (m *Model) helpLines(contentWidth int) []string {
 	items := []string{}
 
+	// Info tab shows settings keybindings instead of agent tab keybindings
+	if m.infoTabActive && m.workspace != nil {
+		items = append(items,
+			m.helpItem("j/k", "navigate"),
+			m.helpItem("Enter", "toggle"),
+			m.helpItem("r", "rename"),
+			m.helpItem("D", "delete"),
+		)
+		return common.WrapHelpItems(items, contentWidth)
+	}
+
 	hasTabs := len(m.getTabs()) > 0
 	if m.workspace != nil {
 		items = append(items,

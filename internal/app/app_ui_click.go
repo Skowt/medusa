@@ -39,9 +39,6 @@ func (a *App) handleCenterPaneClick(msg tea.MouseClickMsg) tea.Cmd {
 	if a.showWelcome {
 		return a.handleWelcomeClick(localX, localY)
 	}
-	if a.activeGroup != nil && a.activeGroupWs == nil && a.activeWorkspace == nil {
-		return a.handleGroupInfoClick(localX, localY)
-	}
 	return nil
 }
 
@@ -76,62 +73,19 @@ func (a *App) handleWelcomeClick(localX, localY int) tea.Cmd {
 			}
 		}
 
-		addProjectText := "[Add workspace]"
-		if idx := strings.Index(strippedLine, addProjectText); idx >= 0 {
+		addWorkspaceText := "[Add workspace]"
+		if idx := strings.Index(strippedLine, addWorkspaceText); idx >= 0 {
 			region := common.HitRegion{
 				X:      idx + lineOffsetX,
 				Y:      i + offsetY,
-				Width:  len(addProjectText),
+				Width:  len(addWorkspaceText),
 				Height: 1,
 			}
 			if region.Contains(localX, localY) {
-				return func() tea.Msg { return messages.ShowAddProjectDialog{} }
+				return func() tea.Msg { return messages.ShowCreateWorkspaceDialog{} }
 			}
 		}
 	}
 
 	return nil
 }
-
-func (a *App) handleGroupInfoClick(localX, localY int) tea.Cmd {
-	if a.activeGroup == nil {
-		return nil
-	}
-	content := a.renderGroupInfo()
-	lines := strings.Split(content, "\n")
-
-	for i, line := range lines {
-		strippedLine := ansi.Strip(line)
-
-		editText := "[Edit repos]"
-		if idx := strings.Index(strippedLine, editText); idx >= 0 {
-			region := common.HitRegion{
-				X:      idx,
-				Y:      i,
-				Width:  len(editText),
-				Height: 1,
-			}
-			if region.Contains(localX, localY) {
-				group := a.activeGroup
-				return func() tea.Msg { return messages.ShowEditGroupReposDialog{Group: group} }
-			}
-		}
-
-		newWsText := "[New worktree]"
-		if idx := strings.Index(strippedLine, newWsText); idx >= 0 {
-			region := common.HitRegion{
-				X:      idx,
-				Y:      i,
-				Width:  len(newWsText),
-				Height: 1,
-			}
-			if region.Contains(localX, localY) {
-				group := a.activeGroup
-				return func() tea.Msg { return messages.ShowCreateGroupWorkspaceDialog{Group: group} }
-			}
-		}
-	}
-
-	return nil
-}
-

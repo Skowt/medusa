@@ -56,6 +56,9 @@ type ptyTabCreateResult struct {
 	Cols              int
 	ScrollbackCapture []byte
 	ClaudeSessionID   string
+	AllowEdits        bool
+	Isolated          bool
+	SkipPermissions   bool
 }
 
 type ptyTabReattachResult struct {
@@ -83,12 +86,12 @@ func truncateDisplayName(name string) string {
 	return name
 }
 
-// createAgentTab creates a new agent tab
-func (m *Model) createAgentTab(assistant string, ws *data.Workspace) tea.Cmd {
-	return m.createAgentTabWithSession(assistant, ws, "", "", true, "")
+// createAgentTab creates a new agent tab with per-tab settings
+func (m *Model) createAgentTab(assistant string, ws *data.Workspace, allowEdits, isolated, skipPerms bool) tea.Cmd {
+	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", allowEdits, isolated, skipPerms)
 }
 
-func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string) tea.Cmd {
+func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string, allowEdits, isolated, skipPerms bool) tea.Cmd {
 	if ws == nil {
 		return func() tea.Msg {
 			return messages.Error{Err: fmt.Errorf("no workspace selected"), Context: "creating agent"}
@@ -108,16 +111,21 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 			sessionName, _ = tmux.NextUniqueSessionName(ws.Name, tmux.DefaultOptions())
 		}
 
-		// Build agent options for Claude session resumption.
-		var agentOpts appPty.AgentOptions
+		// Build agent options for Claude session resumption and per-tab settings.
+		agentOpts := appPty.AgentOptions{
+			AllowEdits:      allowEdits,
+			Isolated:        isolated,
+			SkipPermissions: skipPerms,
+		}
 		if appPty.AgentType(assistant) == appPty.AgentClaude {
 			if claudeSessionID != "" {
 				// Restoring from persisted state — resume existing conversation.
-				agentOpts = appPty.AgentOptions{ClaudeSessionID: claudeSessionID, Resume: true}
+				agentOpts.ClaudeSessionID = claudeSessionID
+				agentOpts.Resume = true
 			} else {
 				// New tab — generate a fresh session ID.
 				claudeSessionID = appPty.GenerateSessionID()
-				agentOpts = appPty.AgentOptions{ClaudeSessionID: claudeSessionID}
+				agentOpts.ClaudeSessionID = claudeSessionID
 			}
 		}
 
@@ -151,6 +159,9 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 			Cols:              termWidth,
 			ScrollbackCapture: scrollback,
 			ClaudeSessionID:   claudeSessionID,
+			AllowEdits:        allowEdits,
+			Isolated:          isolated,
+			SkipPermissions:   skipPerms,
 		}
 	}
 }
@@ -200,6 +211,9 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		Terminal:        term,
 		Running:         true, // Agent/viewer starts running
 		monitorDirty:    true,
+		AllowEdits:      msg.AllowEdits,
+		Isolated:        msg.Isolated,
+		SkipPermissions: msg.SkipPermissions,
 	}
 
 	// Set up response writer for terminal queries (DSR, DA, etc.)
@@ -409,6 +423,11 @@ func (m *Model) CloseActiveTab() tea.Cmd {
 	return m.closeCurrentTab()
 }
 
+// CloseTabAtIndex closes a specific tab by index (public wrapper)
+func (m *Model) CloseTabAtIndex(index int) tea.Cmd {
+	return m.closeTabAt(index)
+}
+
 // SelectTab switches to a specific tab by index (0-indexed)
 func (m *Model) SelectTab(index int) {
 	tabs := m.getTabs()
@@ -459,6 +478,9 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			sessionName = tab.Agent.Session
 		}
 		claudeSessionID := tab.ClaudeSessionID
+		allowEdits := tab.AllowEdits
+		isolated := tab.Isolated
+		skipPerms := tab.SkipPermissions
 		tab.mu.Unlock()
 		status := "stopped"
 		if detached {
@@ -472,6 +494,9 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			SessionName:     sessionName,
 			Status:          status,
 			ClaudeSessionID: claudeSessionID,
+			AllowEdits:      allowEdits,
+			Isolated:        isolated,
+			SkipPermissions: skipPerms,
 		})
 	}
 	return result, m.getActiveTabIdx()
@@ -493,6 +518,9 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			sessionName = tab.Agent.Session
 		}
 		claudeSessionID := tab.ClaudeSessionID
+		allowEdits := tab.AllowEdits
+		isolated := tab.Isolated
+		skipPerms := tab.SkipPermissions
 		tab.mu.Unlock()
 		status := "stopped"
 		if detached {
@@ -506,6 +534,9 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			SessionName:     sessionName,
 			Status:          status,
 			ClaudeSessionID: claudeSessionID,
+			AllowEdits:      allowEdits,
+			Isolated:        isolated,
+			SkipPermissions: skipPerms,
 		})
 	}
 	return result, m.activeTabByWorkspace[wsID]

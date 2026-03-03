@@ -44,14 +44,8 @@ type Styles struct {
 	TabPlus   lipgloss.Style
 
 	// Center pane - Agent indicators
-	AgentClaude   lipgloss.Style
-	AgentCodex    lipgloss.Style
-	AgentGemini   lipgloss.Style
-	AgentAmp      lipgloss.Style
-	AgentOpencode lipgloss.Style
-	AgentDroid    lipgloss.Style
-	AgentCursor   lipgloss.Style
-	AgentTerm     lipgloss.Style
+	AgentClaude lipgloss.Style
+	AgentTerm   lipgloss.Style
 
 	// Sidebar
 	SidebarHeader lipgloss.Style
@@ -193,24 +187,6 @@ func DefaultStyles() Styles {
 		// Center pane - Agent indicators
 		AgentClaude: lipgloss.NewStyle().
 			Foreground(ColorClaude),
-
-		AgentCodex: lipgloss.NewStyle().
-			Foreground(ColorCodex),
-
-		AgentGemini: lipgloss.NewStyle().
-			Foreground(ColorGemini),
-
-		AgentAmp: lipgloss.NewStyle().
-			Foreground(ColorAmp),
-
-		AgentOpencode: lipgloss.NewStyle().
-			Foreground(ColorOpencode),
-
-		AgentDroid: lipgloss.NewStyle().
-			Foreground(ColorDroid),
-
-		AgentCursor: lipgloss.NewStyle().
-			Foreground(ColorCursor),
 
 		AgentTerm: lipgloss.NewStyle().
 			Foreground(ColorForeground),

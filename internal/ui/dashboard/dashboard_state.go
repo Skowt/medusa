@@ -38,8 +38,7 @@ func (m *Model) SetForceSpinner(force bool) tea.Cmd {
 	return nil
 }
 
-// hasActiveAgents returns true if any workspace has an actively processing agent,
-// as confirmed by the tmux "esc to interrupt" check.
+// hasActiveAgents returns true if any workspace has an actively processing agent.
 func (m *Model) hasActiveAgents() bool {
 	for _, active := range m.tmuxConfirmedActive {
 		if active {
@@ -60,18 +59,17 @@ func (m *Model) SetWorkspaceCreating(ws *data.Workspace, creating bool) tea.Cmd 
 		return nil
 	}
 	if creating {
-		m.creatingWorkspaces[ws.Root] = ws
+		m.creatingWorkspaces[ws.Root()] = ws
 		m.rebuildRows()
-		// Move cursor to the newly created workspace row.
 		for i, row := range m.rows {
-			if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root == ws.Root {
+			if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == ws.Root() {
 				m.cursor = i
 				break
 			}
 		}
 		return m.startSpinnerIfNeeded()
 	}
-	delete(m.creatingWorkspaces, ws.Root)
+	delete(m.creatingWorkspaces, ws.Root())
 	m.rebuildRows()
 	return nil
 }
@@ -86,81 +84,83 @@ func (m *Model) SetWorkspaceDeleting(root string, deleting bool) tea.Cmd {
 	return nil
 }
 
-// rebuildRows rebuilds the row list from projects and groups
+// rebuildRows rebuilds the row list from workspaces
 func (m *Model) rebuildRows() {
 	m.rows = []Row{
 		{Type: RowHome},
 		{Type: RowSpacer},
 	}
 
-	for i := range m.projects {
-		project := &m.projects[i]
+	// Collect all visible workspaces
+	all := make([]*data.Workspace, 0, len(m.workspaces)+len(m.creatingWorkspaces))
+	existingRoots := make(map[string]bool)
+	for _, ws := range m.workspaces {
+		if ws.Archived() {
+			continue
+		}
+		existingRoots[ws.Root()] = true
+		all = append(all, ws)
+	}
 
-		m.rows = append(m.rows, Row{
-			Type:    RowProject,
-			Project: project,
-		})
+	// Add creating workspaces that aren't in the list yet
+	for _, ws := range m.creatingWorkspaces {
+		if ws == nil || existingRoots[ws.Root()] {
+			continue
+		}
+		all = append(all, ws)
+	}
 
-		for _, ws := range m.sortedWorkspaces(project) {
-
-			// Hide main branch - users access via project row
-			if ws.IsMainBranch() || ws.IsPrimaryCheckout() {
-				continue
+	// Sort by StatusChanged (zero means never changed, sorts first), then by creation time
+	sort.SliceStable(all, func(i, j int) bool {
+		ti, tj := all[i].StatusChanged, all[j].StatusChanged
+		if !ti.Equal(tj) {
+			// Zero values (never changed) sort before non-zero (changed more recently = later)
+			if ti.IsZero() != tj.IsZero() {
+				return ti.IsZero()
 			}
+			return ti.Before(tj)
+		}
+		if all[i].Created.Equal(all[j].Created) {
+			return all[i].Name < all[j].Name
+		}
+		return all[i].Created.Before(all[j].Created)
+	})
 
+	// Group by status: In Progress, Blocked, Merged
+	type statusGroup struct {
+		label string
+		match func(data.WorkspaceStatus) bool
+	}
+	groups := []statusGroup{
+		{"In Progress", func(s data.WorkspaceStatus) bool {
+			return s == data.StatusNone || s == data.StatusStarted
+		}},
+		{"Blocked", func(s data.WorkspaceStatus) bool { return s == data.StatusBlocked }},
+		{"Merged", func(s data.WorkspaceStatus) bool { return s == data.StatusMerged }},
+	}
+
+	for _, g := range groups {
+		var groupWs []*data.Workspace
+		for _, ws := range all {
+			if g.match(ws.Status) {
+				groupWs = append(groupWs, ws)
+			}
+		}
+		if len(groupWs) == 0 {
+			continue
+		}
+		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: g.label})
+		m.rows = append(m.rows, Row{Type: RowSpacer})
+		for _, ws := range groupWs {
 			m.rows = append(m.rows, Row{
 				Type:      RowWorkspace,
-				Project:   project,
 				Workspace: ws,
 			})
 		}
-
-		m.rows = append(m.rows, Row{
-			Type:    RowCreate,
-			Project: project,
-		})
-
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
 
-	// Group rows
-	for i := range m.groups {
-		group := &m.groups[i]
-
-		m.rows = append(m.rows, Row{
-			Type:  RowGroupHeader,
-			Group: group,
-		})
-
-		sort.SliceStable(group.Workspaces, func(a, b int) bool {
-			if group.Workspaces[a].Created.Equal(group.Workspaces[b].Created) {
-				return group.Workspaces[a].Name < group.Workspaces[b].Name
-			}
-			return group.Workspaces[a].Created.Before(group.Workspaces[b].Created)
-		})
-
-		for j := range group.Workspaces {
-			gw := &group.Workspaces[j]
-			if gw.Archived {
-				continue
-			}
-			m.rows = append(m.rows, Row{
-				Type:           RowGroupWorkspace,
-				Group:          group,
-				GroupWorkspace: gw,
-			})
-		}
-
-		m.rows = append(m.rows, Row{
-			Type:  RowGroupCreate,
-			Group: group,
-		})
-
-		m.rows = append(m.rows, Row{Type: RowSpacer})
-	}
-
-	// Unified "+ Add Project" button at the bottom
-	m.rows = append(m.rows, Row{Type: RowAddGroup})
+	m.rows = append(m.rows, Row{Type: RowCreate})
 
 	// Clamp cursor
 	if m.cursor >= len(m.rows) {
@@ -169,7 +169,6 @@ func (m *Model) rebuildRows() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
-	// Ensure cursor lands on a selectable row (skip spacers).
 	if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor].Type) {
 		if next := m.findSelectableRow(m.cursor, 1); next != -1 {
 			m.cursor = next
@@ -183,7 +182,11 @@ func (m *Model) rebuildRows() {
 
 // clampScrollOffset ensures scrollOffset stays within valid bounds.
 func (m *Model) clampScrollOffset() {
-	maxOffset := len(m.rows) - m.visibleHeight()
+	totalLines := 0
+	for i := range m.rows {
+		totalLines += m.rowLineCount(i)
+	}
+	maxOffset := totalLines - m.visibleHeight()
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -193,81 +196,4 @@ func (m *Model) clampScrollOffset() {
 	if m.scrollOffset < 0 {
 		m.scrollOffset = 0
 	}
-}
-
-func (m *Model) sortedWorkspaces(project *data.Project) []*data.Workspace {
-	existingRoots := make(map[string]bool, len(project.Workspaces))
-	workspaces := make([]*data.Workspace, 0, len(project.Workspaces)+len(m.creatingWorkspaces))
-
-	for i := range project.Workspaces {
-		ws := &project.Workspaces[i]
-		existingRoots[ws.Root] = true
-		workspaces = append(workspaces, ws)
-	}
-
-	for _, ws := range m.creatingWorkspaces {
-		if ws == nil || ws.Repo != project.Path {
-			continue
-		}
-		if existingRoots[ws.Root] {
-			continue
-		}
-		workspaces = append(workspaces, ws)
-	}
-
-	sort.SliceStable(workspaces, func(i, j int) bool {
-		if workspaces[i].Created.Equal(workspaces[j].Created) {
-			if workspaces[i].Name == workspaces[j].Name {
-				return workspaces[i].Root < workspaces[j].Root
-			}
-			return workspaces[i].Name < workspaces[j].Name
-		}
-		return workspaces[i].Created.Before(workspaces[j].Created)
-	})
-
-	return workspaces
-}
-
-// isProjectActive returns true if the project's primary workspace is active.
-func (m *Model) isProjectActive(p *data.Project) bool {
-	if p == nil {
-		return false
-	}
-	mainWS := m.getMainWorkspace(p)
-	if mainWS == nil {
-		return false
-	}
-	return m.activeWorkspaceIDs[string(mainWS.ID())]
-}
-
-// getMainWorkspace returns the primary or main branch workspace for a project
-func (m *Model) getMainWorkspace(p *data.Project) *data.Workspace {
-	if p == nil {
-		return nil
-	}
-	for i := range p.Workspaces {
-		ws := &p.Workspaces[i]
-		if ws.IsMainBranch() || ws.IsPrimaryCheckout() {
-			return ws
-		}
-	}
-	return nil
-}
-
-// SelectedRow returns the currently selected row
-func (m *Model) SelectedRow() *Row {
-	if m.cursor >= 0 && m.cursor < len(m.rows) {
-		return &m.rows[m.cursor]
-	}
-	return nil
-}
-
-// Projects returns the current projects
-func (m *Model) Projects() []data.Project {
-	return m.projects
-}
-
-// ClearActiveRoot resets the active workspace selection to "Home".
-func (m *Model) ClearActiveRoot() {
-	m.activeRoot = ""
 }

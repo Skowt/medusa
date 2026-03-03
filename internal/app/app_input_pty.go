@@ -25,9 +25,29 @@ func (a *App) handleSidebarPTYMessages(msg tea.Msg) tea.Cmd {
 // handleGitStatusTick handles the GitStatusTick message.
 func (a *App) handleGitStatusTick() []tea.Cmd {
 	var cmds []tea.Cmd
-	// Only refresh git status periodically when sidebar is visible
+	// Refresh git status for the active workspace (sidebar uses it)
 	if a.activeWorkspace != nil && !a.layout.SidebarHidden() {
-		cmds = append(cmds, a.requestGitStatusCached(a.activeWorkspace.Root))
+		cmds = append(cmds, a.requestGitStatusCached(a.activeWorkspace.Root()))
+	}
+	// Round-robin refresh one non-active workspace per tick for dashboard git changes.
+	// This avoids spawning N git subprocesses simultaneously.
+	if n := len(a.allWorkspaces); n > 0 {
+		a.gitStatusRR = a.gitStatusRR % n
+		for i := 0; i < n; i++ {
+			idx := (a.gitStatusRR + i) % n
+			ws := a.allWorkspaces[idx]
+			// Skip the active workspace (already handled above) and multi-repo
+			// workspaces whose Root() is not itself a git repository.
+			if a.activeWorkspace != nil && ws.Root() == a.activeWorkspace.Root() {
+				continue
+			}
+			if ws.IsMultiRepo() {
+				continue
+			}
+			a.gitStatusRR = (idx + 1) % n
+			cmds = append(cmds, a.requestGitStatusCached(ws.Root()))
+			break
+		}
 	}
 	// Refresh active workspace indicators even when no PTY output is flowing.
 	if startCmd := a.syncActiveWorkspacesToDashboard(); startCmd != nil {

@@ -151,7 +151,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// When Info tab is active, handle navigation keys and consume the rest
+		// When Info tab is active, handle navigation keys and settings keys
 		if m.infoTabActive && m.focused {
 			switch {
 			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+n"))):
@@ -163,6 +163,18 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+w"))):
 				// Info tab is not closeable, ignore
 				return m, nil
+			case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
+				m.infoTabCursorDown()
+				return m, nil
+			case key.Matches(msg, key.NewBinding(key.WithKeys("k", "up"))):
+				m.infoTabCursorUp()
+				return m, nil
+			case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+				return m, m.infoTabActivateSetting()
+			case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
+				return m, m.infoTabRename()
+			case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
+				return m, m.infoTabDelete()
 			}
 			// Consume all other keys (don't forward to terminal)
 			return m, nil

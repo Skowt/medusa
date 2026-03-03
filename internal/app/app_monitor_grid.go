@@ -244,23 +244,9 @@ func (a *App) monitorProjectKeyLabel(ws *data.Workspace) (string, string) {
 	if ws == nil {
 		return "", ""
 	}
-	if project := a.projectForWorkspace(ws); project != nil {
-		key := project.Path
-		if key == "" {
-			key = ws.Repo
-		}
-		if key == "" {
-			key = ws.Root
-		}
-		label := project.Name
-		if label == "" {
-			label = monitorProjectName(ws)
-		}
-		return key, label
-	}
-	key := ws.Repo
+	key := ws.PrimaryRepo().Path
 	if key == "" {
-		key = ws.Root
+		key = ws.Root()
 	}
 	label := monitorProjectName(ws)
 	if label == "" {
@@ -408,11 +394,11 @@ func monitorProjectName(ws *data.Workspace) string {
 	if ws == nil {
 		return "unknown"
 	}
-	if ws.Repo != "" {
-		return filepath.Base(ws.Repo)
+	if repo := ws.PrimaryRepo(); repo.Path != "" {
+		return repo.Name
 	}
-	if ws.Root != "" {
-		return filepath.Base(ws.Root)
+	if ws.Root() != "" {
+		return filepath.Base(ws.Root())
 	}
 	return "unknown"
 }

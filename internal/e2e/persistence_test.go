@@ -114,9 +114,8 @@ func TestTmuxPersistenceCleansOnExit(t *testing.T) {
 
 func activatePrimaryWorkspace(t *testing.T, session *PTYSession) {
 	t.Helper()
-	if err := session.SendString("j"); err != nil {
-		t.Fatalf("send j: %v", err)
-	}
+	// Cursor starts on the first workspace (RowHome is a non-selectable heading),
+	// so just press enter to activate it.
 	if err := session.SendString("\r"); err != nil {
 		t.Fatalf("send enter: %v", err)
 	}
@@ -125,10 +124,6 @@ func activatePrimaryWorkspace(t *testing.T, session *PTYSession) {
 func createAgentTab(t *testing.T, session *PTYSession) {
 	t.Helper()
 	sendPrefixCommand(t, session, "a")
-	waitForUIContains(t, session, "New Agent", persistenceTimeout)
-	if err := session.SendString("\r"); err != nil {
-		t.Fatalf("select agent: %v", err)
-	}
 	// When the workspace has no profile, a "Set Profile" dialog appears.
 	// Accept the default profile name to proceed with agent creation.
 	waitForUIContains(t, session, "Set Profile", persistenceTimeout)
@@ -242,10 +237,20 @@ func hasSessionsWithPrefix(t *testing.T, opts tmux.Options, prefix string, minCo
 
 func writeRegistry(t *testing.T, home, repo string) {
 	t.Helper()
-	registryPath := filepath.Join(home, ".medusa", "projects.json")
+	medusaDir := filepath.Join(home, ".medusa")
+	registryPath := filepath.Join(medusaDir, "workspaces.json")
+	metadataRoot := filepath.Join(medusaDir, "workspaces-metadata")
 	registry := data.NewRegistry(registryPath)
-	if err := registry.AddProject(repo); err != nil {
-		t.Fatalf("add project: %v", err)
+	store := data.NewWorkspaceStore(metadataRoot)
+
+	name := filepath.Base(repo)
+	ws := data.NewWorkspace(name, "main", "main", repo, repo)
+	ws.Runtime = "local-worktree"
+	if err := store.Save(ws); err != nil {
+		t.Fatalf("save workspace: %v", err)
+	}
+	if err := registry.AddWorkspace(ws.Name, string(ws.ID()), ""); err != nil {
+		t.Fatalf("add workspace: %v", err)
 	}
 }
 

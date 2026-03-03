@@ -19,37 +19,17 @@ func (a *App) persistAllWorkspacesNow() {
 	if a.workspaces == nil || a.center == nil {
 		return
 	}
-	for _, project := range a.projects {
-		for i := range project.Workspaces {
-			ws := &project.Workspaces[i]
-			wsID := string(ws.ID())
-			tabs, activeIdx := a.center.GetTabsInfoForWorkspace(wsID)
-			if len(tabs) == 0 {
-				continue
-			}
-			ws.OpenTabs = tabs
-			ws.ActiveTabIndex = activeIdx
-			snap := snapshotWorkspaceForSave(ws)
-			if err := a.workspaces.Save(snap); err != nil {
-				logging.Warn("Failed to persist workspace on shutdown: %v", err)
-			}
+	for _, ws := range a.allWorkspaces {
+		wsID := string(ws.ID())
+		tabs, activeIdx := a.center.GetTabsInfoForWorkspace(wsID)
+		if len(tabs) == 0 {
+			continue
 		}
-	}
-	// Also persist group workspace tabs
-	for _, group := range a.groups {
-		for i := range group.Workspaces {
-			ws := &group.Workspaces[i].Primary
-			wsID := string(ws.ID())
-			tabs, activeIdx := a.center.GetTabsInfoForWorkspace(wsID)
-			if len(tabs) == 0 {
-				continue
-			}
-			ws.OpenTabs = tabs
-			ws.ActiveTabIndex = activeIdx
-			snap := snapshotWorkspaceForSave(ws)
-			if err := a.workspaces.Save(snap); err != nil {
-				logging.Warn("Failed to persist group workspace on shutdown: %v", err)
-			}
+		ws.OpenTabs = tabs
+		ws.ActiveTabIndex = activeIdx
+		snap := snapshotWorkspaceForSave(ws)
+		if err := a.workspaces.Save(snap); err != nil {
+			logging.Warn("Failed to persist workspace on shutdown: %v", err)
 		}
 	}
 	// Clear dirty set since we just saved everything

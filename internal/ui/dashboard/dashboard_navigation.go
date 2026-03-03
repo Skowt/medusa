@@ -10,7 +10,7 @@ import (
 // isSelectable returns whether a row type can be selected
 func isSelectable(rt RowType) bool {
 	switch rt {
-	case RowSpacer:
+	case RowSpacer, RowHome, RowSectionHeader:
 		return false
 	default:
 		return true
@@ -18,10 +18,9 @@ func isSelectable(rt RowType) bool {
 }
 
 // findSelectableRow finds a selectable row starting from 'from' in direction 'dir'.
-// Returns -1 if none found.
 func (m *Model) findSelectableRow(from, dir int) int {
 	if dir == 0 {
-		dir = 1 // Default to forward
+		dir = 1
 	}
 	for i := from; i >= 0 && i < len(m.rows); i += dir {
 		if isSelectable(m.rows[i].Type) {
@@ -37,7 +36,6 @@ func (m *Model) moveCursor(delta int) {
 		return
 	}
 
-	// Determine direction and number of steps
 	steps := delta
 	if steps < 0 {
 		steps = -steps
@@ -47,19 +45,28 @@ func (m *Model) moveCursor(delta int) {
 		direction = -1
 	}
 
-	// Walk row-by-row, skipping non-selectable rows
 	for step := 0; step < steps; step++ {
 		next := m.findSelectableRow(m.cursor+direction, direction)
 		if next == -1 {
-			// No more selectable rows in this direction
 			break
 		}
 		m.cursor = next
 	}
 }
 
-func rowLineCount(row Row) int {
-	return 1
+// rowLineCount returns how many display lines a row takes
+func (m *Model) rowLineCount(idx int) int {
+	if idx < 0 || idx >= len(m.rows) {
+		return 1
+	}
+	switch m.rows[idx].Type {
+	case RowWorkspace:
+		return 4
+	case RowHome:
+		return 2 // title + separator line
+	default:
+		return 1
+	}
 }
 
 func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
@@ -98,12 +105,17 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 
 	rowY := contentY - headerHeight
 	line := 0
-	for i := m.scrollOffset; i < len(m.rows); i++ {
-		if line >= rowAreaHeight {
+	for i := 0; i < len(m.rows); i++ {
+		rowLines := m.rowLineCount(i)
+		if line+rowLines <= m.scrollOffset {
+			line += rowLines
+			continue
+		}
+		visLine := line - m.scrollOffset
+		if visLine >= rowAreaHeight {
 			break
 		}
-		rowLines := rowLineCount(m.rows[i])
-		if rowY < line+rowLines {
+		if rowY >= visLine && rowY < visLine+rowLines {
 			return i, true
 		}
 		line += rowLines
@@ -113,9 +125,7 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 }
 
 // previewCurrentRow returns a command to preview the currently selected row.
-// This is called automatically on cursor movement for instant content switching.
 func (m *Model) previewCurrentRow() tea.Cmd {
-	// If toolbar is focused, show welcome screen
 	if m.toolbarFocused {
 		return func() tea.Msg { return messages.ShowWelcome{} }
 	}
@@ -128,51 +138,16 @@ func (m *Model) previewCurrentRow() tea.Cmd {
 	switch row.Type {
 	case RowHome:
 		return func() tea.Msg { return messages.ShowWelcome{} }
-	case RowProject, RowCreate:
-		// Find and activate the main/primary workspace for this project
-		var mainWS *data.Workspace
-		for i := range row.Project.Workspaces {
-			ws := &row.Project.Workspaces[i]
-			if ws.IsMainBranch() || ws.IsPrimaryCheckout() {
-				mainWS = ws
-				break
-			}
-		}
-		if mainWS != nil {
-			return func() tea.Msg {
-				return messages.WorkspacePreviewed{
-					Project:   row.Project,
-					Workspace: mainWS,
-				}
-			}
-		}
-		return nil
 	case RowWorkspace:
 		return func() tea.Msg {
 			return messages.WorkspacePreviewed{
-				Project:   row.Project,
 				Workspace: row.Workspace,
 			}
 		}
-	case RowGroupWorkspace:
-		return func() tea.Msg {
-			return messages.GroupWorkspacePreviewed{
-				Group:     row.Group,
-				Workspace: row.GroupWorkspace,
-			}
-		}
-	case RowGroupHeader:
-		return func() tea.Msg {
-			return messages.GroupPreviewed{Group: row.Group}
-		}
-	case RowGroupCreate:
-		// Preview the group header when on the "New" button
-		return func() tea.Msg {
-			return messages.GroupPreviewed{Group: row.Group}
-		}
+	case RowCreate:
+		return func() tea.Msg { return messages.ShowWelcome{} }
 	}
 
-	// RowAddProject, RowAddGroup, RowSpacer - no auto-preview
 	return nil
 }
 
@@ -186,62 +161,15 @@ func (m *Model) handleEnter() tea.Cmd {
 	switch row.Type {
 	case RowHome:
 		return func() tea.Msg { return messages.ShowWelcome{} }
-	case RowProject:
-		// Find and activate the main/primary workspace for this project
-		var mainWS *data.Workspace
-		for i := range row.Project.Workspaces {
-			ws := &row.Project.Workspaces[i]
-			if ws.IsMainBranch() || ws.IsPrimaryCheckout() {
-				mainWS = ws
-				break
-			}
-		}
-		if mainWS != nil {
-			return func() tea.Msg {
-				return messages.WorkspaceActivated{
-					Project:   row.Project,
-					Workspace: mainWS,
-				}
-			}
-		}
-		return nil
 	case RowWorkspace:
 		return func() tea.Msg {
 			return messages.WorkspaceActivated{
-				Project:   row.Project,
 				Workspace: row.Workspace,
 			}
 		}
 	case RowCreate:
 		return func() tea.Msg {
-			return messages.ShowCreateWorkspaceDialog{Project: row.Project}
-		}
-	case RowGroupHeader:
-		// Activate first workspace if one exists
-		if len(row.Group.Workspaces) > 0 {
-			gw := &row.Group.Workspaces[0]
-			return func() tea.Msg {
-				return messages.GroupWorkspaceActivated{
-					Group:     row.Group,
-					Workspace: gw,
-				}
-			}
-		}
-		return nil
-	case RowGroupWorkspace:
-		return func() tea.Msg {
-			return messages.GroupWorkspaceActivated{
-				Group:     row.Group,
-				Workspace: row.GroupWorkspace,
-			}
-		}
-	case RowGroupCreate:
-		return func() tea.Msg {
-			return messages.ShowCreateGroupWorkspaceDialog{Group: row.Group}
-		}
-	case RowAddGroup:
-		return func() tea.Msg {
-			return messages.ShowAddProjectDialog{}
+			return messages.ShowCreateWorkspaceDialog{}
 		}
 	}
 
@@ -258,28 +186,7 @@ func (m *Model) handleDelete() tea.Cmd {
 	if row.Type == RowWorkspace && row.Workspace != nil {
 		return func() tea.Msg {
 			return messages.ShowDeleteWorkspaceDialog{
-				Project:   row.Project,
 				Workspace: row.Workspace,
-			}
-		}
-	}
-	if row.Type == RowProject && row.Project != nil {
-		return func() tea.Msg {
-			return messages.ShowRemoveProjectDialog{
-				Project: row.Project,
-			}
-		}
-	}
-	if row.Type == RowGroupHeader && row.Group != nil {
-		return func() tea.Msg {
-			return messages.ShowDeleteGroupDialog{GroupName: row.Group.Name}
-		}
-	}
-	if row.Type == RowGroupWorkspace && row.GroupWorkspace != nil {
-		return func() tea.Msg {
-			return messages.ShowDeleteGroupWorkspaceDialog{
-				Group:     row.Group,
-				Workspace: row.GroupWorkspace,
 			}
 		}
 	}
@@ -287,57 +194,30 @@ func (m *Model) handleDelete() tea.Cmd {
 	return nil
 }
 
-// handleSetProfile opens the profile dialog for the current project
+// handleSetProfile opens the profile dialog for the current workspace
 func (m *Model) handleSetProfile() tea.Cmd {
 	if m.cursor >= len(m.rows) {
 		return nil
 	}
 
 	row := m.rows[m.cursor]
-	switch row.Type {
-	case RowProject, RowWorkspace:
-		project := row.Project
-		if project == nil {
-			return nil
-		}
-		// Check if any workspace for this project has an active session
-		for i := range project.Workspaces {
-			ws := &project.Workspaces[i]
-			if m.activeWorkspaceIDs[string(ws.ID())] {
-				return func() tea.Msg {
-					return messages.Toast{
-						Message: "Cannot change profile while worktrees have active sessions",
-						Level:   messages.ToastError,
-					}
+	if row.Type == RowWorkspace && row.Workspace != nil {
+		// Check if workspace has an active session
+		wsID := string(row.Workspace.ID())
+		if m.activeWorkspaceIDs[wsID] {
+			return func() tea.Msg {
+				return messages.Toast{
+					Message: "Cannot change profile while workspace has active sessions",
+					Level:   messages.ToastError,
 				}
 			}
 		}
+		ws := row.Workspace
 		return func() tea.Msg {
-			return messages.ShowSetProfileDialog{Project: project}
+			return messages.ShowSetWorkspaceProfileDialog{Workspace: ws}
 		}
-	case RowGroupHeader, RowGroupWorkspace:
-		group := row.Group
-		if group == nil {
-			return nil
-		}
-		// Check if any workspace in the group has an active session
-		for i := range group.Workspaces {
-			gw := &group.Workspaces[i]
-			if m.activeWorkspaceIDs[string(gw.ID())] {
-				return func() tea.Msg {
-					return messages.Toast{
-						Message: "Cannot change profile while worktrees have active sessions",
-						Level:   messages.ToastError,
-					}
-				}
-			}
-		}
-		return func() tea.Msg {
-			return messages.ShowSetGroupProfileDialog{Group: group}
-		}
-	default:
-		return nil
 	}
+	return nil
 }
 
 // handleRename requests renaming the currently selected workspace.
@@ -349,45 +229,45 @@ func (m *Model) handleRename() tea.Cmd {
 	if row.Type == RowWorkspace && row.Workspace != nil {
 		return func() tea.Msg {
 			return messages.ShowRenameWorkspaceDialog{
-				Project:   row.Project,
 				Workspace: row.Workspace,
 			}
 		}
 	}
-	if row.Type == RowGroupWorkspace && row.GroupWorkspace != nil && row.Group != nil {
-		return func() tea.Msg {
-			return messages.ShowRenameGroupWorkspaceDialog{
-				Group:     row.Group,
-				Workspace: row.GroupWorkspace,
-			}
-		}
-	}
-	if row.Type == RowGroupHeader && row.Group != nil {
-		return func() tea.Msg {
-			return messages.ShowRenameGroupDialog{
-				Group: row.Group,
-			}
-		}
-	}
 	return nil
 }
 
-// handleEditGroupRepos opens the edit repos dialog for the current group.
-func (m *Model) handleEditGroupRepos() tea.Cmd {
+// handleSetStatus cycles the workspace status
+func (m *Model) handleSetStatus() tea.Cmd {
 	if m.cursor >= len(m.rows) {
 		return nil
 	}
 	row := m.rows[m.cursor]
-	if (row.Type == RowGroupHeader || row.Type == RowGroupWorkspace) && row.Group != nil {
-		group := row.Group
-		return func() tea.Msg {
-			return messages.ShowEditGroupReposDialog{Group: group}
+	if row.Type != RowWorkspace || row.Workspace == nil {
+		return nil
+	}
+
+	// Cycle: None -> Started -> Blocked -> Merged -> None (skip Archived)
+	var nextStatus data.WorkspaceStatus
+	switch row.Workspace.Status {
+	case data.StatusNone:
+		nextStatus = data.StatusStarted
+	case data.StatusStarted:
+		nextStatus = data.StatusBlocked
+	case data.StatusBlocked:
+		nextStatus = data.StatusMerged
+	case data.StatusMerged:
+		nextStatus = data.StatusNone
+	case data.StatusArchived:
+		nextStatus = data.StatusNone
+	default:
+		nextStatus = data.StatusStarted
+	}
+
+	ws := row.Workspace
+	return func() tea.Msg {
+		return messages.SetWorkspaceStatus{
+			Workspace: ws,
+			Status:    nextStatus,
 		}
 	}
-	return nil
-}
-
-// refresh requests a workspace rescan/import.
-func (m *Model) refresh() tea.Cmd {
-	return func() tea.Msg { return messages.RescanWorkspaces{} }
 }

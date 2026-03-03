@@ -34,36 +34,6 @@ func DefaultConfig() (*Config, error) {
 				InterruptCount:   2,
 				InterruptDelayMs: 200,
 			},
-			"codex": {
-				Command:          "codex",
-				InterruptCount:   1,
-				InterruptDelayMs: 0,
-			},
-			"gemini": {
-				Command:          "gemini",
-				InterruptCount:   1,
-				InterruptDelayMs: 0,
-			},
-			"amp": {
-				Command:          "amp",
-				InterruptCount:   1,
-				InterruptDelayMs: 0,
-			},
-			"opencode": {
-				Command:          "opencode",
-				InterruptCount:   1,
-				InterruptDelayMs: 0,
-			},
-			"droid": {
-				Command:          "droid",
-				InterruptCount:   1,
-				InterruptDelayMs: 0,
-			},
-			"cursor": {
-				Command:          "agent",
-				InterruptCount:   1,
-				InterruptDelayMs: 0,
-			},
 		},
 	}
 	return cfg, nil

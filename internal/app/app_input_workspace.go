@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -22,36 +23,29 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 		a.creationOverlay.AdvanceStep()
 	}
 	// Show the "creating" indicator in the dashboard
-	if msg.Project != nil && msg.Name != "" {
-		workspacePath := filepath.Join(
-			a.config.Paths.WorkspacesRoot,
-			msg.Project.Name,
-			msg.Name,
-		)
-		pending := data.NewWorkspace(msg.Name, msg.Name, msg.Base, msg.Project.Path, workspacePath)
+	if msg.Name != "" && len(msg.Repos) > 0 {
+		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
+		pending := data.NewWorkspace(msg.Name, msg.Name, msg.Bases[0], msg.Repos[0].Path, workspacePath)
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
-	cmds = append(cmds, a.createWorkspace(msg.Project, msg.Name, msg.Base, msg.AllowEdits, msg.Isolated, msg.SkipPermissions))
+	cmds = append(cmds, a.createWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile))
 	return cmds
 }
 
 // handleRenameWorkspace handles the RenameWorkspace message.
-// Everything runs synchronously: kill tabs, rename git branch + worktree,
-// update store, update UI state, and relaunch agents.
 func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
-	if msg.Project == nil || msg.Workspace == nil {
+	if msg.Workspace == nil {
 		return nil
 	}
 
 	ws := msg.Workspace
 	newName := msg.NewName
-	oldBranch := ws.Branch
+	oldBranch := ws.Branch()
 	newBranch := newName
-	oldRoot := ws.Root
+	oldRoot := ws.Root()
 	newRoot := filepath.Join(filepath.Dir(oldRoot), newName)
-	repoPath := ws.Repo
 	opts := a.tmuxOptions
 	oldWsID := string(ws.ID())
 
@@ -72,41 +66,102 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		}
 	}
 
-	// 3. Validate: branch and target directory must not already exist.
-	if git.BranchExists(repoPath, newBranch) {
-		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Branch '%s' already exists", newBranch))}
+	// 3. Validate: branch must not exist in any repo, target dir must not exist.
+	for _, repo := range ws.Repos {
+		if git.BranchExists(repo.Path, newBranch) {
+			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Branch '%s' already exists in %s", newBranch, repo.Name))}
+		}
 	}
 	if _, err := os.Stat(newRoot); err == nil {
 		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Directory '%s' already exists", filepath.Base(newRoot)))}
 	}
 
-	// 4. Rename branch.
-	if err := git.RenameBranch(repoPath, oldBranch, newBranch); err != nil {
-		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+	// 4. Rename branches in all repos.
+	for i, repo := range ws.Repos {
+		if err := git.RenameBranch(repo.Path, oldBranch, newBranch); err != nil {
+			for j := 0; j < i; j++ {
+				_ = git.RenameBranch(ws.Repos[j].Path, newBranch, oldBranch)
+			}
+			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed in %s: %s", repo.Name, err.Error()))}
+		}
 	}
 
-	// 5. Move worktree.
-	if err := git.MoveWorkspace(repoPath, oldRoot, newRoot); err != nil {
-		_ = git.RenameBranch(repoPath, newBranch, oldBranch)
-		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+	// rollbackBranches undoes all branch renames.
+	rollbackBranches := func() {
+		for _, repo := range ws.Repos {
+			_ = git.RenameBranch(repo.Path, newBranch, oldBranch)
+		}
+	}
+
+	// 5. Move worktrees.
+	if ws.IsMultiRepo() {
+		// Multi-repo: create new parent, move each worktree individually.
+		if err := os.MkdirAll(newRoot, 0o755); err != nil {
+			rollbackBranches()
+			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+		}
+		for i, wt := range ws.Worktrees {
+			newWtPath := filepath.Join(newRoot, ws.Repos[i].Name)
+			if err := git.MoveWorkspace(ws.Repos[i].Path, wt.Root, newWtPath); err != nil {
+				// Rollback previously moved worktrees
+				for j := 0; j < i; j++ {
+					_ = git.MoveWorkspace(ws.Repos[j].Path, filepath.Join(newRoot, ws.Repos[j].Name), ws.Worktrees[j].Root)
+				}
+				_ = os.Remove(newRoot)
+				rollbackBranches()
+				return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed moving %s: %s", ws.Repos[i].Name, err.Error()))}
+			}
+		}
+		// Remove old parent directory (should be empty now).
+		_ = os.Remove(oldRoot)
+	} else {
+		// Single-repo: move the worktree directly.
+		if err := git.MoveWorkspace(ws.Repos[0].Path, oldRoot, newRoot); err != nil {
+			rollbackBranches()
+			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+		}
+	}
+
+	// rollbackMoves undoes all worktree moves.
+	rollbackMoves := func() {
+		if ws.IsMultiRepo() {
+			_ = os.MkdirAll(oldRoot, 0o755)
+			for i := range ws.Worktrees {
+				_ = git.MoveWorkspace(ws.Repos[i].Path, filepath.Join(newRoot, ws.Repos[i].Name), ws.Worktrees[i].Root)
+			}
+			_ = os.Remove(newRoot)
+		} else {
+			_ = git.MoveWorkspace(ws.Repos[0].Path, newRoot, oldRoot)
+		}
 	}
 
 	// 6. Update store.
 	stored, err := a.workspaces.Load(ws.ID())
 	if err != nil {
-		_ = git.MoveWorkspace(repoPath, newRoot, oldRoot)
-		_ = git.RenameBranch(repoPath, newBranch, oldBranch)
+		rollbackMoves()
+		rollbackBranches()
 		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 	}
 	stored.Name = newName
-	stored.Branch = newBranch
-	stored.Root = newRoot
+	for i := range stored.Worktrees {
+		stored.Worktrees[i].Branch = newBranch
+		if ws.IsMultiRepo() {
+			stored.Worktrees[i].Root = filepath.Join(newRoot, stored.Repos[i].Name)
+		} else {
+			stored.Worktrees[i].Root = newRoot
+		}
+	}
 	if err := a.workspaces.Save(stored); err != nil {
-		_ = git.MoveWorkspace(repoPath, newRoot, oldRoot)
-		_ = git.RenameBranch(repoPath, newBranch, oldBranch)
+		rollbackMoves()
+		rollbackBranches()
 		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 	}
 	newWs := stored
+
+	// 6b. Update registry entry (ID changed because root changed).
+	if err := a.registry.UpdateWorkspace(oldWsID, newName, string(newWs.ID())); err != nil {
+		logging.Warn("Failed to update registry after rename: %v", err)
+	}
 
 	// 7. Update in-memory UI state.
 	if a.activeWorkspace != nil && string(a.activeWorkspace.ID()) == oldWsID {
@@ -115,15 +170,18 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		a.center.SetWorkspace(newWs)
 	}
 	newID := string(newWs.ID())
-	for i := range a.projects {
-		for j := range a.projects[i].Workspaces {
-			pw := &a.projects[i].Workspaces[j]
-			if string(pw.ID()) == oldWsID {
-				pw.Name = newWs.Name
-				pw.Branch = newWs.Branch
-				pw.Root = newWs.Root
-				pw.OpenTabs = nil
+	for _, ws := range a.allWorkspaces {
+		if string(ws.ID()) == oldWsID {
+			ws.Name = newWs.Name
+			for i := range ws.Worktrees {
+				ws.Worktrees[i].Branch = newBranch
+				if newWs.IsMultiRepo() {
+					ws.Worktrees[i].Root = filepath.Join(newRoot, ws.Repos[i].Name)
+				} else {
+					ws.Worktrees[i].Root = newRoot
+				}
 			}
+			ws.OpenTabs = nil
 		}
 	}
 	if a.dirtyWorkspaces[oldWsID] {
@@ -132,14 +190,17 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	}
 	if a.fileWatcher != nil {
 		a.fileWatcher.Unwatch(oldRoot)
-		_ = a.fileWatcher.Watch(newWs.Root)
+		_ = a.fileWatcher.Watch(newWs.Root())
 	}
 	if a.permissionWatcher != nil {
 		a.permissionWatcher.Unwatch(oldRoot)
-		_ = a.permissionWatcher.Watch(newWs.Root)
+		_ = a.permissionWatcher.Watch(newWs.Root())
 	}
 	if a.statusManager != nil {
 		a.statusManager.Invalidate(oldRoot)
+	}
+	if a.dashboard != nil {
+		a.dashboard.InvalidateStatus(oldRoot)
 	}
 
 	// 8. Persist tab state, toast, reload, and relaunch agents.
@@ -149,13 +210,22 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	}
 	cmds = append(cmds,
 		a.toast.ShowSuccess(fmt.Sprintf("Renamed to '%s'", newWs.Name)),
-		a.loadProjects(),
+		a.loadWorkspaces(),
 	)
 	for _, tabInfo := range agentTabs {
 		assistant := tabInfo.Assistant
 		w := newWs
+		ae := tabInfo.AllowEdits
+		iso := tabInfo.Isolated
+		sp := tabInfo.SkipPermissions
 		cmds = append(cmds, func() tea.Msg {
-			return messages.LaunchAgent{Assistant: assistant, Workspace: w}
+			return messages.LaunchAgent{
+				Assistant:       assistant,
+				Workspace:       w,
+				AllowEdits:      ae,
+				Isolated:        iso,
+				SkipPermissions: sp,
+			}
 		})
 	}
 	return cmds
@@ -167,294 +237,11 @@ func (a *App) handleWorkspaceRenameFailed(msg messages.WorkspaceRenameFailed) te
 	return a.toast.ShowError("Rename failed: " + msg.Err.Error())
 }
 
-// handleRenameGroup handles renaming a project group.
-// This migrates workspace storage and kills old tmux sessions since the
-// workspace ID (which includes group name) changes.
-func (a *App) handleRenameGroup(msg messages.RenameGroup) tea.Cmd {
-	if msg.Group == nil {
-		return nil
-	}
-	oldName := msg.Group.Name
-	newName := msg.NewName
-	opts := a.tmuxOptions
-
-	// 1. Migrate each workspace: old ID → new ID
-	for i := range msg.Group.Workspaces {
-		gw := &msg.Group.Workspaces[i]
-		oldID := gw.ID()
-
-		stored, err := a.workspaces.LoadGroupWorkspace(oldID)
-		if err != nil {
-			logging.Error("Failed to load group workspace %s for group rename: %v", gw.Name, err)
-			continue
-		}
-
-		// Update group name and save to new location (new ID)
-		stored.GroupName = newName
-		if err := a.workspaces.SaveGroupWorkspace(stored); err != nil {
-			logging.Error("Failed to save migrated group workspace %s: %v", gw.Name, err)
-			continue
-		}
-
-		// Kill old tmux sessions for this workspace.
-		tmux.KillSessionsMatchingTags(map[string]string{
-			"@medusa":           "1",
-			"@medusa_workspace": string(oldID),
-		}, opts)
-
-		// Delete old storage directory
-		_ = a.workspaces.DeleteGroupWorkspace(oldID)
-	}
-
-	// 2. Rename group in registry
-	if err := a.registry.RenameGroup(oldName, newName); err != nil {
-		logging.Error("Failed to rename group: %v", err)
-		return a.toast.ShowError("Failed to rename: " + err.Error())
-	}
-
-	// 3. Update in-memory state
-	if a.activeGroup != nil && a.activeGroup.Name == oldName {
-		a.activeGroup.Name = newName
-	}
-	for i := range a.groups {
-		if a.groups[i].Name == oldName {
-			a.groups[i].Name = newName
-			for j := range a.groups[i].Workspaces {
-				a.groups[i].Workspaces[j].GroupName = newName
-			}
-		}
-	}
-
-	// 4. Reload groups + toast
-	return a.safeBatch(
-		a.toast.ShowSuccess(fmt.Sprintf("Renamed group to '%s'", newName)),
-		a.loadGroups(),
-	)
-}
-
-// handleRenameGroupWorkspace handles renaming a group workspace.
-// Everything runs synchronously: kill tabs, rename git branches in all repos,
-// move all worktrees, rename the group root directory, update store, update UI
-// state, and relaunch agents.
-func (a *App) handleRenameGroupWorkspace(msg messages.RenameGroupWorkspace) []tea.Cmd {
-	if msg.Group == nil || msg.Workspace == nil {
-		return nil
-	}
-
-	gw := msg.Workspace
-	newName := msg.NewName
-	oldName := gw.Name
-	opts := a.tmuxOptions
-	oldPrimaryID := string(gw.Primary.ID())
-
-	// 1. Capture running agent tab info for restart after rename.
-	tabsInfo, _ := a.center.GetTabsInfoForWorkspace(oldPrimaryID)
-	var agentTabs []data.TabInfo
-	for _, t := range tabsInfo {
-		if t.Assistant != "" {
-			agentTabs = append(agentTabs, t)
-		}
-	}
-
-	// 2. Close all tabs and kill their tmux sessions.
-	a.center.CleanupWorkspace(&gw.Primary)
-	for _, t := range tabsInfo {
-		if t.SessionName != "" {
-			_ = tmux.KillSession(t.SessionName, opts)
-		}
-	}
-
-	// Snapshot old secondary roots for file watcher migration.
-	oldSecondaryRoots := make([]string, len(gw.Secondary))
-	for i, ws := range gw.Secondary {
-		oldSecondaryRoots[i] = ws.Root
-	}
-
-	// 3. Validate: check that the new branch doesn't exist in any repo
-	//    and that no target directories exist.
-	newGroupRoot := filepath.Join(filepath.Dir(gw.Primary.Root), newName)
-	if _, err := os.Stat(newGroupRoot); err == nil {
-		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Directory '%s' already exists", filepath.Base(newGroupRoot)))}
-	}
-	for _, ws := range gw.Secondary {
-		if git.BranchExists(ws.Repo, newName) {
-			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Branch '%s' already exists in %s", newName, filepath.Base(ws.Repo)))}
-		}
-	}
-
-	// 4. Rename branches in all secondary repos.
-	var renamedBranches []int
-	for i, ws := range gw.Secondary {
-		if err := git.RenameBranch(ws.Repo, oldName, newName); err != nil {
-			for j := len(renamedBranches) - 1; j >= 0; j-- {
-				idx := renamedBranches[j]
-				_ = git.RenameBranch(gw.Secondary[idx].Repo, newName, oldName)
-			}
-			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed in %s: %s", filepath.Base(ws.Repo), err.Error()))}
-		}
-		renamedBranches = append(renamedBranches, i)
-	}
-
-	// 5. Create the new group root directory so worktrees can be moved into it.
-	if err := os.MkdirAll(newGroupRoot, 0755); err != nil {
-		for _, idx := range renamedBranches {
-			_ = git.RenameBranch(gw.Secondary[idx].Repo, newName, oldName)
-		}
-		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
-	}
-
-	// 6. Move all secondary worktrees into the new group root.
-	var movedWorktrees []int
-	for i, ws := range gw.Secondary {
-		newRoot := filepath.Join(newGroupRoot, filepath.Base(ws.Root))
-		if err := git.MoveWorkspace(ws.Repo, ws.Root, newRoot); err != nil {
-			for j := len(movedWorktrees) - 1; j >= 0; j-- {
-				idx := movedWorktrees[j]
-				oldWsRoot := gw.Secondary[idx].Root
-				newWsRoot := filepath.Join(newGroupRoot, filepath.Base(oldWsRoot))
-				_ = git.MoveWorkspace(gw.Secondary[idx].Repo, newWsRoot, oldWsRoot)
-			}
-			_ = os.Remove(newGroupRoot)
-			for _, idx := range renamedBranches {
-				_ = git.RenameBranch(gw.Secondary[idx].Repo, newName, oldName)
-			}
-			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed for %s: %s", filepath.Base(ws.Repo), err.Error()))}
-		}
-		movedWorktrees = append(movedWorktrees, i)
-	}
-
-	// 7. Move remaining non-worktree files (e.g. .claude/) from old root
-	//    to new root, then remove the old root directory.
-	entries, _ := os.ReadDir(gw.Primary.Root)
-	for _, entry := range entries {
-		oldPath := filepath.Join(gw.Primary.Root, entry.Name())
-		newPath := filepath.Join(newGroupRoot, entry.Name())
-		if _, err := os.Stat(newPath); err == nil {
-			continue
-		}
-		_ = os.Rename(oldPath, newPath)
-	}
-	_ = os.Remove(gw.Primary.Root)
-
-	// 8. Update store: load, update fields, save under new ID, delete old ID.
-	oldGwID := gw.ID()
-	stored, err := a.workspaces.LoadGroupWorkspace(oldGwID)
-	if err != nil {
-		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
-	}
-	stored.Name = newName
-	stored.Primary.Name = newName
-	stored.Primary.Branch = newName
-	stored.Primary.Root = newGroupRoot
-	for i := range stored.Secondary {
-		stored.Secondary[i].Name = newName
-		stored.Secondary[i].Branch = newName
-		stored.Secondary[i].Root = filepath.Join(newGroupRoot, filepath.Base(stored.Secondary[i].Root))
-	}
-	if err := a.workspaces.SaveGroupWorkspace(stored); err != nil {
-		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
-	}
-	if stored.ID() != oldGwID {
-		_ = a.workspaces.DeleteGroupWorkspace(oldGwID)
-	}
-
-	newPrimary := &stored.Primary
-	// Propagate secondary roots for sandbox git-dir whitelisting
-	// (SecondaryRoots is transient/json:"-" and empty after load).
-	newPrimary.SecondaryRoots = stored.AllRoots()
-	newPrimaryID := string(newPrimary.ID())
-
-	// 9. Update in-memory UI state.
-	if a.activeWorkspace != nil && string(a.activeWorkspace.ID()) == oldPrimaryID {
-		newPrimary.Profile = a.activeWorkspace.Profile
-		a.activeWorkspace = newPrimary
-		a.center.SetWorkspace(newPrimary)
-	}
-	if a.activeGroupWs != nil && a.activeGroupWs.ID() == gw.ID() {
-		stored.Profile = a.activeGroupWs.Profile
-		stored.Primary.Profile = a.activeGroupWs.Profile
-		for i := range stored.Secondary {
-			stored.Secondary[i].Profile = a.activeGroupWs.Profile
-		}
-		a.activeGroupWs = stored
-	}
-
-	for i := range a.groups {
-		groupProfile := a.groups[i].Profile
-		for j := range a.groups[i].Workspaces {
-			gw := &a.groups[i].Workspaces[j]
-			if gw.ID() == oldGwID {
-				gw.Name = newName
-				gw.Primary = stored.Primary
-				gw.Secondary = stored.Secondary
-				gw.Profile = groupProfile
-				gw.Primary.Profile = groupProfile
-				for k := range gw.Secondary {
-					gw.Secondary[k].Profile = groupProfile
-				}
-				gw.OpenTabs = nil
-			}
-		}
-	}
-
-	if a.dirtyWorkspaces[oldPrimaryID] {
-		delete(a.dirtyWorkspaces, oldPrimaryID)
-		a.dirtyWorkspaces[newPrimaryID] = true
-	}
-
-	if a.fileWatcher != nil {
-		for _, root := range oldSecondaryRoots {
-			a.fileWatcher.Unwatch(root)
-		}
-		for _, ws := range stored.Secondary {
-			_ = a.fileWatcher.Watch(ws.Root)
-		}
-	}
-	if a.permissionWatcher != nil {
-		for _, root := range oldSecondaryRoots {
-			a.permissionWatcher.Unwatch(root)
-		}
-		for _, ws := range stored.Secondary {
-			_ = a.permissionWatcher.Watch(ws.Root)
-		}
-	}
-
-	if a.statusManager != nil {
-		for _, root := range oldSecondaryRoots {
-			a.statusManager.Invalidate(root)
-		}
-	}
-
-	// 10. Persist tab state, toast, reload, and relaunch agents.
-	var cmds []tea.Cmd
-	if cmd := a.persistWorkspaceTabs(newPrimaryID); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
-	cmds = append(cmds,
-		a.toast.ShowSuccess(fmt.Sprintf("Renamed to '%s'", newName)),
-		a.loadGroups(),
-	)
-	for _, tabInfo := range agentTabs {
-		assistant := tabInfo.Assistant
-		ws := newPrimary
-		cmds = append(cmds, func() tea.Msg {
-			return messages.LaunchAgent{Assistant: assistant, Workspace: ws}
-		})
-	}
-	return cmds
-}
-
-// handleGroupWorkspaceRenameFailed handles a failed group workspace rename.
-func (a *App) handleGroupWorkspaceRenameFailed(msg messages.GroupWorkspaceRenameFailed) tea.Cmd {
-	logging.Error("Failed to rename group workspace %s: %v", msg.Workspace.Name, msg.Err)
-	return a.toast.ShowError("Rename failed: " + msg.Err.Error())
-}
-
 // handleDeleteWorkspace handles the DeleteWorkspace message.
 func (a *App) handleDeleteWorkspace(msg messages.DeleteWorkspace) []tea.Cmd {
 	var cmds []tea.Cmd
-	if msg.Project == nil || msg.Workspace == nil {
-		logging.Warn("DeleteWorkspace received with nil project or workspace")
+	if msg.Workspace == nil {
+		logging.Warn("DeleteWorkspace received with nil workspace")
 		return nil
 	}
 	// Clean up tabs first so that killing tmux sessions doesn't trigger
@@ -463,10 +250,10 @@ func (a *App) handleDeleteWorkspace(msg messages.DeleteWorkspace) []tea.Cmd {
 	if cleanup := a.cleanupWorkspaceTmuxSessions(msg.Workspace); cleanup != nil {
 		cmds = append(cmds, cleanup)
 	}
-	if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root, true); cmd != nil {
+	if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), true); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	cmds = append(cmds, a.deleteWorkspace(msg.Project, msg.Workspace))
+	cmds = append(cmds, a.deleteWorkspace(msg.Workspace))
 	return cmds
 }
 
@@ -479,7 +266,7 @@ func (a *App) handleWorkspaceCreatedWithWarning(msg messages.WorkspaceCreatedWit
 			cmds = append(cmds, cmd)
 		}
 	}
-	cmds = append(cmds, a.loadProjects())
+	cmds = append(cmds, a.loadWorkspaces())
 	return cmds
 }
 
@@ -492,12 +279,12 @@ func (a *App) handleWorkspaceCreated(msg messages.WorkspaceCreated) []tea.Cmd {
 			cmds = append(cmds, cmd)
 		}
 		cmds = append(cmds, a.runSetupAsync(msg.Workspace))
-		// Mark for auto-launch after projects reload
+		// Mark for auto-launch after workspaces reload
 		if a.config.UI.AutoStartAgent {
-			a.pendingAutoLaunch = msg.Workspace.Root
+			a.pendingAutoLaunch = msg.Workspace.Root()
 		}
 	}
-	cmds = append(cmds, a.loadProjects())
+	cmds = append(cmds, a.loadWorkspaces())
 	return cmds
 }
 
@@ -526,11 +313,11 @@ func (a *App) handleWorkspaceCreateFailed(msg messages.WorkspaceCreateFailed) te
 func (a *App) handleWorkspaceDeleted(msg messages.WorkspaceDeleted) []tea.Cmd {
 	var cmds []tea.Cmd
 	if msg.Workspace != nil {
-		if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root, false); cmd != nil {
+		if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), false); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 		if a.statusManager != nil {
-			a.statusManager.Invalidate(msg.Workspace.Root)
+			a.statusManager.Invalidate(msg.Workspace.Root())
 		}
 		newCenter, cmd := a.center.Update(msg)
 		a.center = newCenter
@@ -542,22 +329,124 @@ func (a *App) handleWorkspaceDeleted(msg messages.WorkspaceDeleted) []tea.Cmd {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// If the deleted workspace was active, clear it so the next
+		// loadWorkspaces cycle auto-activates the nearest workspace.
+		if a.activeWorkspace != nil && a.activeWorkspace.Root() == msg.Workspace.Root() {
+			a.goHome()
+		}
 	}
 	if msg.BranchWarning != "" {
 		cmds = append(cmds, a.toast.ShowWarning(msg.BranchWarning))
 	}
-	cmds = append(cmds, a.loadProjects())
+	cmds = append(cmds, a.loadWorkspaces())
 	return cmds
 }
 
 // handleWorkspaceDeleteFailed handles the WorkspaceDeleteFailed message.
 func (a *App) handleWorkspaceDeleteFailed(msg messages.WorkspaceDeleteFailed) tea.Cmd {
 	if msg.Workspace != nil {
-		if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root, false); cmd != nil {
+		if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), false); cmd != nil {
 			return cmd
 		}
 	}
 	a.err = msg.Err
 	logging.Error("Error in removing workspace: %v", msg.Err)
 	return nil
+}
+
+// handleSetWorkspaceStatus handles the SetWorkspaceStatus message.
+func (a *App) handleSetWorkspaceStatus(msg messages.SetWorkspaceStatus) tea.Cmd {
+	if msg.Workspace == nil {
+		return nil
+	}
+	msg.Workspace.Status = msg.Status
+	msg.Workspace.StatusChanged = time.Now()
+	if err := a.workspaces.Save(msg.Workspace); err != nil {
+		logging.Error("Failed to save workspace: %v", err)
+		return a.toast.ShowError("Failed to save setting")
+	}
+	if a.dashboard != nil {
+		a.dashboard.SetWorkspaces(a.allWorkspaces)
+	}
+	return nil
+}
+
+// saveAndRefreshWorkspace saves a workspace and refreshes the dashboard in-place.
+// If toastMsg is non-empty, a success toast is shown.
+func (a *App) saveAndRefreshWorkspace(ws *data.Workspace, toastMsg string) tea.Cmd {
+	if err := a.workspaces.Save(ws); err != nil {
+		logging.Error("Failed to save workspace: %v", err)
+		return a.toast.ShowError("Failed to save setting")
+	}
+	if a.dashboard != nil {
+		a.dashboard.SetWorkspaces(a.allWorkspaces)
+	}
+	if toastMsg != "" {
+		return a.toast.ShowSuccess(toastMsg)
+	}
+	return nil
+}
+
+// handleAddReposToWorkspace adds new repos to an existing workspace by creating worktrees.
+func (a *App) handleAddReposToWorkspace(msg messages.AddReposToWorkspace) tea.Cmd {
+	ws := msg.Workspace
+	newRepos := msg.Repos
+	if ws == nil || len(newRepos) == 0 {
+		return nil
+	}
+
+	return func() tea.Msg {
+		branch := ws.Branch()
+
+		for _, repo := range newRepos {
+			// Check if branch already exists in the new repo
+			if git.BranchExists(repo.Path, branch) {
+				return messages.ReposAddFailed{
+					Err: fmt.Errorf("branch '%s' already exists in %s", branch, repo.Name),
+				}
+			}
+		}
+
+		// Determine workspace root for new worktrees
+		var wsRoot string
+		if ws.IsMultiRepo() {
+			wsRoot = ws.Root() // Parent of all worktrees
+		} else {
+			// Single-repo becoming multi-repo: use parent of current worktree
+			wsRoot = filepath.Dir(ws.Worktrees[0].Root)
+		}
+
+		// Fetch default base and create worktree for each new repo
+		for _, repo := range newRepos {
+			base, err := git.GetDefaultBase(repo.Path)
+			if err != nil {
+				return messages.ReposAddFailed{
+					Err: fmt.Errorf("failed to get default base for %s: %w", repo.Name, err),
+				}
+			}
+
+			wtPath := filepath.Join(wsRoot, repo.Name)
+			if err := git.CreateWorkspace(repo.Path, wtPath, branch, base); err != nil {
+				return messages.ReposAddFailed{
+					Err: fmt.Errorf("failed to create worktree for %s: %w", repo.Name, err),
+				}
+			}
+
+			ws.Repos = append(ws.Repos, repo)
+			ws.Worktrees = append(ws.Worktrees, data.WorktreeRef{
+				Branch: branch,
+				Base:   base,
+				Root:   wtPath,
+			})
+		}
+
+		// Save the updated workspace
+		if err := a.workspaces.Save(ws); err != nil {
+			return messages.ReposAddFailed{
+				Err: fmt.Errorf("failed to save workspace: %w", err),
+			}
+		}
+
+		return messages.ReposAddedToWorkspace{Workspace: ws}
+	}
 }

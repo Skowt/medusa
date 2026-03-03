@@ -15,7 +15,6 @@ type UISettings struct {
 	SyncProfilePlugins bool
 	GlobalPermissions  bool
 	AutoAddPermissions bool
-	DefaultAgent       string
 	LastProfile        string // Most recently selected profile name
 	LastAllowEdits     bool   // Last state of "allow edits" checkbox for new workspaces
 	LastIsolated       bool   // Last state of "run isolated" checkbox for new workspaces
@@ -37,6 +36,7 @@ func defaultUISettings() UISettings {
 		SyncProfilePlugins: true,
 		GlobalPermissions:  true,
 		AutoAddPermissions: false,
+		LastAllowEdits:     true,
 		Theme:              "gruvbox",
 		TmuxServer:         "",
 		TmuxConfigPath:     "",
@@ -62,7 +62,6 @@ func loadUISettings(path string) UISettings {
 			SyncProfilePlugins *bool   `json:"sync_profile_plugins"`
 			GlobalPermissions  *bool   `json:"global_permissions"`
 			AutoAddPermissions *bool   `json:"auto_add_permissions"`
-			DefaultAgent       *string `json:"default_agent"`
 			LastProfile        *string `json:"last_profile"`
 			LastAllowEdits      *bool   `json:"last_allow_edits"`
 			LastIsolated        *bool   `json:"last_isolated"`
@@ -98,9 +97,6 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.AutoAddPermissions != nil {
 		settings.AutoAddPermissions = *raw.UI.AutoAddPermissions
-	}
-	if raw.UI.DefaultAgent != nil {
-		settings.DefaultAgent = *raw.UI.DefaultAgent
 	}
 	if raw.UI.LastProfile != nil {
 		settings.LastProfile = *raw.UI.LastProfile
@@ -156,7 +152,6 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["sync_profile_plugins"] = settings.SyncProfilePlugins
 	ui["global_permissions"] = settings.GlobalPermissions
 	ui["auto_add_permissions"] = settings.AutoAddPermissions
-	ui["default_agent"] = settings.DefaultAgent
 	ui["last_profile"] = settings.LastProfile
 	ui["last_allow_edits"] = settings.LastAllowEdits
 	ui["last_isolated"] = settings.LastIsolated

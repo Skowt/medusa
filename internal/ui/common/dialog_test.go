@@ -45,39 +45,6 @@ func TestDialogCursorPositionInput(t *testing.T) {
 	}
 }
 
-func TestDialogCursorPositionFilter(t *testing.T) {
-	d := NewAgentPicker()
-	d.Show()
-	d.filterInput.SetValue("c")
-	d.filterInput.SetCursor(1)
-
-	inputCursor := d.filterInput.Cursor()
-	if inputCursor == nil {
-		t.Fatalf("expected filter input cursor, got nil")
-	}
-
-	c := d.Cursor()
-	if c == nil {
-		t.Fatalf("expected dialog cursor, got nil")
-	}
-
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ColorPrimary).
-		MarginBottom(1)
-	prefix := titleStyle.Render(d.title) + "\n"
-	if d.message != "" {
-		prefix += d.message + "\n\n"
-	}
-
-	expectedX := inputCursor.X + 3
-	expectedY := inputCursor.Y + lipgloss.Height(prefix) + 1
-
-	if c.X != expectedX || c.Y != expectedY {
-		t.Fatalf("unexpected cursor position: got (%d,%d), want (%d,%d)", c.X, c.Y, expectedX, expectedY)
-	}
-}
-
 func TestDialogConfirmClickYes(t *testing.T) {
 	d := NewConfirmDialog("quit", "Quit?", "Are you sure you want to quit?")
 	d.SetSize(80, 24)

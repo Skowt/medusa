@@ -14,11 +14,9 @@ func TestDefaultConfig(t *testing.T) {
 		t.Fatalf("DefaultConfig() returned invalid ports: start=%d range=%d", cfg.PortStart, cfg.PortRangeSize)
 	}
 
-	// Verify assistant configs referenced in README exist.
-	for _, name := range []string{"claude", "codex", "gemini", "amp", "opencode"} {
-		if _, ok := cfg.Assistants[name]; !ok {
-			t.Fatalf("DefaultConfig() missing assistant config for %s", name)
-		}
+	// Verify assistant config exists.
+	if _, ok := cfg.Assistants["claude"]; !ok {
+		t.Fatalf("DefaultConfig() missing assistant config for claude")
 	}
 
 }

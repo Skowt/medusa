@@ -2,9 +2,14 @@ package dashboard
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/andyrewlee/medusa/internal/git"
 	"github.com/andyrewlee/medusa/internal/ui/common"
 )
 
@@ -12,329 +17,28 @@ import (
 func (m *Model) renderRow(row Row, selected bool) string {
 	switch row.Type {
 	case RowHome:
-		style := m.styles.HomeRow
-		if selected {
-			style = m.styles.HomeRow.
-				Bold(true).
-				Foreground(common.ColorForeground).
-				Background(common.ColorSelection)
-		} else if m.activeRoot == "" {
-			style = style.Bold(true).Foreground(common.ColorPrimary)
+		contentWidth := m.width - 3
+		if contentWidth < 1 {
+			contentWidth = 1
 		}
-		return style.Render("[medusa]")
-
-	case RowProject:
-		prefix := " "
-		status := ""
-		statusText := ""
-		dirty := false
-		main := m.getMainWorkspace(row.Project)
-		if main != nil {
-			if m.deletingWorkspaces[main.Root] {
-				frame := common.SpinnerFrame(m.spinnerFrame)
-				statusText = m.styles.StatusPending.Render(frame + " deleting")
-			} else if s, ok := m.statusCache[main.Root]; ok && !s.Clean {
-				dirty = true
-			}
-		}
-		if statusText != "" {
-			status = " " + statusText
-		}
-
-		// Project headers are selectable to access main branch
-		style := m.styles.ProjectHeader.MarginTop(0)
-		if selected {
-			style = style.
-				Bold(true).
-				Foreground(common.ColorForeground).
-				Background(common.ColorSelection)
-		} else if m.isProjectActive(row.Project) {
-			style = m.styles.ActiveWorkspace.PaddingLeft(0)
-		}
-		// Dirty color takes priority for project headers.
-		if dirty && !m.isProjectActive(row.Project) {
-			style = style.Foreground(common.ColorSecondary)
-		}
-
-		// Reserve space for delete icon to keep status aligned
-		deleteSlot := "   "
-		deleteSlotWidth := 3
-		if selected {
-			deleteSlot = " " + common.Icons.Close + " "
-		}
-
-		// Append profile indicator if set
-		name := row.Project.Name
-		profileTag := ""
-		if row.Project.Profile != "" {
-			profileTag = " [" + row.Project.Profile + "]"
-		}
-
-		// Truncate project name to fit within pane (width - border - padding - status - deleteSlot)
-		maxNameWidth := m.width - 3 - lipgloss.Width(status) - deleteSlotWidth - lipgloss.Width(prefix) - lipgloss.Width(profileTag) - 1
-		if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
-			runes := []rune(name)
-			for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
-				runes = runes[:len(runes)-1]
-			}
-			name = string(runes) + "…"
-		}
-
-		// Track delete slot position for click detection
-		if selected {
-			m.deleteIconX = lipgloss.Width(style.Render(prefix + name + profileTag))
-		}
-
-		return style.Render(prefix+name+profileTag+deleteSlot) + status
+		style := lipgloss.NewStyle().Foreground(common.ColorMuted)
+		title := style.Render(" Workspaces")
+		sep := lipgloss.NewStyle().Foreground(common.ColorSurface2).Render(strings.Repeat("─", contentWidth))
+		return title + "\n" + sep
 
 	case RowWorkspace:
-		unstyledPrefix := " "
-		styledPrefix := " "
-		name := row.Workspace.Name
-		status := ""
-		statusText := ""
-		dirty := false
-
-		// Agent state indicator (spinner=active, ●=running, ○=idle)
-		// Spinner driven solely by tmux "esc to interrupt" detection.
-		indicatorWidth := 2 // icon + space
-		agentState := 0
-		isolated := row.Workspace != nil && row.Workspace.Isolated
-		indicator := common.Icons.Idle + " "
-		if isolated {
-			indicator = common.Icons.Running + " "
-		}
-		if row.Workspace != nil {
-			wsID := string(row.Workspace.ID())
-			if state, hasAgents := m.workspaceAgentStates[wsID]; hasAgents {
-				agentState = state
-				switch {
-				case m.tmuxConfirmedActive[wsID]: // agent busy ("esc to interrupt" visible)
-					indicator = common.SpinnerFrame(m.spinnerFrame) + " "
-				case state >= 1: // running but idle
-					if isolated {
-						indicator = common.Icons.Running + " "
-					} else {
-						indicator = common.Icons.Running + " "
-					}
-				}
-			}
-		}
-
-		// Check deletion state first
-		if m.deletingWorkspaces[row.Workspace.Root] {
-			frame := common.SpinnerFrame(m.spinnerFrame)
-			statusText = m.styles.StatusPending.Render(frame + " deleting")
-		} else if _, ok := m.creatingWorkspaces[row.Workspace.Root]; ok {
-			frame := common.SpinnerFrame(m.spinnerFrame)
-			statusText = m.styles.StatusPending.Render(frame + " creating")
-		} else if s, ok := m.statusCache[row.Workspace.Root]; ok && !s.Clean {
-			dirty = true
-		}
-		if statusText != "" {
-			status = " " + statusText
-		}
-
-		// Determine row style based on selection and dirty state
-		style := m.styles.WorkspaceRow
-		if selected {
-			style = m.styles.SelectedRow
-		} else if dirty {
-			style = style.Foreground(common.ColorSecondary)
-		}
-
-		// Style indicator separately: primary for running/active, muted for idle.
-		// Use warning color (yellow/orange) when workspace is unread,
-		// but not for the workspace the user is currently viewing.
-		// Isolated workspaces use red (error) color for the indicator.
-		isCurrentWorkspace := row.Workspace != nil && row.Workspace.Root == m.activeRoot
-		hasUnread := row.Workspace != nil && m.unreadWorkspaces[string(row.Workspace.ID())]
-		iconFg := common.ColorMuted
-		if isolated {
-			iconFg = common.ColorError
-		}
-		if agentState >= 1 {
-			if hasUnread && !isCurrentWorkspace {
-				iconFg = common.ColorWarning
-			} else if !isolated {
-				iconFg = common.ColorPrimary
-			}
-		}
-		iconStyle := lipgloss.NewStyle().Foreground(iconFg)
-		if selected {
-			iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
-		}
-		indicatorStyled := iconStyle.Render(indicator)
-
-		// Reserve space for delete icon to keep status aligned
-		deleteSlot := "   "
-		deleteSlotWidth := 3
-		if selected {
-			deleteSlot = " " + common.Icons.Close + " "
-		}
-
-		// Truncate workspace name to fit within pane (width - border - padding - status - deleteSlot - indicator)
-		prefixWidth := lipgloss.Width(unstyledPrefix) + lipgloss.Width(styledPrefix) + indicatorWidth
-		maxNameWidth := m.width - 3 - lipgloss.Width(status) - deleteSlotWidth - prefixWidth - 1
-		if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
-			runes := []rune(name)
-			for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
-				runes = runes[:len(runes)-1]
-			}
-			name = string(runes) + "…"
-		}
-
-		// Track delete slot position for click detection
-		if selected {
-			m.deleteIconX = lipgloss.Width(unstyledPrefix+styledPrefix) + indicatorWidth + lipgloss.Width(style.Render(name))
-		}
-
-		return unstyledPrefix + style.Render(styledPrefix) + indicatorStyled + style.Render(name+deleteSlot) + status
+		return m.renderWorkspaceRow(row, selected)
 
 	case RowCreate:
-		unstyledPrefix := " "
-		styledPrefix := " "
 		style := m.styles.CreateButton
 		if selected {
 			style = m.styles.SelectedRow
 		}
-		return unstyledPrefix + style.Render(styledPrefix+common.Icons.Add+" New ")
+		return style.Render(" " + common.Icons.Add + " New Workspace ")
 
-	case RowGroupHeader:
-		prefix := " "
-		style := m.styles.ProjectHeader.MarginTop(0)
-		if selected {
-			style = style.
-				Bold(true).
-				Foreground(common.ColorForeground).
-				Background(common.ColorSelection)
-		}
-
-		name := row.Group.Name
-		reposBadge := fmt.Sprintf(" [%d repos]", len(row.Group.Repos))
-		profileTag := ""
-		if row.Group.Profile != "" {
-			profileTag = " [" + row.Group.Profile + "]"
-		}
-
-		// Reserve space for delete icon
-		deleteSlot := "   "
-		deleteSlotWidth := 3
-		if selected {
-			deleteSlot = " " + common.Icons.Close + " "
-		}
-
-		maxNameWidth := m.width - 3 - deleteSlotWidth - lipgloss.Width(prefix) - lipgloss.Width(reposBadge) - lipgloss.Width(profileTag) - 1
-		if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
-			runes := []rune(name)
-			for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
-				runes = runes[:len(runes)-1]
-			}
-			name = string(runes) + "…"
-		}
-
-		if selected {
-			m.deleteIconX = lipgloss.Width(style.Render(prefix + name + reposBadge + profileTag))
-		}
-
-		return style.Render(prefix + name + reposBadge + profileTag + deleteSlot)
-
-	case RowGroupWorkspace:
-		unstyledPrefix := " "
-		styledPrefix := " "
-		name := row.GroupWorkspace.Name
-		style := m.styles.WorkspaceRow
-		if selected {
-			style = m.styles.SelectedRow
-		}
-
-		// Reserve space for delete icon
-		deleteSlot := "   "
-		deleteSlotWidth := 3
-		if selected {
-			deleteSlot = " " + common.Icons.Close + " "
-		}
-
-		// Agent state indicator (spinner=active, ●=running, ○=idle)
-		// Spinner driven solely by tmux "esc to interrupt" detection.
-		indicatorWidth := 2
-		agentState := 0
-		isolated := row.GroupWorkspace != nil && row.GroupWorkspace.Isolated
-		indicator := common.Icons.Idle + " "
-		if isolated {
-			indicator = common.Icons.Running + " "
-		}
-		if row.GroupWorkspace != nil {
-			wsID := string(row.GroupWorkspace.Primary.ID())
-			if state, hasAgents := m.workspaceAgentStates[wsID]; hasAgents {
-				agentState = state
-				switch {
-				case m.tmuxConfirmedActive[wsID]: // agent busy ("esc to interrupt" visible)
-					indicator = common.SpinnerFrame(m.spinnerFrame) + " "
-				case state >= 1: // running but idle
-					if isolated {
-						indicator = common.Icons.Running + " "
-					} else {
-						indicator = common.Icons.Running + " "
-					}
-				}
-			}
-		}
-
-		// Style indicator separately: primary for running/active, muted for idle.
-		// Use warning color (yellow/orange) when workspace is unread,
-		// but not for the workspace the user is currently viewing.
-		// Isolated workspaces use red (error) color for the indicator.
-		isCurrentWorkspace := row.GroupWorkspace != nil && row.GroupWorkspace.Primary.Root == m.activeRoot
-		hasUnread := row.GroupWorkspace != nil && m.unreadWorkspaces[string(row.GroupWorkspace.Primary.ID())]
-		iconFg := common.ColorMuted
-		if isolated {
-			iconFg = common.ColorError
-		}
-		if agentState >= 1 {
-			if hasUnread && !isCurrentWorkspace {
-				iconFg = common.ColorWarning
-			} else if !isolated {
-				iconFg = common.ColorPrimary
-			}
-		}
-		iconStyle := lipgloss.NewStyle().Foreground(iconFg)
-		if selected {
-			iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
-		}
-		indicatorStyled := iconStyle.Render(indicator)
-
-		prefixWidth := lipgloss.Width(unstyledPrefix) + lipgloss.Width(styledPrefix) + indicatorWidth
-		maxNameWidth := m.width - 3 - deleteSlotWidth - prefixWidth - 1
-		if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
-			runes := []rune(name)
-			for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
-				runes = runes[:len(runes)-1]
-			}
-			name = string(runes) + "…"
-		}
-
-		if selected {
-			m.deleteIconX = lipgloss.Width(unstyledPrefix+styledPrefix) + indicatorWidth + lipgloss.Width(style.Render(name))
-		}
-
-		return unstyledPrefix + style.Render(styledPrefix) + indicatorStyled + style.Render(name+deleteSlot)
-
-	case RowGroupCreate:
-		unstyledPrefix := " "
-		styledPrefix := " "
-		style := m.styles.CreateButton
-		if selected {
-			style = m.styles.SelectedRow
-		}
-		return unstyledPrefix + style.Render(styledPrefix+common.Icons.Add+" New ")
-
-	case RowAddGroup:
-		style := m.styles.CreateButton
-		if selected {
-			style = m.styles.SelectedRow
-		}
-		return style.Render(" " + common.Icons.Add + " Add Workspace ")
+	case RowSectionHeader:
+		style := lipgloss.NewStyle().Foreground(common.ColorMuted)
+		return style.Render(" " + row.Label)
 
 	case RowSpacer:
 		return ""
@@ -343,13 +47,237 @@ func (m *Model) renderRow(row Row, selected bool) string {
 	return ""
 }
 
+// renderWorkspaceRow renders a 3-line workspace entry
+func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
+	ws := row.Workspace
+	if ws == nil {
+		return ""
+	}
+
+	contentWidth := m.width - 3
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+
+	line1 := m.renderWorkspaceLine1(ws, selected, contentWidth)
+	line2 := m.renderWorkspaceLine2(ws, selected, contentWidth)
+	line3 := m.renderWorkspaceLine3(ws, selected, contentWidth)
+
+	blankLine := ""
+	if selected {
+		bg := lipgloss.NewStyle().Background(common.ColorSelection)
+		line1 = padWithBg(line1, contentWidth, bg)
+		line2 = padWithBg(line2, contentWidth, bg)
+		line3 = padWithBg(line3, contentWidth, bg)
+		blankLine = padWithBg("", contentWidth, bg)
+	}
+
+	return line1 + "\n" + line2 + "\n" + line3 + "\n" + blankLine
+}
+
+// padWithBg right-pads a line to width using background-styled spaces.
+func padWithBg(line string, width int, bg lipgloss.Style) string {
+	w := lipgloss.Width(line)
+	if w < width {
+		return line + bg.Render(strings.Repeat(" ", width-w))
+	}
+	return line
+}
+
+// renderWorkspaceLine1: indicator + name + delete icon
+func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentWidth int) string {
+	// Agent state indicator
+	indicatorWidth := 2
+	agentState := 0
+
+	// Status-specific icon
+	statusIcon := "●" // In Progress (default)
+	switch ws.Status {
+	case data.StatusBlocked:
+		statusIcon = "⏸"
+	case data.StatusMerged:
+		statusIcon = "✓"
+	case data.StatusArchived:
+		statusIcon = "◇"
+	}
+	indicator := statusIcon + " "
+
+	wsID := string(ws.ID())
+	if state, hasAgents := m.workspaceAgentStates[wsID]; hasAgents {
+		agentState = state
+		if m.tmuxConfirmedActive[wsID] {
+			indicator = common.SpinnerFrame(m.spinnerFrame) + " "
+		}
+	}
+
+	// Status text for creating/deleting
+	statusText := ""
+	if m.deletingWorkspaces[ws.Root()] {
+		frame := common.SpinnerFrame(m.spinnerFrame)
+		pendingStyle := m.styles.StatusPending
+		spaceStyle := lipgloss.NewStyle()
+		if selected {
+			pendingStyle = pendingStyle.Background(common.ColorSelection)
+			spaceStyle = spaceStyle.Background(common.ColorSelection)
+		}
+		statusText = spaceStyle.Render(" ") + pendingStyle.Render(frame+" deleting")
+	} else if _, ok := m.creatingWorkspaces[ws.Root()]; ok {
+		frame := common.SpinnerFrame(m.spinnerFrame)
+		pendingStyle := m.styles.StatusPending
+		spaceStyle := lipgloss.NewStyle()
+		if selected {
+			pendingStyle = pendingStyle.Background(common.ColorSelection)
+			spaceStyle = spaceStyle.Background(common.ColorSelection)
+		}
+		statusText = spaceStyle.Render(" ") + pendingStyle.Render(frame+" creating")
+	}
+
+	// Styles
+	style := m.styles.WorkspaceRow
+	if selected {
+		style = lipgloss.NewStyle().Bold(true).Foreground(common.ColorForeground).Background(common.ColorSelection)
+	}
+
+	isCurrentWorkspace := ws.Root() == m.activeRoot
+	hasUnread := m.unreadWorkspaces[wsID]
+
+	// Icon color reflects workspace status
+	iconFg := common.ColorSuccess // In Progress / None → green
+	switch ws.Status {
+	case data.StatusBlocked:
+		iconFg = common.ColorError // Red
+	case data.StatusMerged:
+		iconFg = common.ColorPrimary // Blue
+	case data.StatusArchived:
+		iconFg = common.ColorMuted // Grey
+	}
+	// Override for unread notifications from another workspace
+	if agentState >= 1 && hasUnread && !isCurrentWorkspace {
+		iconFg = common.ColorWarning
+	}
+	iconStyle := lipgloss.NewStyle().Foreground(iconFg)
+	if selected {
+		iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
+	}
+
+	// Delete icon
+	deleteSlot := "   "
+	deleteSlotWidth := 3
+	if selected {
+		deleteSlot = " " + common.Icons.Close + " "
+	}
+
+	// Truncate name
+	name := ws.Name
+	prefixWidth := 2 + indicatorWidth // " " prefix + " " styled prefix + indicator
+	maxNameWidth := contentWidth - lipgloss.Width(statusText) - deleteSlotWidth - prefixWidth
+	if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
+		runes := []rune(name)
+		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
+			runes = runes[:len(runes)-1]
+		}
+		name = string(runes) + "…"
+	}
+
+	if selected {
+		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name))
+	}
+
+	return style.Render(" ") + iconStyle.Render(indicator) + style.Render(name+deleteSlot) + statusText
+}
+
+// renderWorkspaceLine2: repo names + git changes
+func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentWidth int) string {
+	bg := lipgloss.NewStyle()
+	if selected {
+		bg = bg.Background(common.ColorSelection)
+	}
+
+	indent := bg.Render("  ")
+
+	var parts []string
+
+	// Repo names
+	if len(ws.Repos) > 0 {
+		const maxRepos = 4
+		repoStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+		if selected {
+			repoStyle = repoStyle.Background(common.ColorSelection)
+		}
+		var names []string
+		limit := len(ws.Repos)
+		if limit > maxRepos {
+			limit = maxRepos
+		}
+		for _, repo := range ws.Repos[:limit] {
+			names = append(names, repo.Name)
+		}
+		repoStr := strings.Join(names, ", ")
+		if len(ws.Repos) > maxRepos {
+			repoStr += fmt.Sprintf(" (+%d)", len(ws.Repos)-maxRepos)
+		}
+		parts = append(parts, repoStyle.Render(repoStr))
+	}
+
+	// Git changes summary
+	root := ws.Root()
+	if status, ok := m.statusCache[root]; ok && status != nil && !status.Clean {
+		gitSummary := formatGitSummary(status)
+		if gitSummary != "" {
+			gitStyle := lipgloss.NewStyle().Foreground(common.ColorWarning)
+			if selected {
+				gitStyle = gitStyle.Background(common.ColorSelection)
+			}
+			parts = append(parts, gitStyle.Render(gitSummary))
+		}
+	}
+
+	sep := bg.Render(" ")
+	return indent + strings.Join(parts, sep)
+}
+
+// renderWorkspaceLine3: directory path
+func (m *Model) renderWorkspaceLine3(ws *data.Workspace, selected bool, contentWidth int) string {
+	indent := "  "
+	dir := shortenPath(ws.Root())
+
+	style := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	if selected {
+		style = style.Background(common.ColorSelection)
+	}
+
+	maxDirWidth := contentWidth - lipgloss.Width(indent)
+	if maxDirWidth > 0 && lipgloss.Width(dir) > maxDirWidth {
+		runes := []rune(dir)
+		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxDirWidth-1 {
+			runes = runes[:len(runes)-1]
+		}
+		dir = string(runes) + "…"
+	}
+
+	return style.Render(indent) + style.Render(dir)
+}
+
+// shortenPath shortens a path for display, using ~ for home dir
+func shortenPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	parts := strings.Split(path, string(filepath.Separator))
+	if len(parts) > 3 {
+		return ".../" + strings.Join(parts[len(parts)-3:], string(filepath.Separator))
+	}
+	return path
+}
+
 func (m *Model) helpItem(key, desc string) string {
 	return common.RenderHelpItem(m.styles, key, desc)
 }
 
 // helpLineCount returns the number of help lines that will be displayed.
-// This encapsulates the showKeymapHints check to avoid bugs where callers
-// forget to check it.
 func (m *Model) helpLineCount() int {
 	if !m.showKeymapHints {
 		return 0
@@ -368,30 +296,13 @@ func (m *Model) helpLines(contentWidth int) []string {
 		m.helpItem("enter", "open"),
 	}
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
-		switch m.rows[m.cursor].Type {
-		case RowWorkspace:
-			items = append(items, m.helpItem("r", "rename"))
-			items = append(items, m.helpItem("D", "delete"))
-			items = append(items, m.helpItem("P", "profile"))
-		case RowProject:
-			items = append(items, m.helpItem("D", "remove"))
-			items = append(items, m.helpItem("P", "profile"))
-		case RowGroupHeader:
-			items = append(items, m.helpItem("r", "rename"))
-			items = append(items, m.helpItem("e", "edit repos"))
-			items = append(items, m.helpItem("D", "remove"))
-			items = append(items, m.helpItem("P", "profile"))
-		case RowGroupWorkspace:
+		if m.rows[m.cursor].Type == RowWorkspace {
 			items = append(items, m.helpItem("r", "rename"))
 			items = append(items, m.helpItem("D", "delete"))
 			items = append(items, m.helpItem("P", "profile"))
 		}
 	}
 	items = append(items, m.helpItem("R", "refresh"))
-	items = append(items,
-		m.helpItem("g", "top"),
-		m.helpItem("G", "bottom"),
-	)
 	focusKey := "C-Spc h/j/k"
 	if m.canFocusRight {
 		focusKey = "C-Spc h/j/k/l"
@@ -403,4 +314,25 @@ func (m *Model) helpLines(contentWidth int) []string {
 		m.helpItem("q", "quit"),
 	)
 	return common.WrapHelpItems(items, contentWidth)
+}
+
+// formatGitSummary returns a short summary of git changes, e.g. "3M 2A 1?"
+func formatGitSummary(status *git.StatusResult) string {
+	if status == nil || status.Clean {
+		return ""
+	}
+	var parts []string
+	staged := len(status.Staged)
+	unstaged := len(status.Unstaged)
+	untracked := len(status.Untracked)
+	if staged > 0 {
+		parts = append(parts, fmt.Sprintf("%d+", staged))
+	}
+	if unstaged > 0 {
+		parts = append(parts, fmt.Sprintf("%dM", unstaged))
+	}
+	if untracked > 0 {
+		parts = append(parts, fmt.Sprintf("%d?", untracked))
+	}
+	return strings.Join(parts, " ")
 }

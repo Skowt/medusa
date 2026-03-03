@@ -1,6 +1,7 @@
 package center
 
 import (
+	"image/color"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -57,9 +58,12 @@ func (m *Model) renderTabBar() string {
 			name = tab.Assistant
 		}
 
-		// Check if tab is disconnected (detached or stopped)
+		// Read tab state under lock
 		tab.mu.Lock()
 		tabDisconnected := tab.Detached || !tab.Running
+		tabAllowEdits := tab.AllowEdits
+		tabIsolated := tab.Isolated
+		tabSkipPerms := tab.SkipPermissions
 		tab.mu.Unlock()
 
 		// Add brand color indicator for agent tabs (not file viewers)
@@ -75,26 +79,67 @@ func (m *Model) renderTabBar() string {
 			tabActive = m.IsTabActive(tab)
 		}
 
-		// Get agent-specific color
-		var agentStyle lipgloss.Style
-		switch tab.Assistant {
-		case "claude":
-			agentStyle = m.styles.AgentClaude
-		case "codex":
-			agentStyle = m.styles.AgentCodex
-		case "gemini":
-			agentStyle = m.styles.AgentGemini
-		case "amp":
-			agentStyle = m.styles.AgentAmp
-		case "opencode":
-			agentStyle = m.styles.AgentOpencode
-		case "droid":
-			agentStyle = m.styles.AgentDroid
-		case "cursor":
-			agentStyle = m.styles.AgentCursor
-		default:
+		agentStyle := m.styles.AgentClaude
+		if tab.Assistant != "claude" {
 			agentStyle = m.styles.AgentTerm
 		}
+
+		// Build mode indicator icons with spacing
+		type modeIcon struct {
+			char    string
+			fg      color.Color
+			tooltip string
+		}
+		var modeIconList []modeIcon
+		if isChat {
+			if tabAllowEdits {
+				modeIconList = append(modeIconList, modeIcon{
+					char:    "✎",
+					fg:      common.ColorSuccess,
+					tooltip: "Allow edits: agent can write files without asking",
+				})
+			}
+			if tabIsolated {
+				modeIconList = append(modeIconList, modeIcon{
+					char:    "⛶",
+					fg:      common.ColorError,
+					tooltip: "Sandbox: agent runs in an isolated environment",
+				})
+			}
+			if tabSkipPerms {
+				modeIconList = append(modeIconList, modeIcon{
+					char:    "∅",
+					fg:      common.ColorWarning,
+					tooltip: "Bypass permissions: agent skips all permission checks",
+				})
+			}
+		}
+		renderModeIcons := func(bgColor color.Color) string {
+			if len(modeIconList) == 0 {
+				return ""
+			}
+			parenStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+			if bgColor != nil {
+				parenStyle = parenStyle.Background(bgColor)
+			}
+			var inner string
+			for j, icon := range modeIconList {
+				if j > 0 {
+					if bgColor != nil {
+						inner += lipgloss.NewStyle().Background(bgColor).Render(" ")
+					} else {
+						inner += " "
+					}
+				}
+				iconStyle := lipgloss.NewStyle().Foreground(icon.fg)
+				if bgColor != nil {
+					iconStyle = iconStyle.Background(bgColor)
+				}
+				inner += iconStyle.Render(icon.char)
+			}
+			return parenStyle.Render("(") + inner + parenStyle.Render(")")
+		}
+		modeIcons := renderModeIcons(nil)
 
 		// Build tab content with close affordance
 		closeLabel := m.styles.Muted.Render("×")
@@ -104,25 +149,27 @@ func (m *Model) renderTabBar() string {
 			// Active tab - each part styled with same background
 			bg := common.ColorSurface2
 			pad := lipgloss.NewStyle().Background(bg).Render(" ")
-			// Use muted color for disconnected tabs
 			indicatorFg := agentStyle.GetForeground()
 			if tabDisconnected {
 				indicatorFg = common.ColorMuted
 			}
 			indicatorPart := lipgloss.NewStyle().Foreground(indicatorFg).Background(bg).Render(indicator)
-			// Active tab: no special color since the user is already looking at it.
-			// Muted when disconnected, normal foreground otherwise.
 			nameStyle := lipgloss.NewStyle().Foreground(common.ColorForeground).Background(bg)
 			if tabDisconnected {
 				nameStyle = nameStyle.Foreground(common.ColorMuted)
 			}
 			namePart := nameStyle.Render(name)
+			// Mode icons with background
+			modePart := ""
+			if len(modeIconList) > 0 {
+				modePart = lipgloss.NewStyle().Background(bg).Render(" ") + renderModeIcons(bg)
+			}
 			space := lipgloss.NewStyle().Background(bg).Render(" ")
 			closePart := lipgloss.NewStyle().Foreground(common.ColorMuted).Background(bg).Render("×")
-			rendered = pad + indicatorPart + namePart + space + closePart + pad
+			rendered = pad + indicatorPart + namePart + modePart + space + closePart + pad
 			style = m.styles.ActiveTab
 		} else {
-			// Inactive tab - muted with colored indicator, or primary color + bold when active
+			// Inactive tab
 			var nameStyled string
 			if tabDisconnected {
 				nameStyled = m.styles.Muted.Render(name)
@@ -131,14 +178,17 @@ func (m *Model) renderTabBar() string {
 			} else {
 				nameStyled = m.styles.Muted.Render(name)
 			}
-			// Use muted indicator color for disconnected tabs
 			var indicatorStyled string
 			if tabDisconnected {
 				indicatorStyled = m.styles.Muted.Render(indicator)
 			} else {
 				indicatorStyled = agentStyle.Render(indicator)
 			}
-			content := indicatorStyled + nameStyled + " " + closeLabel
+			modeLabel := ""
+			if modeIcons != "" {
+				modeLabel = " " + modeIcons
+			}
+			content := indicatorStyled + nameStyled + modeLabel + " " + closeLabel
 			rendered = m.styles.Tab.Render(content)
 			style = m.styles.Tab
 		}
@@ -157,23 +207,48 @@ func (m *Model) renderTabBar() string {
 
 			frameX, _ := style.GetFrameSize()
 			leftFrame := frameX / 2
-			prefixWidth := lipgloss.Width(agentStyle.Render(indicator) + name + " ")
-			closeWidth := lipgloss.Width(closeLabel)
-			closeX := x + leftFrame + prefixWidth
-			if closeWidth > 0 {
-				// Expand close button hit region for easier clicking
-				expandedCloseX := closeX - 1
-				expandedCloseWidth := renderedWidth - leftFrame - prefixWidth + 1
+
+			// Close button: anchor from the right edge of the rendered tab.
+			// The close label (×) plus right padding occupies the rightmost cells.
+			closeWidth := lipgloss.Width(closeLabel) + 1 // +1 for pad/space before ×
+			closeX := x + renderedWidth - leftFrame - closeWidth
+			if closeX > x {
 				m.tabHits = append(m.tabHits, tabHit{
 					kind:  tabHitClose,
 					index: i,
 					region: common.HitRegion{
-						X:      expandedCloseX,
+						X:      closeX,
 						Y:      0,
-						Width:  expandedCloseWidth,
+						Width:  renderedWidth - (closeX - x),
 						Height: 1,
 					},
 				})
+			}
+
+			// Add hit regions for individual mode icons
+			if len(modeIconList) > 0 {
+				namePartWidth := lipgloss.Width(agentStyle.Render(indicator) + name)
+				iconStartX := x + leftFrame + namePartWidth + 1 // +1 for the leading space before "("
+				// The whole group is wrapped in (...), so offset past the opening paren
+				iconStartX++ // skip "("
+				for j, icon := range modeIconList {
+					if j > 0 {
+						iconStartX++ // skip space between icons
+					}
+					iconW := lipgloss.Width(icon.char)
+					m.tabHits = append(m.tabHits, tabHit{
+						kind:  tabHitModeIcon,
+						index: i,
+						label: icon.tooltip,
+						region: common.HitRegion{
+							X:      iconStartX,
+							Y:      0,
+							Width:  iconW,
+							Height: 1,
+						},
+					})
+					iconStartX += iconW
+				}
 			}
 		}
 		x += renderedWidth
@@ -198,8 +273,8 @@ func (m *Model) renderTabBar() string {
 	renderedTabs = append(renderedTabs, btn)
 	x += btnWidth
 
-	// Add "+ New (Select Agent)" button to allow overriding the default agent
-	selectBtn := m.styles.TabPlus.Render("+ New (Select Agent)")
+	// Add "+ New (Custom)" button to customize tab settings
+	selectBtn := m.styles.TabPlus.Render("+ New (Custom)")
 	selectBtnWidth := lipgloss.Width(selectBtn)
 	if selectBtnWidth > 0 {
 		m.tabHits = append(m.tabHits, tabHit{
@@ -249,10 +324,22 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 	}
 	// All tab hits are at Y=0 relative to the tab bar
 	localY := 0
-	// Check close buttons first (they overlap with tab regions)
+	// Check mode icon clicks first (they overlap with tab regions)
+	for _, hit := range m.tabHits {
+		if hit.kind == tabHitModeIcon && hit.region.Contains(localX, localY) {
+			tooltip := hit.label
+			return func() tea.Msg {
+				return messages.Toast{Message: tooltip, Level: messages.ToastInfo}
+			}
+		}
+	}
+	// Check close buttons (they overlap with tab regions)
 	for _, hit := range m.tabHits {
 		if hit.kind == tabHitClose && hit.region.Contains(localX, localY) {
-			return m.closeTabAt(hit.index)
+			idx := hit.index
+			return func() tea.Msg {
+				return messages.CloseTabAt{Index: idx}
+			}
 		}
 	}
 	// Then check tabs and other buttons
@@ -260,9 +347,17 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 		if hit.region.Contains(localX, localY) {
 			switch hit.kind {
 			case tabHitPlus:
-				return func() tea.Msg { return messages.ShowSelectAssistantDialog{} }
+				return func() tea.Msg {
+					return messages.LaunchAgent{
+						Assistant:       "claude",
+						Workspace:       m.workspace,
+						AllowEdits:      m.config.UI.LastAllowEdits,
+						Isolated:        m.config.UI.LastIsolated,
+						SkipPermissions: m.config.UI.LastSkipPermissions,
+					}
+				}
 			case tabHitPlusSelect:
-				return func() tea.Msg { return messages.ShowSelectAssistantDialog{ForceDialog: true} }
+				return func() tea.Msg { return messages.ShowCustomizeTabDialog{} }
 			case tabHitInfo:
 				m.infoTabActive = true
 				return nil

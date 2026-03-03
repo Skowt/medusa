@@ -40,13 +40,7 @@ var (
 
 // Agent colors remain constant across themes for brand recognition.
 var (
-	ColorClaude   = lipgloss.Color("#CC785C")
-	ColorCodex    = lipgloss.Color("#FFFFFF")
-	ColorGemini   = lipgloss.Color("#4285f4")
-	ColorAmp      = lipgloss.Color("#ED4C3D")
-	ColorOpencode = lipgloss.Color("#000000")
-	ColorDroid    = lipgloss.Color("#EE6018")
-	ColorCursor   = lipgloss.Color("#1B1812")
+	ColorClaude = lipgloss.Color("#CC785C")
 )
 
 // GetCurrentTheme returns the currently active theme.
@@ -86,24 +80,10 @@ func applyThemeColors() {
 
 // AgentColor returns the color for a given agent type
 func AgentColor(agent string) color.Color {
-	switch agent {
-	case "claude":
+	if agent == "claude" {
 		return ColorClaude
-	case "codex":
-		return ColorCodex
-	case "gemini":
-		return ColorGemini
-	case "amp":
-		return ColorAmp
-	case "opencode":
-		return ColorOpencode
-	case "droid":
-		return ColorDroid
-	case "cursor":
-		return ColorCursor
-	default:
-		return ColorPrimary
 	}
+	return ColorPrimary
 }
 
 // HexColor converts a color.Color into a #RRGGBB string.

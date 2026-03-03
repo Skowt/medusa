@@ -19,11 +19,7 @@ func newTestModel() *Model {
 }
 
 func newTestWorkspace(name, root string) *data.Workspace {
-	return &data.Workspace{
-		Name: name,
-		Repo: root,
-		Root: root,
-	}
+	return data.NewWorkspace(name, "", "", root, root)
 }
 
 func TestIsTabActiveChatOnly(t *testing.T) {

@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/andyrewlee/medusa/internal/data"
 )
 
 // CreateWorkspace creates a new workspace backed by a git worktree
@@ -171,67 +169,3 @@ func ResolveWorktreeGitDir(worktreePath string) (string, error) {
 	return "", fmt.Errorf("could not resolve .git dir for worktree %s", worktreePath)
 }
 
-// DiscoverWorkspaces discovers git worktrees for a project.
-// Returns workspaces with minimal fields populated (Name, Branch, Repo, Root).
-// The caller should merge with stored metadata to get full workspace data.
-func DiscoverWorkspaces(project *data.Project) ([]data.Workspace, error) {
-	output, err := RunGit(project.Path, "worktree", "list", "--porcelain")
-	if err != nil {
-		return nil, err
-	}
-
-	return parseWorktreeList(output, project.Path), nil
-}
-
-// parseWorktreeList parses the output of `git worktree list --porcelain`
-func parseWorktreeList(output, repoPath string) []data.Workspace {
-	var workspaces []data.Workspace
-	var current struct {
-		path   string
-		branch string
-		bare   bool
-	}
-
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			// End of entry, save if we have a path and it's not bare
-			if current.path != "" && !current.bare {
-				ws := data.Workspace{
-					Name:   filepath.Base(current.path),
-					Branch: current.branch,
-					Repo:   repoPath,
-					Root:   current.path,
-				}
-				workspaces = append(workspaces, ws)
-			}
-			current.path = ""
-			current.branch = ""
-			current.bare = false
-			continue
-		}
-
-		if strings.HasPrefix(line, "worktree ") {
-			current.path = strings.TrimPrefix(line, "worktree ")
-		} else if strings.HasPrefix(line, "branch ") {
-			// Format: "branch refs/heads/main"
-			ref := strings.TrimPrefix(line, "branch ")
-			current.branch = strings.TrimPrefix(ref, "refs/heads/")
-		} else if line == "bare" {
-			current.bare = true
-		}
-	}
-
-	// Handle last entry (if no trailing newline)
-	if current.path != "" && !current.bare {
-		ws := data.Workspace{
-			Name:   filepath.Base(current.path),
-			Branch: current.branch,
-			Repo:   repoPath,
-			Root:   current.path,
-		}
-		workspaces = append(workspaces, ws)
-	}
-
-	return workspaces
-}

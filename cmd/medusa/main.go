@@ -17,6 +17,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/andyrewlee/medusa/internal/app"
+	"github.com/andyrewlee/medusa/internal/config"
 	"github.com/andyrewlee/medusa/internal/logging"
 	"github.com/andyrewlee/medusa/internal/safego"
 )
@@ -35,8 +36,8 @@ func main() {
 		os.Exit(0)
 	}
 	// Initialize logging
-	home, _ := os.UserHomeDir()
-	logDir := filepath.Join(home, ".medusa", "logs")
+	medusaHome, _ := config.MedusaHome()
+	logDir := filepath.Join(medusaHome, "logs")
 	if err := logging.Initialize(logDir, logging.LevelDebug); err != nil {
 		// Logging is optional, continue without it
 		fmt.Fprintf(os.Stderr, "Warning: could not initialize logging: %v\n", err)

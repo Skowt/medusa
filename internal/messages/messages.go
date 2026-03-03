@@ -17,20 +17,18 @@ const (
 	PaneMonitor
 )
 
-// ProjectsLoaded is sent when projects have been loaded/reloaded
-type ProjectsLoaded struct {
-	Projects []data.Project
+// WorkspacesLoaded is sent when workspaces have been loaded/reloaded
+type WorkspacesLoaded struct {
+	Workspaces []*data.Workspace
 }
 
 // WorkspaceActivated is sent when a workspace is selected
 type WorkspaceActivated struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 }
 
 // WorkspacePreviewed is sent when a workspace is previewed (cursor movement)
 type WorkspacePreviewed struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 }
 
@@ -53,26 +51,14 @@ type WorkspaceCreateFailed struct {
 
 // WorkspaceDeleted is sent when a workspace is deleted
 type WorkspaceDeleted struct {
-	Project       *data.Project
 	Workspace     *data.Workspace
 	BranchWarning string // non-empty if branch cleanup failed
 }
 
 // WorkspaceDeleteFailed is sent when a workspace deletion fails
 type WorkspaceDeleteFailed struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 	Err       error
-}
-
-// ProjectAdded is sent when a new project is registered
-type ProjectAdded struct {
-	Project *data.Project
-}
-
-// ProjectRemoved is sent when a project is unregistered
-type ProjectRemoved struct {
-	Path string
 }
 
 // GitStatusRequest requests a git status refresh
@@ -208,86 +194,84 @@ type ToggleTerminalCollapse struct{}
 // RefreshDashboard requests a dashboard refresh
 type RefreshDashboard struct{}
 
-// RescanWorkspaces requests a git worktree rescan/import.
-type RescanWorkspaces struct{}
-
-// ShowAddProjectDialog requests showing the add project dialog
-type ShowAddProjectDialog struct{}
-
 // ShowSettingsDialog requests showing the settings dialog
 type ShowSettingsDialog struct{}
 
 // ShowCreateWorkspaceDialog requests showing the create workspace dialog
-type ShowCreateWorkspaceDialog struct {
-	Project *data.Project
-}
+type ShowCreateWorkspaceDialog struct{}
 
 // ShowDeleteWorkspaceDialog requests showing the delete workspace confirmation
 type ShowDeleteWorkspaceDialog struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 }
 
 // ShowRenameWorkspaceDialog requests showing the rename workspace dialog
 type ShowRenameWorkspaceDialog struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 }
 
 // RenameWorkspace requests renaming a workspace
 type RenameWorkspace struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 	NewName   string
 }
 
 // WorkspaceRenameFailed is sent when a workspace rename fails.
 type WorkspaceRenameFailed struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 	Err       error
 }
 
-// ShowRemoveProjectDialog requests showing the remove project confirmation
-type ShowRemoveProjectDialog struct {
-	Project *data.Project
-}
-
 // CreateWorkspace requests creating a new workspace
 type CreateWorkspace struct {
-	Project         *data.Project
-	Name            string
-	Base            string
-	AllowEdits      bool // Pre-grant Edit permission when true
-	Isolated        bool // Run in sandbox-exec isolation
-	SkipPermissions bool // Run with --dangerously-skip-permissions
+	Name         string
+	Repos        []data.RepoRef
+	BranchMode   git.BranchMode
+	CustomBranch string
 }
 
 // DeleteWorkspace requests deleting a workspace
 type DeleteWorkspace struct {
-	Project   *data.Project
 	Workspace *data.Workspace
 }
 
-// RemoveProject requests removing a project from the registry
-type RemoveProject struct {
-	Project *data.Project
+// SetWorkspaceStatus requests changing a workspace status
+type SetWorkspaceStatus struct {
+	Workspace *data.Workspace
+	Status    data.WorkspaceStatus
 }
 
-// AddProject requests adding a new project
-type AddProject struct {
-	Path string
+
+// ShowAddReposToWorkspaceDialog requests showing the add repos dialog for a workspace
+type ShowAddReposToWorkspaceDialog struct {
+	Workspace *data.Workspace
 }
 
-// ShowSetProfileDialog requests showing the profile input dialog
-type ShowSetProfileDialog struct {
-	Project *data.Project
+// AddReposToWorkspace requests adding repos to an existing workspace
+type AddReposToWorkspace struct {
+	Workspace *data.Workspace
+	Repos     []data.RepoRef
 }
 
-// SetProfile requests setting a profile on a project
-type SetProfile struct {
-	Project *data.Project
-	Profile string
+// ReposAddedToWorkspace is sent after repos are successfully added to a workspace
+type ReposAddedToWorkspace struct {
+	Workspace *data.Workspace
+}
+
+// ReposAddFailed is sent when adding repos to a workspace fails
+type ReposAddFailed struct {
+	Err error
+}
+
+// ShowSetWorkspaceProfileDialog requests showing the profile dialog for a workspace
+type ShowSetWorkspaceProfileDialog struct {
+	Workspace *data.Workspace
+}
+
+// SetWorkspaceProfile requests setting a profile on a workspace
+type SetWorkspaceProfile struct {
+	Workspace *data.Workspace
+	Profile   string
 }
 
 // ShowRenameProfileDialog requests showing the rename profile dialog
@@ -319,33 +303,40 @@ type DeleteProfile struct {
 	Profile string
 }
 
-// ShowSelectAssistantDialog requests showing the assistant selection dialog.
-// When ForceDialog is true, the picker is always shown regardless of any
-// saved default agent preference.
-type ShowSelectAssistantDialog struct {
-	ForceDialog bool
-}
+// ShowCustomizeTabDialog requests showing the customize tab dialog.
+type ShowCustomizeTabDialog struct{}
 
 // LaunchAgent requests launching an agent in a new tab
 type LaunchAgent struct {
-	Assistant string
-	Workspace *data.Workspace
+	Assistant       string
+	Workspace       *data.Workspace
+	AllowEdits      bool
+	Isolated        bool
+	SkipPermissions bool
 }
 
 // OpenDiff requests opening a diff viewer for a file
 type OpenDiff struct {
-	// Legacy fields (for backwards compatibility with sidebar)
 	File       string
-	StatusCode string // Git status code (e.g., "M ", "??", "A ")
+	StatusCode string
 
-	// New fields
-	Change    *git.Change  // Change object with full info
-	Mode      git.DiffMode // Which diff mode to use
+	Change    *git.Change
+	Mode      git.DiffMode
 	Workspace *data.Workspace
 }
 
 // CloseTab requests closing the current tab
 type CloseTab struct{}
+
+// CloseTabAt requests closing a specific tab by index (from tab bar click)
+type CloseTabAt struct {
+	Index int
+}
+
+// ConfirmCloseTab is sent after user confirms tab closure
+type ConfirmCloseTab struct {
+	Index int // -1 means close active tab
+}
 
 // ShowCleanupTmuxDialog requests confirmation before cleaning tmux sessions.
 type ShowCleanupTmuxDialog struct{}
@@ -443,7 +434,7 @@ type OpenFileInVim struct {
 // PermissionWatcherEvent is sent when a watched settings.local.json changes
 type PermissionWatcherEvent struct {
 	Root     string
-	NewAllow []string // New permissions detected since we started watching
+	NewAllow []string
 }
 
 // PermissionDetected is sent when new permissions are found in a workspace
@@ -501,8 +492,8 @@ type ActionBarOpenIDE struct {
 
 // ActionBarMergeToMain requests merging the worktree branch into main
 type ActionBarMergeToMain struct {
-	RepoPath   string // Main repo path where main/master branch lives
-	BranchName string // Branch to merge into main
+	RepoPath   string
+	BranchName string
 }
 
 // ActionBarCommit requests staging all changes and creating a commit
@@ -535,206 +526,10 @@ type ShowCommitDialog struct {
 	WorkspaceRoot string
 }
 
-// --- Project Group messages ---
-
-// GroupsLoaded is sent when groups have been loaded
-type GroupsLoaded struct {
-	Groups []data.ProjectGroup
-}
-
-// CreateGroup requests creating a new project group
-type CreateGroup struct {
-	Name      string
-	RepoPaths []string
-	Profile   string
-}
-
-// GroupCreated is sent when a project group was created
-type GroupCreated struct {
-	Name string
-}
-
-// RemoveGroup requests removing a project group
-type RemoveGroup struct {
-	Name string
-}
-
-// GroupRemoved is sent when a project group was removed
-type GroupRemoved struct {
-	Name string
-}
-
-// ShowCreateGroupDialog requests showing the group creation wizard
-type ShowCreateGroupDialog struct{}
-
-// ShowAddRepoToGroupDialog requests showing the file picker for adding a repo
-type ShowAddRepoToGroupDialog struct {
-	GroupName    string
-	CurrentRepos []string
-}
-
-// ShowRenameGroupDialog requests showing the rename dialog for a project group
-type ShowRenameGroupDialog struct {
-	Group *data.ProjectGroup
-}
-
-// RenameGroup requests renaming a project group
-type RenameGroup struct {
-	Group   *data.ProjectGroup
-	NewName string
-}
-
-// ShowCreateGroupWorkspaceDialog requests showing the group workspace creation dialog
-type ShowCreateGroupWorkspaceDialog struct {
-	Group *data.ProjectGroup
-}
-
-// ShowDeleteGroupDialog requests showing the group delete confirmation
-type ShowDeleteGroupDialog struct {
-	GroupName string
-}
-
-// ShowDeleteGroupWorkspaceDialog requests showing the group workspace delete confirmation
-type ShowDeleteGroupWorkspaceDialog struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-}
-
-// ShowSetGroupProfileDialog requests showing the group profile dialog
-type ShowSetGroupProfileDialog struct {
-	Group *data.ProjectGroup
-}
-
-// CreateGroupWorkspace requests creating a workspace within a group
-type CreateGroupWorkspace struct {
-	GroupName       string
-	Name            string
-	AllowEdits      bool
-	Isolated        bool
-	SkipPermissions bool
-	LoadClaudeMD    bool
-	BranchMode      git.BranchMode
-	CustomBranch    string
-}
-
-// GroupWorkspaceCreated is sent when a group workspace was created
-type GroupWorkspaceCreated struct {
-	Workspace *data.GroupWorkspace
-}
-
-// GroupWorkspaceCreateFailed is sent when a group workspace creation failed
-type GroupWorkspaceCreateFailed struct {
-	Workspace *data.GroupWorkspace
-	Err       error
-}
-
-// DeleteGroupWorkspace requests deleting a group workspace
-type DeleteGroupWorkspace struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-}
-
-// GroupWorkspaceDeleted is sent when a group workspace was deleted
-type GroupWorkspaceDeleted struct {
-	Group         *data.ProjectGroup
-	Workspace     *data.GroupWorkspace
-	BranchWarning string // non-empty if branch cleanup failed
-}
-
-// GroupWorkspaceDeleteFailed is sent when a group workspace deletion failed
-type GroupWorkspaceDeleteFailed struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-	Err       error
-}
-
-// ShowRenameGroupWorkspaceDialog requests showing the rename dialog for a group workspace
-type ShowRenameGroupWorkspaceDialog struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-}
-
-// RenameGroupWorkspace requests renaming a group workspace
-type RenameGroupWorkspace struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-	NewName   string
-}
-
-// GroupWorkspaceRenameFailed is sent when a group workspace rename fails.
-type GroupWorkspaceRenameFailed struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-	Err       error
-}
-
-// GroupWorkspaceActivated is sent when a group workspace is selected
-type GroupWorkspaceActivated struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-}
-
-// GroupWorkspacePreviewed is sent when a group workspace is previewed
-type GroupWorkspacePreviewed struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-}
-
-// LaunchGroupAgent requests launching an agent for a group workspace
-type LaunchGroupAgent struct {
-	Group     *data.ProjectGroup
-	Workspace *data.GroupWorkspace
-	Assistant string
-}
-
-// SetGroupProfile requests setting a profile on a group
-type SetGroupProfile struct {
-	GroupName string
-	Profile   string
-}
-
-// UpdateGroupRepos requests updating repos in a group
-type UpdateGroupRepos struct {
-	Group     *data.ProjectGroup
-	RepoPaths []string
-}
-
-// GroupReposUpdated is sent when group repos have been updated
-type GroupReposUpdated struct {
-	GroupName string
-}
-
-// ShowEditGroupReposDialog requests showing the edit group repos dialog
-type ShowEditGroupReposDialog struct {
-	Group *data.ProjectGroup
-}
-
-// GroupPreviewed is sent when a group header is previewed
-type GroupPreviewed struct {
-	Group *data.ProjectGroup
-}
-
-// WorkspaceFetchDone is sent after the remote base has been fetched for a single-project workspace.
+// WorkspaceFetchDone is sent after remote bases have been fetched for workspace creation.
 type WorkspaceFetchDone struct {
-	Project         *data.Project
-	Name            string
-	Base            string
-	AllowEdits      bool
-	Isolated        bool
-	SkipPermissions bool
-}
-
-// GroupRepoFetchDone is sent after a single repo's remote base has been fetched
-// during group workspace creation. Carries accumulated specs and remaining repos.
-type GroupRepoFetchDone struct {
-	Group           *data.ProjectGroup
-	Name            string
-	FetchedSpecs    []git.RepoSpec
-	RemainingRepos  []data.GroupRepo
-	AllowEdits      bool
-	Isolated        bool
-	SkipPermissions bool
-	LoadClaudeMD    bool
-	BranchMode      git.BranchMode
-	CustomBranch    string
+	Name    string
+	Repos   []data.RepoRef
+	Bases   []string // parallel to Repos
+	Profile string
 }
