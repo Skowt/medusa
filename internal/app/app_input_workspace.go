@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -49,24 +50,7 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	opts := a.tmuxOptions
 	oldWsID := string(ws.ID())
 
-	// 1. Capture running agent tab info for restart after rename.
-	tabsInfo, _ := a.center.GetTabsInfoForWorkspace(oldWsID)
-	var agentTabs []data.TabInfo
-	for _, t := range tabsInfo {
-		if t.Assistant != "" {
-			agentTabs = append(agentTabs, t)
-		}
-	}
-
-	// 2. Close all tabs and kill their tmux sessions.
-	a.center.CleanupWorkspace(ws)
-	for _, t := range tabsInfo {
-		if t.SessionName != "" {
-			_ = tmux.KillSession(t.SessionName, opts)
-		}
-	}
-
-	// 3. Validate: branch must not exist in any repo, target dir must not exist.
+	// 1. Validate: branch must not exist in any repo, target dir must not exist.
 	for _, repo := range ws.Repos {
 		if git.BranchExists(repo.Path, newBranch) {
 			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Branch '%s' already exists in %s", newBranch, repo.Name))}
@@ -76,7 +60,7 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Directory '%s' already exists", filepath.Base(newRoot)))}
 	}
 
-	// 4. Rename branches in all repos.
+	// 2. Rename branches in all repos.
 	for i, repo := range ws.Repos {
 		if err := git.RenameBranch(repo.Path, oldBranch, newBranch); err != nil {
 			for j := 0; j < i; j++ {
@@ -93,7 +77,7 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		}
 	}
 
-	// 5. Move worktrees.
+	// 3. Move worktrees.
 	if ws.IsMultiRepo() {
 		// Multi-repo: create new parent, move each worktree individually.
 		if err := os.MkdirAll(newRoot, 0o755); err != nil {
@@ -135,7 +119,7 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		}
 	}
 
-	// 6. Update store.
+	// 4. Update store.
 	stored, err := a.workspaces.Load(ws.ID())
 	if err != nil {
 		rollbackMoves()
@@ -158,18 +142,42 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	}
 	newWs := stored
 
-	// 6b. Update registry entry (ID changed because root changed).
+	// 4b. Update registry entry (ID changed because root changed).
 	if err := a.registry.UpdateWorkspace(oldWsID, newName, string(newWs.ID())); err != nil {
 		logging.Warn("Failed to update registry after rename: %v", err)
 	}
 
-	// 7. Update in-memory UI state.
+	// 5. Migrate running agents in-place (no kill/restart).
+	newID := string(newWs.ID())
+
+	// 5a. Rename tmux sessions so they match the new workspace name.
+	tabsInfo, _ := a.center.GetTabsInfoForWorkspace(oldWsID)
+	oldPrefix := tmux.SessionName("medusa", ws.Name) + "-"
+	newPrefix := tmux.SessionName("medusa", newName) + "-"
+	for _, t := range tabsInfo {
+		if strings.HasPrefix(t.SessionName, oldPrefix) {
+			newSessionName := newPrefix + strings.TrimPrefix(t.SessionName, oldPrefix)
+			if err := tmux.RenameSession(t.SessionName, newSessionName, opts); err != nil {
+				logging.Warn("Failed to rename tmux session %s: %v", t.SessionName, err)
+			}
+		}
+	}
+
+	// 5b. Migrate center tabs (re-keys under new workspace ID, sets up PTY reader redirects).
+	a.center.MigrateWorkspaceTabs(oldWsID, newID, newWs, ws.Name, newName)
+
+	// 5c. Migrate agent manager state.
+	a.center.AgentManager().MigrateWorkspaceAgents(data.WorkspaceID(oldWsID), data.WorkspaceID(newID), newWs, ws.Name, newName)
+
+	// 5d. Migrate sidebar terminal tabs.
+	a.sidebarTerminal.MigrateWorkspaceTabs(oldWsID, newID, newWs)
+
+	// 6. Update in-memory UI state.
 	if a.activeWorkspace != nil && string(a.activeWorkspace.ID()) == oldWsID {
 		newWs.Profile = a.activeWorkspace.Profile
 		a.activeWorkspace = newWs
 		a.center.SetWorkspace(newWs)
 	}
-	newID := string(newWs.ID())
 	for _, ws := range a.allWorkspaces {
 		if string(ws.ID()) == oldWsID {
 			ws.Name = newWs.Name
@@ -181,7 +189,6 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 					ws.Worktrees[i].Root = newRoot
 				}
 			}
-			ws.OpenTabs = nil
 		}
 	}
 	if a.dirtyWorkspaces[oldWsID] {
@@ -203,31 +210,15 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		a.dashboard.InvalidateStatus(oldRoot)
 	}
 
-	// 8. Persist tab state, toast, reload, and relaunch agents.
+	// 7. Persist tab state, toast, and reload.
 	var cmds []tea.Cmd
 	if cmd := a.persistWorkspaceTabs(newID); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	cmds = append(cmds,
-		a.toast.ShowSuccess(fmt.Sprintf("Renamed to '%s'", newWs.Name)),
+		a.toast.ShowSuccess(fmt.Sprintf("Renamed to '%s'. Restart agents to use new directory.", newWs.Name)),
 		a.loadWorkspaces(),
 	)
-	for _, tabInfo := range agentTabs {
-		assistant := tabInfo.Assistant
-		w := newWs
-		ae := tabInfo.AllowEdits
-		iso := tabInfo.Isolated
-		sp := tabInfo.SkipPermissions
-		cmds = append(cmds, func() tea.Msg {
-			return messages.LaunchAgent{
-				Assistant:       assistant,
-				Workspace:       w,
-				AllowEdits:      ae,
-				Isolated:        iso,
-				SkipPermissions: sp,
-			}
-		})
-	}
 	return cmds
 }
 
