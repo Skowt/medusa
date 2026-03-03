@@ -100,6 +100,13 @@ func TestGenerateSBPL(t *testing.T) {
 		}
 	})
 
+	t.Run("keychain_write", func(t *testing.T) {
+		expected := `(allow file-write* (subpath "` + home + `/Library/Keychains"))`
+		if !strings.Contains(sbpl, expected) {
+			t.Errorf("profile should allow writes to ~/Library/Keychains, want:\n  %s", expected)
+		}
+	})
+
 	t.Run("temp_writes", func(t *testing.T) {
 		if !strings.Contains(sbpl, `(allow file-write* (subpath "/private/tmp"))`) {
 			t.Error("profile should allow writes to /private/tmp")

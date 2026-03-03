@@ -103,6 +103,14 @@ func GenerateSBPL(worktreeRoot string, gitDirs []string, claudeConfigDir string,
 	b.WriteString("(allow file-write* (subpath \"/private/tmp\"))\n")
 	b.WriteString("(allow file-write* (subpath \"/private/var/folders\"))\n\n")
 
+	// Keychain access is required for Claude Code to persist OAuth tokens.
+	// Without this, token refresh fails and every API call gets 401.
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		b.WriteString(";; File writes — macOS Keychain (OAuth token storage)\n")
+		fmt.Fprintf(&b, "(allow file-write* (subpath %q))\n\n", filepath.Join(home, "Library/Keychains"))
+	}
+
 	// ── Process execution ───────────────────────────────────────
 	b.WriteString(";; Process execution\n")
 	b.WriteString("(allow process-exec)\n")
