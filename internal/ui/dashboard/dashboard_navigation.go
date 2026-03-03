@@ -3,7 +3,6 @@ package dashboard
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/messages"
 )
 
@@ -91,19 +90,18 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 		return -1, false
 	}
 
-	headerHeight := 0
 	helpHeight := m.helpLineCount()
 	toolbarHeight := m.toolbarHeight()
-	rowAreaHeight := innerHeight - headerHeight - toolbarHeight - helpHeight
+	rowAreaHeight := innerHeight - toolbarHeight - helpHeight
 	if rowAreaHeight < 1 {
 		rowAreaHeight = 1
 	}
 
-	if contentY < headerHeight || contentY >= headerHeight+rowAreaHeight {
+	if contentY < 0 || contentY >= rowAreaHeight {
 		return -1, false
 	}
 
-	rowY := contentY - headerHeight
+	rowY := contentY
 	line := 0
 	for i := 0; i < len(m.rows); i++ {
 		rowLines := m.rowLineCount(i)
@@ -236,38 +234,3 @@ func (m *Model) handleRename() tea.Cmd {
 	return nil
 }
 
-// handleSetStatus cycles the workspace status
-func (m *Model) handleSetStatus() tea.Cmd {
-	if m.cursor >= len(m.rows) {
-		return nil
-	}
-	row := m.rows[m.cursor]
-	if row.Type != RowWorkspace || row.Workspace == nil {
-		return nil
-	}
-
-	// Cycle: None -> Started -> Blocked -> Merged -> None (skip Archived)
-	var nextStatus data.WorkspaceStatus
-	switch row.Workspace.Status {
-	case data.StatusNone:
-		nextStatus = data.StatusStarted
-	case data.StatusStarted:
-		nextStatus = data.StatusBlocked
-	case data.StatusBlocked:
-		nextStatus = data.StatusMerged
-	case data.StatusMerged:
-		nextStatus = data.StatusNone
-	case data.StatusArchived:
-		nextStatus = data.StatusNone
-	default:
-		nextStatus = data.StatusStarted
-	}
-
-	ws := row.Workspace
-	return func() tea.Msg {
-		return messages.SetWorkspaceStatus{
-			Workspace: ws,
-			Status:    nextStatus,
-		}
-	}
-}

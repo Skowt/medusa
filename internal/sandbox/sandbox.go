@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/andyrewlee/medusa/internal/config"
+	"github.com/andyrewlee/medusa/internal/shellutil"
 )
 
 // GenerateSBPL produces a macOS Seatbelt (SBPL) profile that restricts
@@ -152,7 +153,7 @@ func sbplPathFilter(rule config.SandboxRule) string {
 // WrapCommand wraps an agent command string with sandbox-exec using the
 // given SBPL profile file path.
 func WrapCommand(agentCommand, sbplPath string) string {
-	return fmt.Sprintf("sandbox-exec -f %s sh -lc %s", shellQuote(sbplPath), shellQuote(agentCommand))
+	return fmt.Sprintf("sandbox-exec -f %s sh -lc %s", shellutil.Quote(sbplPath), shellutil.Quote(agentCommand))
 }
 
 // WriteTempProfile writes an SBPL profile string to a temporary file and
@@ -174,7 +175,3 @@ func WriteTempProfile(sbpl string) (path string, cleanup func(), err error) {
 	return f.Name(), func() { os.Remove(f.Name()) }, nil
 }
 
-// shellQuote wraps a value in single quotes for safe shell embedding.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}

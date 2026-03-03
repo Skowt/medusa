@@ -12,15 +12,6 @@ import (
 	"github.com/andyrewlee/medusa/internal/vterm"
 )
 
-// MonitorSnapshot captures a tab display for the monitor grid.
-type MonitorSnapshot struct {
-	Workspace *data.Workspace
-	Assistant string
-	Name      string
-	Running   bool
-	Rendered  string
-}
-
 // MonitorTab describes a tab for the monitor grid.
 type MonitorTab struct {
 	ID        TabID
@@ -293,28 +284,6 @@ func (m *Model) HandleMonitorInput(tabID TabID, msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// MonitorSnapshots returns a snapshot of each tab for the monitor grid.
-func (m *Model) MonitorSnapshots() []MonitorSnapshot {
-	tabs := m.monitorTabs()
-	snapshots := make([]MonitorSnapshot, 0, len(tabs))
-	for _, tab := range tabs {
-		rendered := ""
-		tab.mu.Lock()
-		if tab.Terminal != nil {
-			rendered = tab.Terminal.Render()
-		}
-		tab.mu.Unlock()
-		snapshots = append(snapshots, MonitorSnapshot{
-			Workspace: tab.Workspace,
-			Assistant: tab.Assistant,
-			Name:      tab.Name,
-			Running:   tab.Running,
-			Rendered:  rendered,
-		})
-	}
-	return snapshots
-}
-
 // MonitorTabs returns all tabs in a stable order for the monitor grid.
 func (m *Model) MonitorTabs() []MonitorTab {
 	tabs := m.monitorTabs()
@@ -329,11 +298,6 @@ func (m *Model) MonitorTabs() []MonitorTab {
 		})
 	}
 	return out
-}
-
-// MonitorTabSnapshots returns monitor tabs with their visible screens.
-func (m *Model) MonitorTabSnapshots() []MonitorTabSnapshot {
-	return m.MonitorTabSnapshotsWithActive("")
 }
 
 // MonitorTabSnapshotsWithActive returns cached monitor tab snapshots.

@@ -44,7 +44,7 @@ func (m *Model) renderToolbar() string {
 	gap := 1
 	columns := 3
 	items := m.toolbarItems()
-	visibleItems := m.toolbarVisibleItems(items)
+	visibleItems := items
 	if len(visibleItems) == 0 {
 		return ""
 	}
@@ -111,13 +111,9 @@ func (m *Model) renderToolbar() string {
 	return rowContent
 }
 
-func (m *Model) toolbarVisibleItems(items []toolbarItem) []toolbarItem {
-	return items
-}
-
 // toolbarHeight returns the current toolbar height (always single row)
 func (m *Model) toolbarHeight() int {
-	visibleItems := m.toolbarVisibleItems(m.toolbarItems())
+	visibleItems := m.toolbarItems()
 	if len(visibleItems) == 0 {
 		return 0
 	}

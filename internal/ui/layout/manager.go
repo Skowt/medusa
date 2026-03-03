@@ -1,11 +1,5 @@
 package layout
 
-import (
-	"strings"
-
-	"charm.land/lipgloss/v2"
-)
-
 // LayoutMode determines how many panes are visible
 type LayoutMode int
 
@@ -207,11 +201,6 @@ func (m *Manager) LeftGutter() int {
 	return m.leftGutter
 }
 
-// RightGutter returns the right margin after the sidebar pane.
-func (m *Manager) RightGutter() int {
-	return m.rightGutter
-}
-
 // TopGutter returns the top margin above panes.
 func (m *Manager) TopGutter() int {
 	return m.topGutter
@@ -225,37 +214,6 @@ func (m *Manager) GapX() int {
 // Height returns the total height
 func (m *Manager) Height() int {
 	return m.totalHeight
-}
-
-// Render combines pane views based on current layout mode
-func (m *Manager) Render(dashboard, center, sidebar string) string {
-	topPad := strings.Repeat("\n", m.topGutter)
-	bottomPad := strings.Repeat("\n", m.bottomGutter)
-	padLines := func(view string) string {
-		if m.leftGutter == 0 && m.rightGutter == 0 {
-			return view
-		}
-		return lipgloss.NewStyle().
-			PaddingLeft(m.leftGutter).
-			PaddingRight(m.rightGutter).
-			Render(view)
-	}
-	switch m.mode {
-	case LayoutThreePane:
-		if m.gapX > 0 {
-			gap := strings.Repeat(" ", m.gapX)
-			return topPad + padLines(lipgloss.JoinHorizontal(lipgloss.Top, dashboard, gap, center, gap, sidebar)) + bottomPad
-		}
-		return topPad + padLines(lipgloss.JoinHorizontal(lipgloss.Top, dashboard, center, sidebar)) + bottomPad
-	case LayoutTwoPane:
-		if m.gapX > 0 {
-			gap := strings.Repeat(" ", m.gapX)
-			return topPad + padLines(lipgloss.JoinHorizontal(lipgloss.Top, dashboard, gap, center)) + bottomPad
-		}
-		return topPad + padLines(lipgloss.JoinHorizontal(lipgloss.Top, dashboard, center)) + bottomPad
-	default:
-		return topPad + padLines(dashboard) + bottomPad
-	}
 }
 
 // ShowSidebar returns whether the sidebar should be shown

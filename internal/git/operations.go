@@ -7,13 +7,9 @@ import (
 	"strings"
 )
 
-// RunGit executes a git command in the specified directory
-func RunGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-
-	// Filter out GIT_ environment variables to ensure we run against the target repo
-	// and ignore any parent git process environment (e.g. when running in hooks)
+// filteredGitEnv returns the current environment with GIT_DIR, GIT_WORK_TREE,
+// and GIT_INDEX_FILE removed so git commands run against the target repo.
+func filteredGitEnv() []string {
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "GIT_DIR=") &&
@@ -22,7 +18,14 @@ func RunGit(dir string, args ...string) (string, error) {
 			env = append(env, e)
 		}
 	}
-	cmd.Env = env
+	return env
+}
+
+// RunGit executes a git command in the specified directory
+func RunGit(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = filteredGitEnv()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -85,17 +88,7 @@ func GetRemoteURL(path, remote string) (string, error) {
 func RunGitAllowFailure(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-
-	// Filter out GIT_ environment variables
-	var env []string
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "GIT_DIR=") &&
-			!strings.HasPrefix(e, "GIT_WORK_TREE=") &&
-			!strings.HasPrefix(e, "GIT_INDEX_FILE=") {
-			env = append(env, e)
-		}
-	}
-	cmd.Env = env
+	cmd.Env = filteredGitEnv()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -121,17 +114,7 @@ func RunGitAllowFailure(dir string, args ...string) (string, error) {
 func RunGitRaw(dir string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-
-	// Filter out GIT_ environment variables
-	var env []string
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "GIT_DIR=") &&
-			!strings.HasPrefix(e, "GIT_WORK_TREE=") &&
-			!strings.HasPrefix(e, "GIT_INDEX_FILE=") {
-			env = append(env, e)
-		}
-	}
-	cmd.Env = env
+	cmd.Env = filteredGitEnv()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

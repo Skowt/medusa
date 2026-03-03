@@ -385,23 +385,6 @@ func (m *Model) handleInfoBarClick(contentX, contentY int) tea.Cmd {
 	return nil
 }
 
-// Legacy compatibility - these now delegate to info bar
-func (m *Model) actionBarHeight() int {
-	return m.infoBarHeight()
-}
-
-func (m *Model) ActionBarHeight() int {
-	return m.InfoBarHeight()
-}
-
-func (m *Model) ActionBarView(width int) string {
-	return m.InfoBarView(width)
-}
-
-func (m *Model) SetActionBarY(y int) {
-	m.SetInfoBarY(y)
-}
-
 func (m *Model) handleActionBarClick(contentX, contentY int) tea.Cmd {
 	return m.handleInfoBarClick(contentX, contentY)
 }

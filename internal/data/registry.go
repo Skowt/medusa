@@ -36,7 +36,12 @@ func NewRegistry(path string) *Registry {
 func (r *Registry) ListWorkspaces() ([]registryWorkspace, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	return r.loadLocked()
+}
 
+// loadLocked reads workspace entries without acquiring locks.
+// The caller must hold at least r.mu.RLock().
+func (r *Registry) loadLocked() ([]registryWorkspace, error) {
 	raw, err := os.ReadFile(r.path)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -52,127 +57,108 @@ func (r *Registry) ListWorkspaces() ([]registryWorkspace, error) {
 	return registry.Workspaces, nil
 }
 
-// AddWorkspace adds a workspace to the registry
-func (r *Registry) AddWorkspace(name, id, profile string) error {
-	workspaces, err := r.ListWorkspaces()
+// modifyWorkspaces loads, modifies, and saves workspace entries atomically
+// under a single write lock.
+func (r *Registry) modifyWorkspaces(fn func([]registryWorkspace) ([]registryWorkspace, error)) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	workspaces, err := r.loadLocked()
 	if err != nil {
 		return err
 	}
 
-	// Check if already exists
-	for _, ws := range workspaces {
-		if ws.ID == id {
-			return nil // Already registered
-		}
+	workspaces, err = fn(workspaces)
+	if err != nil {
+		return err
 	}
 
-	workspaces = append(workspaces, registryWorkspace{
-		Name:    name,
-		ID:      id,
-		Profile: profile,
+	return r.saveLocked(workspaces)
+}
+
+// AddWorkspace adds a workspace to the registry
+func (r *Registry) AddWorkspace(name, id, profile string) error {
+	return r.modifyWorkspaces(func(workspaces []registryWorkspace) ([]registryWorkspace, error) {
+		for _, ws := range workspaces {
+			if ws.ID == id {
+				return workspaces, nil // Already registered
+			}
+		}
+		return append(workspaces, registryWorkspace{
+			Name:    name,
+			ID:      id,
+			Profile: profile,
+		}), nil
 	})
-	return r.save(workspaces)
 }
 
 // RemoveWorkspace removes a workspace from the registry by ID
 func (r *Registry) RemoveWorkspace(id string) error {
-	workspaces, err := r.ListWorkspaces()
-	if err != nil {
-		return err
-	}
-
-	var filtered []registryWorkspace
-	for _, ws := range workspaces {
-		if ws.ID != id {
-			filtered = append(filtered, ws)
+	return r.modifyWorkspaces(func(workspaces []registryWorkspace) ([]registryWorkspace, error) {
+		var filtered []registryWorkspace
+		for _, ws := range workspaces {
+			if ws.ID != id {
+				filtered = append(filtered, ws)
+			}
 		}
-	}
-
-	return r.save(filtered)
+		return filtered, nil
+	})
 }
 
 // UpdateWorkspace updates the name and ID of an existing workspace entry.
 func (r *Registry) UpdateWorkspace(oldID, newName, newID string) error {
-	workspaces, err := r.ListWorkspaces()
-	if err != nil {
-		return err
-	}
-
-	for i := range workspaces {
-		if workspaces[i].ID == oldID {
-			workspaces[i].Name = newName
-			workspaces[i].ID = newID
-			return r.save(workspaces)
+	return r.modifyWorkspaces(func(workspaces []registryWorkspace) ([]registryWorkspace, error) {
+		for i := range workspaces {
+			if workspaces[i].ID == oldID {
+				workspaces[i].Name = newName
+				workspaces[i].ID = newID
+				return workspaces, nil
+			}
 		}
-	}
-
-	return fmt.Errorf("workspace not found: %s", oldID)
+		return nil, fmt.Errorf("workspace not found: %s", oldID)
+	})
 }
 
 // SetProfile sets the profile for a workspace identified by its ID
 func (r *Registry) SetProfile(id, profile string) error {
-	workspaces, err := r.ListWorkspaces()
-	if err != nil {
-		return err
-	}
-
-	for i := range workspaces {
-		if workspaces[i].ID == id {
-			workspaces[i].Profile = profile
-			return r.save(workspaces)
+	return r.modifyWorkspaces(func(workspaces []registryWorkspace) ([]registryWorkspace, error) {
+		for i := range workspaces {
+			if workspaces[i].ID == id {
+				workspaces[i].Profile = profile
+				return workspaces, nil
+			}
 		}
-	}
-
-	return fmt.Errorf("workspace not found: %s", id)
+		return nil, fmt.Errorf("workspace not found: %s", id)
+	})
 }
 
 // RenameProfile updates all workspaces using oldProfile to use newProfile
 func (r *Registry) RenameProfile(oldProfile, newProfile string) error {
-	workspaces, err := r.ListWorkspaces()
-	if err != nil {
-		return err
-	}
-
-	changed := false
-	for i := range workspaces {
-		if workspaces[i].Profile == oldProfile {
-			workspaces[i].Profile = newProfile
-			changed = true
+	return r.modifyWorkspaces(func(workspaces []registryWorkspace) ([]registryWorkspace, error) {
+		for i := range workspaces {
+			if workspaces[i].Profile == oldProfile {
+				workspaces[i].Profile = newProfile
+			}
 		}
-	}
-
-	if changed {
-		return r.save(workspaces)
-	}
-	return nil
+		return workspaces, nil
+	})
 }
 
 // ClearProfile clears the profile from all workspaces using the specified profile
 func (r *Registry) ClearProfile(profile string) error {
-	workspaces, err := r.ListWorkspaces()
-	if err != nil {
-		return err
-	}
-
-	changed := false
-	for i := range workspaces {
-		if workspaces[i].Profile == profile {
-			workspaces[i].Profile = ""
-			changed = true
+	return r.modifyWorkspaces(func(workspaces []registryWorkspace) ([]registryWorkspace, error) {
+		for i := range workspaces {
+			if workspaces[i].Profile == profile {
+				workspaces[i].Profile = ""
+			}
 		}
-	}
-
-	if changed {
-		return r.save(workspaces)
-	}
-	return nil
+		return workspaces, nil
+	})
 }
 
-// save writes the workspace entries to the registry file
-func (r *Registry) save(workspaces []registryWorkspace) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
+// saveLocked writes the workspace entries to the registry file.
+// The caller must hold r.mu.Lock().
+func (r *Registry) saveLocked(workspaces []registryWorkspace) error {
 	dir := filepath.Dir(r.path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err

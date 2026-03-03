@@ -48,7 +48,12 @@ func Open(cli, folderPath string) error {
 		return nil
 	}
 	cmd := exec.Command(cli, folderPath)
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// Reap the child process in the background to avoid leaking resources.
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 // GetOrDetect returns the configured IDE if available, otherwise auto-detects.

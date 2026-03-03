@@ -1,11 +1,9 @@
 package sidebar
 
 import (
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/andyrewlee/medusa/internal/logging"
 	"github.com/andyrewlee/medusa/internal/messages"
@@ -221,9 +219,7 @@ func (m *TerminalModel) Update(msg tea.Msg) (*TerminalModel, tea.Cmd) {
 					ts.VTerm.Write(chunk)
 				}
 				ts.mu.Unlock()
-				if len(ts.pendingOutput) == 0 {
-					ts.pendingOutput = ts.pendingOutput[:0]
-				} else {
+				if len(ts.pendingOutput) > 0 {
 					ts.flushScheduled = true
 					ts.flushPendingSince = time.Now()
 					cmds = append(cmds, common.SafeTick(time.Millisecond, func(t time.Time) tea.Msg {
@@ -340,81 +336,6 @@ func (m *TerminalModel) Update(msg tea.Msg) (*TerminalModel, tea.Cmd) {
 	}
 
 	return m, common.SafeBatch(cmds...)
-}
-
-// View renders the terminal section
-func (m *TerminalModel) View() string {
-	var b strings.Builder
-
-	// Always render tab bar (shows "New terminal" when no tabs exist)
-	tabBar := m.renderTabBar()
-	if tabBar != "" {
-		b.WriteString(tabBar)
-		b.WriteString("\n")
-	}
-
-	ts := m.getTerminal()
-	if ts == nil || ts.VTerm == nil {
-		// Show placeholder when no terminal
-		if len(m.getTabs()) == 0 {
-			// Empty state - tab bar already shows "New terminal" button
-		} else {
-			placeholder := m.styles.Muted.Render("No terminal")
-			b.WriteString(placeholder)
-		}
-	} else {
-		ts.mu.Lock()
-		ts.VTerm.ShowCursor = m.focused
-		// Use VTerm.Render() directly - it uses dirty line caching and delta styles
-		content := ts.VTerm.Render()
-		isScrolled := ts.VTerm.IsScrolled()
-		var scrollInfo string
-		if isScrolled {
-			offset, total := ts.VTerm.GetScrollInfo()
-			scrollInfo = formatScrollPos(offset, total)
-		}
-		ts.mu.Unlock()
-
-		b.WriteString(content)
-
-		if isScrolled {
-			b.WriteString("\n")
-			scrollStyle := lipgloss.NewStyle().
-				Bold(true).
-				Foreground(common.ColorBackground).
-				Background(common.ColorInfo)
-			b.WriteString(scrollStyle.Render(" SCROLL: " + scrollInfo + " "))
-		}
-	}
-
-	// Help bar
-	contentWidth := m.width
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
-	helpLines := m.helpLinesForLayout(contentWidth)
-
-	// Pad to fill height
-	contentHeight := strings.Count(b.String(), "\n") + 1
-	targetHeight := m.height - len(helpLines) // Account for help
-	if targetHeight < 0 {
-		targetHeight = 0
-	}
-	if targetHeight > contentHeight {
-		b.WriteString(strings.Repeat("\n", targetHeight-contentHeight))
-	}
-	b.WriteString(strings.Join(helpLines, "\n"))
-
-	// Ensure output doesn't exceed m.height lines
-	result := b.String()
-	if m.height > 0 {
-		lines := strings.Split(result, "\n")
-		if len(lines) > m.height {
-			lines = lines[:m.height]
-			result = strings.Join(lines, "\n")
-		}
-	}
-	return result
 }
 
 // ContentView returns the terminal content without the tab bar.

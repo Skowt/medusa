@@ -497,9 +497,7 @@ func (m *Model) updatePTYFlush(msg PTYFlush) tea.Cmd {
 					tab.mu.Unlock()
 				}
 			}
-			if len(tab.pendingOutput) == 0 {
-				tab.pendingOutput = tab.pendingOutput[:0]
-			} else {
+			if len(tab.pendingOutput) > 0 {
 				tab.flushScheduled = true
 				tab.flushPendingSince = time.Now()
 				tabID := msg.TabID

@@ -3,6 +3,8 @@ package tmux
 import (
 	"strings"
 	"testing"
+
+	"github.com/andyrewlee/medusa/internal/shellutil"
 )
 
 func TestSessionName(t *testing.T) {
@@ -161,9 +163,9 @@ func TestShellQuote(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result := shellQuote(tt.input)
+			result := shellutil.Quote(tt.input)
 			if result != tt.expected {
-				t.Errorf("shellQuote(%q) = %q, want %q", tt.input, result, tt.expected)
+				t.Errorf("shellutil.Quote(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}

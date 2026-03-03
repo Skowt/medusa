@@ -11,6 +11,7 @@ import (
 	"github.com/andyrewlee/medusa/internal/messages"
 	appPty "github.com/andyrewlee/medusa/internal/pty"
 	"github.com/andyrewlee/medusa/internal/tmux"
+	"github.com/andyrewlee/medusa/internal/ui/common"
 	"github.com/andyrewlee/medusa/internal/vterm"
 )
 
@@ -67,14 +68,6 @@ func (m *Model) detachTab(tab *Tab, index int) tea.Cmd {
 	return func() tea.Msg {
 		return messages.TabDetached{Index: index}
 	}
-}
-
-func (m *Model) detachTabAt(index int) tea.Cmd {
-	tabs := m.getTabs()
-	if len(tabs) == 0 || index < 0 || index >= len(tabs) {
-		return nil
-	}
-	return m.detachTab(tabs[index], index)
 }
 
 // DetachTabByID closes the PTY client for a specific tab and keeps the tmux session alive.
@@ -323,14 +316,14 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		if status == "stopped" {
 			info := tab
 			info.AllowEdits = tabAllowEdits
-			m.addStoppedTab(ws, info)
+			m.addPlaceholderTab(ws, info, false)
 			restoreCount++
 			continue
 		}
 		if status == "detached" {
 			info := tab
 			info.AllowEdits = tabAllowEdits
-			m.addDetachedTab(ws, info)
+			m.addPlaceholderTab(ws, info, true)
 			restoreCount++
 			// Auto-reattach: find the tab we just added and trigger reattach
 			tabs := m.tabsByWorkspace[wsID]
@@ -354,7 +347,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		m.activeTabByWorkspace[wsID] = desired
 		m.infoTabActive = false
 	}
-	return safeBatch(cmds...)
+	return common.SafeBatch(cmds...)
 }
 
 // AddTabsFromWorkspace adds new tabs without resetting existing UI state.
@@ -404,13 +397,13 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 		if status == "stopped" {
 			info := tab
 			info.AllowEdits = tabAllowEdits
-			m.addStoppedTab(ws, info)
+			m.addPlaceholderTab(ws, info, false)
 			continue
 		}
 		if status == "detached" {
 			info := tab
 			info.AllowEdits = tabAllowEdits
-			m.addDetachedTab(ws, info)
+			m.addPlaceholderTab(ws, info, true)
 			// Auto-reattach: find the tab we just added and trigger reattach
 			wsTabs := m.tabsByWorkspace[wsID]
 			if len(wsTabs) > 0 {
@@ -421,13 +414,13 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 		}
 		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, tabAllowEdits, tab.Isolated, tab.SkipPermissions))
 	}
-	return safeBatch(cmds...)
+	return common.SafeBatch(cmds...)
 }
 
-// addStoppedTab adds a stopped tab placeholder so it remains visible in the UI
-// and can be restarted with Ctrl+A S. Unlike detached tabs, the tmux session is
-// dead — restarting will create a fresh session (with --resume for Claude).
-func (m *Model) addStoppedTab(ws *data.Workspace, info data.TabInfo) {
+// addPlaceholderTab adds a stopped or detached tab placeholder so it remains visible
+// in the UI and can be restarted or reattached. If detached is true, the tab will
+// attempt reattachment to its tmux session; otherwise it will create a fresh session.
+func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detached bool) {
 	tm := m.terminalMetrics()
 	termWidth := tm.Width
 	termHeight := tm.Height
@@ -453,7 +446,7 @@ func (m *Model) addStoppedTab(ws *data.Workspace, info data.TabInfo) {
 		Workspace:       ws,
 		SessionName:     info.SessionName,
 		ClaudeSessionID: info.ClaudeSessionID,
-		Detached:        false,
+		Detached:        detached,
 		Running:         false,
 		Terminal:        term,
 		AllowEdits:      info.AllowEdits,
@@ -464,56 +457,3 @@ func (m *Model) addStoppedTab(ws *data.Workspace, info data.TabInfo) {
 	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)
 }
 
-func (m *Model) addDetachedTab(ws *data.Workspace, info data.TabInfo) {
-	tm := m.terminalMetrics()
-	termWidth := tm.Width
-	termHeight := tm.Height
-	if termWidth < 1 {
-		termWidth = 80
-	}
-	if termHeight < 1 {
-		termHeight = 24
-	}
-	displayName := strings.TrimSpace(info.Name)
-	if displayName == "" {
-		displayName = strings.TrimSpace(info.Assistant)
-	}
-	if displayName == "" {
-		displayName = "Terminal"
-	}
-	term := vterm.New(termWidth, termHeight)
-	term.AllowAltScreenScrollback = true
-	tab := &Tab{
-		ID:              generateTabID(),
-		Name:            displayName,
-		Assistant:       info.Assistant,
-		Workspace:       ws,
-		SessionName:     info.SessionName,
-		ClaudeSessionID: info.ClaudeSessionID,
-		Detached:        true,
-		Running:         false,
-		Terminal:        term,
-		AllowEdits:      info.AllowEdits,
-		Isolated:        info.Isolated,
-		SkipPermissions: info.SkipPermissions,
-	}
-	wsID := string(ws.ID())
-	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)
-}
-
-// safeBatch wraps commands in a batch, handling nil commands gracefully.
-func safeBatch(cmds ...tea.Cmd) tea.Cmd {
-	var valid []tea.Cmd
-	for _, cmd := range cmds {
-		if cmd != nil {
-			valid = append(valid, cmd)
-		}
-	}
-	if len(valid) == 0 {
-		return nil
-	}
-	if len(valid) == 1 {
-		return valid[0]
-	}
-	return tea.Batch(valid...)
-}

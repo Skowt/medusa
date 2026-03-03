@@ -85,7 +85,7 @@ func (m *Model) sendTabEvent(ev tabEvent) bool {
 		perf.Count("tab_event_drop_missing", 1)
 		return false
 	}
-	if ev.tab != nil && ev.tab.isClosed() {
+	if ev.tab.isClosed() {
 		perf.Count("tab_event_drop_closed", 1)
 		return true
 	}

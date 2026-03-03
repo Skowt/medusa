@@ -19,7 +19,3 @@ func NormalizePath(path string) string {
 func workspaceIdentity(repo, root string) string {
 	return NormalizePath(repo) + "\n" + NormalizePath(root)
 }
-
-func legacyWorkspaceIdentity(repo, root string) string {
-	return repo + root
-}

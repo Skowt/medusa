@@ -21,11 +21,6 @@ type Terminal struct {
 	closed  bool
 }
 
-// New creates a new terminal with the given command.
-func New(command string, dir string, env []string) (*Terminal, error) {
-	return NewWithSize(command, dir, env, 0, 0)
-}
-
 // NewWithSize creates a new terminal with an initial size, if provided.
 func NewWithSize(command string, dir string, env []string, rows, cols uint16) (*Terminal, error) {
 	cmd := exec.Command("sh", "-c", command)
@@ -142,27 +137,9 @@ func (t *Terminal) Close() error {
 	return nil
 }
 
-// Running returns whether the terminal is still running
-func (t *Terminal) Running() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.closed || t.cmd == nil {
-		return false
-	}
-
-	// Check if process is still running
-	return t.cmd.ProcessState == nil
-}
-
 // IsClosed returns whether the terminal has been closed
 func (t *Terminal) IsClosed() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.closed
-}
-
-// File returns the underlying PTY file
-func (t *Terminal) File() *os.File {
-	return t.ptyFile
 }

@@ -9,41 +9,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// loadDirectory loads entries from the current path
+// loadDirectory loads entries from the current path, resetting cursor and scroll.
 func (fp *FilePicker) loadDirectory() {
-	fp.entries = nil
-	fp.filteredIdx = nil
 	fp.cursor = 0
 	fp.scrollOffset = 0
-
-	entries, err := os.ReadDir(fp.currentPath)
-	if err != nil {
-		return
-	}
-
-	// Filter and sort: directories first, then alphabetically
-	var dirs, files []os.DirEntry
-	for _, e := range entries {
-		// Skip hidden files unless enabled
-		if !fp.showHidden && strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		if e.IsDir() {
-			dirs = append(dirs, e)
-		} else if !fp.directoriesOnly {
-			files = append(files, e)
-		}
-	}
-
-	sort.Slice(dirs, func(i, j int) bool {
-		return strings.ToLower(dirs[i].Name()) < strings.ToLower(dirs[j].Name())
-	})
-	sort.Slice(files, func(i, j int) bool {
-		return strings.ToLower(files[i].Name()) < strings.ToLower(files[j].Name())
-	})
-
-	fp.entries = append(dirs, files...)
-	fp.applyFilter()
+	fp.readEntries()
 }
 
 // applyFilter updates filteredIdx based on input.
@@ -91,10 +61,7 @@ func (fp *FilePicker) applyFilter() {
 	}
 
 	if fp.cursor >= len(fp.filteredIdx) {
-		fp.cursor = min(fp.cursor, len(fp.filteredIdx))
-	}
-	if fp.cursor < 0 {
-		fp.cursor = 0
+		fp.cursor = max(0, len(fp.filteredIdx)-1)
 	}
 }
 
@@ -157,6 +124,11 @@ func (fp *FilePicker) handlePathInput(input string) {
 // loadDirectoryKeepInput reloads directory entries without resetting
 // the text input, cursor position, or scroll offset.
 func (fp *FilePicker) loadDirectoryKeepInput() {
+	fp.readEntries()
+}
+
+// readEntries reads and sorts directory entries, then applies the filter.
+func (fp *FilePicker) readEntries() {
 	fp.entries = nil
 	fp.filteredIdx = nil
 
@@ -249,27 +221,6 @@ func (fp *FilePicker) isBaseInput(input string) bool {
 	return filepath.Clean(expandTilde(trimmed)) == filepath.Clean(fp.currentPath)
 }
 
-func (fp *FilePicker) resolveInputPath(input string) (string, bool) {
-	path := strings.TrimSpace(input)
-	if path == "" {
-		return "", false
-	}
-
-	if strings.HasPrefix(path, "~") {
-		if home, err := os.UserHomeDir(); err == nil {
-			path = filepath.Join(home, strings.TrimPrefix(path, "~"))
-		} else {
-			return "", false
-		}
-	}
-
-	if !filepath.IsAbs(path) {
-		return "", false
-	}
-
-	return filepath.Clean(path), true
-}
-
 // handleEnter handles the enter key
 func (fp *FilePicker) handleEnter() (*FilePicker, tea.Cmd) {
 	baseInput := strings.TrimSpace(fp.input.Value())
@@ -347,30 +298,6 @@ func (fp *FilePicker) handleEnter() (*FilePicker, tea.Cmd) {
 
 	// Otherwise, select current directory
 	return fp.confirmCurrentDirectory()
-}
-
-// handleSelectEntry handles Enter in directoriesOnly mode: selects the
-// highlighted directory instead of navigating into it (use Tab to navigate).
-// Falls back to handleEnter for non-directory entries or when no entry is highlighted.
-func (fp *FilePicker) handleSelectEntry() (*FilePicker, tea.Cmd) {
-	if len(fp.filteredIdx) > 0 && fp.cursor >= 0 && fp.cursor < len(fp.filteredIdx) {
-		entry := fp.entries[fp.filteredIdx[fp.cursor]]
-		if entry.IsDir() {
-			selectedPath := filepath.Join(fp.currentPath, entry.Name())
-			if fp.multiSelect {
-				return fp.multiSelectAdd(selectedPath)
-			}
-			fp.visible = false
-			return fp, func() tea.Msg {
-				return DialogResult{
-					ID:        fp.id,
-					Confirmed: true,
-					Value:     selectedPath,
-				}
-			}
-		}
-	}
-	return fp.handleEnter()
 }
 
 // handleOpenFromInput navigates into the path typed in the input when it is a directory.

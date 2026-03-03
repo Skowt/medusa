@@ -175,7 +175,11 @@ func (h *HelpOverlay) Hide() {
 
 // Toggle toggles the help overlay visibility
 func (h *HelpOverlay) Toggle() {
-	h.visible = !h.visible
+	if h.visible {
+		h.Hide()
+	} else {
+		h.Show()
+	}
 }
 
 // Visible returns whether the help overlay is visible

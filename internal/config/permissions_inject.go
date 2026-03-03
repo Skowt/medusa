@@ -7,37 +7,20 @@ import (
 	"strings"
 )
 
-// InjectGlobalPermissions merges global permissions into a profile's settings.json.
-// Creates the file if it does not exist.
-func InjectGlobalPermissions(profileDir string, global *GlobalPermissions) error {
-	if global == nil || (len(global.Allow) == 0 && len(global.Deny) == 0) {
-		return nil
-	}
-
-	settingsPath := filepath.Join(profileDir, "settings.json")
-
+// readModifyWriteJSON reads a JSON file into a map, applies a modifier function,
+// and writes it back. Creates the file and parent directories if they don't exist.
+func readModifyWriteJSON(path string, modifier func(map[string]any)) error {
 	var settings map[string]any
-	if existing, err := os.ReadFile(settingsPath); err == nil {
+	if existing, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(existing, &settings)
 	}
 	if settings == nil {
 		settings = make(map[string]any)
 	}
 
-	perms, _ := settings["permissions"].(map[string]any)
-	if perms == nil {
-		perms = make(map[string]any)
-	}
+	modifier(settings)
 
-	// Merge allow list using set-based deduplication
-	perms["allow"] = mergeUnique(toStringSlice(perms["allow"]), global.Allow)
-
-	// Merge deny list using set-based deduplication
-	perms["deny"] = mergeUnique(toStringSlice(perms["deny"]), global.Deny)
-
-	settings["permissions"] = perms
-
-	if err := os.MkdirAll(profileDir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 
@@ -45,7 +28,30 @@ func InjectGlobalPermissions(profileDir string, global *GlobalPermissions) error
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(settingsPath, data, 0644)
+	return os.WriteFile(path, data, 0644)
+}
+
+// getOrCreatePerms extracts or initializes the "permissions" sub-map from settings.
+func getOrCreatePerms(settings map[string]any) map[string]any {
+	perms, _ := settings["permissions"].(map[string]any)
+	if perms == nil {
+		perms = make(map[string]any)
+	}
+	return perms
+}
+
+// InjectGlobalPermissions merges global permissions into a profile's settings.json.
+// Creates the file if it does not exist.
+func InjectGlobalPermissions(profileDir string, global *GlobalPermissions) error {
+	if global == nil || (len(global.Allow) == 0 && len(global.Deny) == 0) {
+		return nil
+	}
+	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
+		perms := getOrCreatePerms(settings)
+		perms["allow"] = mergeUnique(toStringSlice(perms["allow"]), global.Allow)
+		perms["deny"] = mergeUnique(toStringSlice(perms["deny"]), global.Deny)
+		settings["permissions"] = perms
+	})
 }
 
 // InjectAdditionalDirectories writes additionalDirectories into
@@ -54,100 +60,34 @@ func InjectAdditionalDirectories(primaryRoot string, additionalRoots []string) e
 	if len(additionalRoots) == 0 {
 		return nil
 	}
-
-	claudeDir := filepath.Join(primaryRoot, ".claude")
-	settingsPath := filepath.Join(claudeDir, "settings.local.json")
-
-	var settings map[string]any
-	if existing, err := os.ReadFile(settingsPath); err == nil {
-		_ = json.Unmarshal(existing, &settings)
-	}
-	if settings == nil {
-		settings = make(map[string]any)
-	}
-
-	perms, _ := settings["permissions"].(map[string]any)
-	if perms == nil {
-		perms = make(map[string]any)
-	}
-
-	// Replace entirely to avoid stale entries
-	dirs := make([]any, len(additionalRoots))
-	for i, root := range additionalRoots {
-		dirs[i] = root
-	}
-	perms["additionalDirectories"] = dirs
-	settings["permissions"] = perms
-
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(settingsPath, data, 0644)
+	return readModifyWriteJSON(filepath.Join(primaryRoot, ".claude", "settings.local.json"), func(settings map[string]any) {
+		perms := getOrCreatePerms(settings)
+		dirs := make([]any, len(additionalRoots))
+		for i, root := range additionalRoots {
+			dirs[i] = root
+		}
+		perms["additionalDirectories"] = dirs
+		settings["permissions"] = perms
+	})
 }
 
 // InjectAllowEdits adds Edit(**) to a workspace's .claude/settings.local.json.
 // This pre-grants the Edit permission for this specific workspace only.
 func InjectAllowEdits(workspaceRoot string) error {
-	claudeDir := filepath.Join(workspaceRoot, ".claude")
-	settingsPath := filepath.Join(claudeDir, "settings.local.json")
-
-	var settings map[string]any
-	if existing, err := os.ReadFile(settingsPath); err == nil {
-		_ = json.Unmarshal(existing, &settings)
-	}
-	if settings == nil {
-		settings = make(map[string]any)
-	}
-
-	perms, _ := settings["permissions"].(map[string]any)
-	if perms == nil {
-		perms = make(map[string]any)
-	}
-
-	perms["allow"] = mergeUnique(toStringSlice(perms["allow"]), []string{"Edit(**)"})
-	settings["permissions"] = perms
-
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(settingsPath, data, 0644)
+	return readModifyWriteJSON(filepath.Join(workspaceRoot, ".claude", "settings.local.json"), func(settings map[string]any) {
+		perms := getOrCreatePerms(settings)
+		perms["allow"] = mergeUnique(toStringSlice(perms["allow"]), []string{"Edit(**)"})
+		settings["permissions"] = perms
+	})
 }
 
 // InjectSkipPermissionPrompt sets skipDangerousModePermissionPrompt=true
 // in the profile's settings.json so Claude Code doesn't show the bypass
 // permissions confirmation dialog when --dangerously-skip-permissions is used.
 func InjectSkipPermissionPrompt(profileDir string) error {
-	settingsPath := filepath.Join(profileDir, "settings.json")
-
-	var settings map[string]any
-	if existing, err := os.ReadFile(settingsPath); err == nil {
-		_ = json.Unmarshal(existing, &settings)
-	}
-	if settings == nil {
-		settings = make(map[string]any)
-	}
-
-	settings["skipDangerousModePermissionPrompt"] = true
-
-	if err := os.MkdirAll(profileDir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(settingsPath, data, 0644)
+	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
+		settings["skipDangerousModePermissionPrompt"] = true
+	})
 }
 
 // InjectTrustedDirectory adds a directory to Claude's trusted projects.
@@ -275,9 +215,5 @@ func mergeUnique(existing, additions []string) []string {
 		}
 	}
 
-	// Ensure non-nil for JSON marshaling
-	if result == nil {
-		return []string{}
-	}
 	return result
 }

@@ -352,31 +352,10 @@ func cellToUVSnapshot(cell vterm.Cell, snap *VTermSnapshot, x, y int) *uv.Cell {
 
 // inSelectionSnapshot checks if a coordinate is within the snapshot's selection.
 func inSelectionSnapshot(snap *VTermSnapshot, x, y int) bool {
-	if snap == nil || !snap.SelActive {
+	if snap == nil {
 		return false
 	}
-
-	startX, startY := snap.SelStartX, snap.SelStartY
-	endX, endY := snap.SelEndX, snap.SelEndY
-
-	if startY > endY || (startY == endY && startX > endX) {
-		startX, endX = endX, startX
-		startY, endY = endY, startY
-	}
-
-	if y < startY || y > endY {
-		return false
-	}
-	if y == startY && y == endY {
-		return x >= startX && x <= endX
-	}
-	if y == startY {
-		return x >= startX
-	}
-	if y == endY {
-		return x <= endX
-	}
-	return true
+	return inSelection(snap.SelActive, snap.SelStartX, snap.SelStartY, snap.SelEndX, snap.SelEndY, x, y)
 }
 
 // vtermStyleToUV converts a vterm.Style to ultraviolet's Style.

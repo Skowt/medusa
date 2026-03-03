@@ -14,6 +14,7 @@ import (
 	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/git"
 	"github.com/andyrewlee/medusa/internal/sandbox"
+	"github.com/andyrewlee/medusa/internal/shellutil"
 	"github.com/andyrewlee/medusa/internal/tmux"
 )
 
@@ -54,11 +55,12 @@ const (
 
 // Agent represents a running AI agent instance
 type Agent struct {
-	Type      AgentType
-	Terminal  *Terminal
-	Workspace *data.Workspace
-	Config    config.AssistantConfig
-	Session   string
+	Type           AgentType
+	Terminal       *Terminal
+	Workspace      *data.Workspace
+	Config         config.AssistantConfig
+	Session        string
+	sandboxCleanup func() // cleanup function for temp sandbox profile
 }
 
 // AgentManager manages agent instances
@@ -74,11 +76,6 @@ func NewAgentManager(cfg *config.Config) *AgentManager {
 		config: cfg,
 		agents: make(map[data.WorkspaceID][]*Agent),
 	}
-}
-
-// CreateAgent creates a new agent for the given workspace.
-func (m *AgentManager) CreateAgent(ws *data.Workspace, agentType AgentType, sessionName string, rows, cols uint16) (*Agent, error) {
-	return m.CreateAgentWithTags(ws, agentType, sessionName, rows, cols, tmux.SessionTags{}, AgentOptions{})
 }
 
 // CreateAgentWithTags creates a new agent for the given workspace with tmux tags.
@@ -127,7 +124,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		if opts.AllowEdits {
 			_ = config.InjectAllowEdits(ws.Root())
 		}
-		agentCommand = fmt.Sprintf("CLAUDE_CONFIG_DIR=%s %s", shellQuote(profileDir), agentCommand)
+		agentCommand = fmt.Sprintf("CLAUDE_CONFIG_DIR=%s %s", shellutil.Quote(profileDir), agentCommand)
 	}
 
 	// Pre-trust the workspace directory so Claude doesn't prompt
@@ -139,9 +136,9 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// Append Claude session flags for conversation resumption.
 	if agentType == AgentClaude && opts.ClaudeSessionID != "" {
 		if opts.Resume {
-			agentCommand += " --resume " + shellQuote(opts.ClaudeSessionID)
+			agentCommand += " --resume " + shellutil.Quote(opts.ClaudeSessionID)
 		} else {
-			agentCommand += " --session-id " + shellQuote(opts.ClaudeSessionID)
+			agentCommand += " --session-id " + shellutil.Quote(opts.ClaudeSessionID)
 		}
 	}
 
@@ -197,11 +194,12 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	}
 
 	agent := &Agent{
-		Type:      agentType,
-		Terminal:  term,
-		Workspace: ws,
-		Config:    assistantCfg,
-		Session:   sessionName,
+		Type:           agentType,
+		Terminal:       term,
+		Workspace:      ws,
+		Config:         assistantCfg,
+		Session:        sessionName,
+		sandboxCleanup: sbplCleanup,
 	}
 
 	m.mu.Lock()
@@ -209,11 +207,6 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	m.mu.Unlock()
 
 	return agent, nil
-}
-
-// CreateViewer creates a new agent (viewer) for the given workspace and command.
-func (m *AgentManager) CreateViewer(ws *data.Workspace, command string, sessionName string, rows, cols uint16) (*Agent, error) {
-	return m.CreateViewerWithTags(ws, command, sessionName, rows, cols, tmux.SessionTags{})
 }
 
 // CreateViewerWithTags creates a new viewer for the given workspace with tmux tags.
@@ -261,6 +254,10 @@ func (m *AgentManager) CloseAgent(agent *Agent) error {
 	if agent.Terminal != nil {
 		agent.Terminal.Close()
 	}
+	if agent.sandboxCleanup != nil {
+		agent.sandboxCleanup()
+		agent.sandboxCleanup = nil
+	}
 
 	// Remove from list
 	if agent.Workspace != nil {
@@ -289,6 +286,10 @@ func (m *AgentManager) CloseAll() {
 		for _, agent := range agents {
 			if agent.Terminal != nil {
 				agent.Terminal.Close()
+			}
+			if agent.sandboxCleanup != nil {
+				agent.sandboxCleanup()
+				agent.sandboxCleanup = nil
 			}
 		}
 	}
@@ -331,10 +332,6 @@ func (m *AgentManager) CloseWorkspaceAgents(ws *data.Workspace) {
 	}
 }
 
-// shellQuote wraps a value in single quotes for safe shell embedding.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
 
 // SendInterrupt sends an interrupt to an agent
 func (m *AgentManager) SendInterrupt(agent *Agent) error {

@@ -10,24 +10,7 @@ import (
 // Runtime constants for workspace execution backends
 const (
 	RuntimeLocalWorktree = "local-worktree"
-	RuntimeLocalCheckout = "local-checkout"
-	RuntimeLocalDocker   = "local-docker"
-	RuntimeCloudSandbox  = "cloud-sandbox"
 )
-
-// NormalizeRuntime returns a normalized runtime string
-func NormalizeRuntime(runtime string) string {
-	switch runtime {
-	case RuntimeLocalWorktree, RuntimeLocalCheckout, RuntimeLocalDocker, RuntimeCloudSandbox:
-		return runtime
-	case "sandbox":
-		return RuntimeCloudSandbox
-	case "local", "":
-		return RuntimeLocalWorktree
-	default:
-		return RuntimeLocalWorktree
-	}
-}
 
 // WorkspaceStatus represents the lifecycle status of a workspace
 type WorkspaceStatus string

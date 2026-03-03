@@ -558,8 +558,3 @@ func (m *Model) HasDiffViewer() bool {
 	return tab.DiffViewer != nil
 }
 
-// CloseAllTabs is deprecated - tabs now persist per-workspace
-// This is kept for compatibility but does nothing
-func (m *Model) CloseAllTabs() {
-	// No-op: tabs now persist per-workspace and are not closed when switching
-}

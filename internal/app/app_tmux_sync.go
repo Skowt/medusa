@@ -3,6 +3,7 @@ package app
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/logging"
 	"github.com/andyrewlee/medusa/internal/messages"
 )
@@ -70,7 +71,7 @@ func (a *App) handleTmuxTabsSyncResult(msg tmuxTabsSyncResult) []tea.Cmd {
 		}
 	}
 	if changed {
-		wsSnapshot := snapshotWorkspaceForSave(ws)
+		wsSnapshot := data.SnapshotWorkspaceForSave(ws)
 		cmds = append(cmds, func() tea.Msg {
 			if err := a.workspaces.Save(wsSnapshot); err != nil {
 				logging.Warn("Failed to sync workspace tabs: %v", err)

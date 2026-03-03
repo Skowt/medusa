@@ -172,25 +172,6 @@ func (m *Model) helpLines(contentWidth int) []string {
 	return common.WrapHelpItems(items, contentWidth)
 }
 
-// renderEmpty renders the empty state
-func (m *Model) renderEmpty() string {
-	var b strings.Builder
-	b.WriteString("\n\n")
-	b.WriteString(m.styles.Title.Render("No agents running"))
-	b.WriteString("\n\n")
-
-	// New agent button
-	agentBtn := m.styles.TabPlus.Render("New agent")
-	b.WriteString(agentBtn)
-
-	// Help text
-	b.WriteString("\n\n")
-	helpStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-	b.WriteString(helpStyle.Render("C-Spc a:new agent"))
-
-	return b.String()
-}
-
 // renderInfoContent renders the content for the Info tab.
 func (m *Model) renderInfoContent() string {
 	if m.infoContent != "" {
@@ -206,89 +187,6 @@ func (m *Model) renderInfoContent() string {
 func (m *Model) TerminalViewport() (x, y, width, height int) {
 	tm := m.terminalMetrics()
 	return tm.ContentStartX, tm.ContentStartY, tm.Width, tm.Height
-}
-
-// ViewChromeOnly renders only the pane chrome (border, tab bar, help lines) without
-// the terminal content. This is used with VTermLayer for layer-based rendering.
-// IMPORTANT: The output structure must match View() exactly so buildBorderedPane
-// produces the same layout.
-func (m *Model) ViewChromeOnly() string {
-	defer perf.Time("center_view_chrome")()
-	var b strings.Builder
-
-	// Calculate content dimensions to match View() exactly
-	contentWidth := m.contentWidth()
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
-
-	// Info bar at the very top (only if we have tabs)
-	infoBarHeight := m.infoBarHeight()
-	if infoBarHeight > 0 {
-		b.WriteString(m.renderInfoBar(contentWidth))
-		b.WriteString("\n")
-		// Track info bar Y position for mouse hit testing (line 0 = top of content)
-		m.actionBarY = 0
-	}
-
-	// Tab bar (below info bar)
-	b.WriteString(m.renderTabBar())
-	b.WriteString("\n")
-
-	helpLines := m.helpLines(contentWidth)
-	if !m.showKeymapHints {
-		helpLines = nil
-	}
-	statusLine := m.activeTerminalStatusLine()
-
-	// Match View()'s padding logic exactly:
-	// innerHeight = m.height - 2 (space inside buildBorderedPane)
-	// targetContentLines = innerHeight - helpLineCount
-	innerHeight := m.height - 2
-	if innerHeight < 0 {
-		innerHeight = 0
-	}
-	helpLineCount := len(helpLines)
-	targetContentLines := innerHeight - helpLineCount
-	if targetContentLines < 0 {
-		targetContentLines = 0
-	}
-
-	// We already have infoBarHeight + 2 (tab bar + separator), so we need targetContentLines - 2 - infoBarHeight more lines
-	emptyLinesNeeded := targetContentLines - 2 - infoBarHeight
-	statusLineVisible := statusLine != ""
-	if statusLineVisible {
-		if emptyLinesNeeded > 0 {
-			emptyLinesNeeded--
-		} else {
-			statusLineVisible = false
-		}
-	}
-	if emptyLinesNeeded < 0 {
-		emptyLinesNeeded = 0
-	}
-
-	// Fill with empty lines (will be overwritten by VTermLayer)
-	emptyLine := strings.Repeat(" ", contentWidth)
-	for i := 0; i < emptyLinesNeeded; i++ {
-		b.WriteString(emptyLine)
-		b.WriteString("\n")
-	}
-
-	if statusLineVisible {
-		b.WriteString(statusLine)
-		if helpLineCount > 0 {
-			b.WriteString("\n")
-		}
-	}
-
-	// Add help lines at bottom (matching View()'s format)
-	helpContent := strings.Join(helpLines, "\n")
-	if helpContent != "" {
-		b.WriteString(helpContent)
-	}
-
-	return b.String()
 }
 
 // terminalStatusLineLocked returns the status line for the active terminal.

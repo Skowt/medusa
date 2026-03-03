@@ -79,7 +79,6 @@ type Model struct {
 	deletingWorkspaces map[string]bool            // Workspaces currently being deleted
 	spinnerFrame       int                        // Current spinner animation frame
 	spinnerActive      bool                       // Whether spinner ticks are active
-	forceSpinner       bool                       // Force spinner to stay active
 
 	// Agent activity state
 	activeWorkspaceIDs   map[string]bool // Workspace IDs with active agents
@@ -227,7 +226,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			return m, nil
 		}
 
-		toolbarItems := m.toolbarVisibleItems(m.toolbarItems())
+		toolbarItems := m.toolbarItems()
 		if m.toolbarFocused {
 			if len(toolbarItems) == 0 {
 				m.toolbarFocused = false
@@ -307,7 +306,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 		}
 
 	case SpinnerTickMsg:
-		if len(m.creatingWorkspaces) > 0 || len(m.deletingWorkspaces) > 0 || m.hasActiveAgents() || m.forceSpinner {
+		if len(m.creatingWorkspaces) > 0 || len(m.deletingWorkspaces) > 0 || m.hasActiveAgents() {
 			m.spinnerFrame++
 			cmds = append(cmds, m.tickSpinner())
 		} else {
@@ -350,10 +349,9 @@ func (m *Model) View() string {
 	if innerHeight < 0 {
 		innerHeight = 0
 	}
-	headerHeight := 0
 	helpHeight := m.helpLineCount()
 	toolbarHeight := m.toolbarHeight()
-	visibleHeight := innerHeight - headerHeight - toolbarHeight - helpHeight
+	visibleHeight := innerHeight - toolbarHeight - helpHeight
 	if visibleHeight < 1 {
 		visibleHeight = 1
 	}
@@ -449,11 +447,6 @@ func (m *Model) SetWorkspaces(workspaces []*data.Workspace) {
 	m.clampScrollOffset()
 }
 
-// Workspaces returns the current workspaces
-func (m *Model) Workspaces() []*data.Workspace {
-	return m.workspaces
-}
-
 // ScrollInfo returns the scroll state needed to render a scrollbar overlay.
 func (m *Model) ScrollInfo() (scrollOffset, totalLines, visible int) {
 	total := 0
@@ -469,10 +462,9 @@ func (m *Model) visibleHeight() int {
 	if innerHeight < 0 {
 		innerHeight = 0
 	}
-	headerHeight := 0
 	helpHeight := m.helpLineCount()
 	toolbarHeight := m.toolbarHeight()
-	visibleHeight := innerHeight - headerHeight - toolbarHeight - helpHeight
+	visibleHeight := innerHeight - toolbarHeight - helpHeight
 	if visibleHeight < 1 {
 		visibleHeight = 1
 	}
@@ -486,14 +478,6 @@ func (m *Model) cursorLineOffset() int {
 		offset += m.rowLineCount(i)
 	}
 	return offset
-}
-
-// SelectedRow returns the currently selected row
-func (m *Model) SelectedRow() *Row {
-	if m.cursor >= 0 && m.cursor < len(m.rows) {
-		return &m.rows[m.cursor]
-	}
-	return nil
 }
 
 // ClearActiveRoot resets the active workspace selection to "Home".

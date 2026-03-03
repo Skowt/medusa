@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/andyrewlee/medusa/internal/shellutil"
 )
 
 type Options struct {
@@ -130,9 +132,9 @@ func ClientCommandWithTags(sessionName, workDir, command string, opts Options, t
 
 func clientCommand(sessionName, workDir, command string, opts Options, tags SessionTags) string {
 	base := tmuxBase(opts)
-	session := shellQuote(sessionName)
-	dir := shellQuote(workDir)
-	cmd := shellQuote(command)
+	session := shellutil.Quote(sessionName)
+	dir := shellutil.Quote(workDir)
+	cmd := shellutil.Quote(command)
 
 	// Use atomic new-session -Ad: creates if missing, attaches if exists (detaching other clients)
 	create := fmt.Sprintf("%s new-session -Ads %s -c %s sh -lc %s",
@@ -149,7 +151,7 @@ func clientCommand(sessionName, workDir, command string, opts Options, tags Sess
 		settings.WriteString(fmt.Sprintf("%s set-option -t %s mouse off 2>/dev/null; ", base, session))
 	}
 	if opts.DefaultTerminal != "" {
-		settings.WriteString(fmt.Sprintf("%s set-option -t %s default-terminal %s 2>/dev/null; ", base, session, shellQuote(opts.DefaultTerminal)))
+		settings.WriteString(fmt.Sprintf("%s set-option -t %s default-terminal %s 2>/dev/null; ", base, session, shellutil.Quote(opts.DefaultTerminal)))
 	}
 	// Ensure activity timestamps update for window_activity-based tracking.
 	settings.WriteString(fmt.Sprintf("%s set-option -t %s -w monitor-activity on 2>/dev/null; ", base, session))
@@ -167,19 +169,19 @@ func appendSessionTags(settings *strings.Builder, base, session string, tags Ses
 	}
 	settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa 1 2>/dev/null; ", base, session))
 	if tags.WorkspaceID != "" {
-		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_workspace %s 2>/dev/null; ", base, session, shellQuote(tags.WorkspaceID)))
+		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_workspace %s 2>/dev/null; ", base, session, shellutil.Quote(tags.WorkspaceID)))
 	}
 	if tags.TabID != "" {
-		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_tab %s 2>/dev/null; ", base, session, shellQuote(tags.TabID)))
+		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_tab %s 2>/dev/null; ", base, session, shellutil.Quote(tags.TabID)))
 	}
 	if tags.Type != "" {
-		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_type %s 2>/dev/null; ", base, session, shellQuote(tags.Type)))
+		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_type %s 2>/dev/null; ", base, session, shellutil.Quote(tags.Type)))
 	}
 	if tags.Assistant != "" {
-		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_assistant %s 2>/dev/null; ", base, session, shellQuote(tags.Assistant)))
+		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_assistant %s 2>/dev/null; ", base, session, shellutil.Quote(tags.Assistant)))
 	}
 	if tags.CreatedAt != 0 {
-		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_created_at %s 2>/dev/null; ", base, session, shellQuote(fmt.Sprintf("%d", tags.CreatedAt))))
+		settings.WriteString(fmt.Sprintf("%s set-option -t %s @medusa_created_at %s 2>/dev/null; ", base, session, shellutil.Quote(fmt.Sprintf("%d", tags.CreatedAt))))
 	}
 }
 
@@ -201,10 +203,10 @@ func SessionStateFor(sessionName string, opts Options) (SessionState, error) {
 func tmuxBase(opts Options) string {
 	base := "tmux"
 	if opts.ServerName != "" {
-		base = fmt.Sprintf("%s -L %s", base, shellQuote(opts.ServerName))
+		base = fmt.Sprintf("%s -L %s", base, shellutil.Quote(opts.ServerName))
 	}
 	if opts.ConfigPath != "" {
-		base = fmt.Sprintf("%s -f %s", base, shellQuote(opts.ConfigPath))
+		base = fmt.Sprintf("%s -f %s", base, shellutil.Quote(opts.ConfigPath))
 	}
 	return base
 }
@@ -491,9 +493,3 @@ func sanitize(value string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func shellQuote(value string) string {
-	if value == "" {
-		return "''"
-	}
-	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
-}

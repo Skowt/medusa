@@ -91,6 +91,9 @@ type Dialog struct {
 
 	// Input visibility
 	inputHidden bool // Hide the text input field (checkbox-only dialog)
+
+	// Default cursor position (restored by Show)
+	defaultCursor int
 }
 
 type dialogOptionHit struct {
@@ -119,12 +122,13 @@ func NewInputDialog(id, title, placeholder string) *Dialog {
 // NewConfirmDialog creates a new confirmation dialog
 func NewConfirmDialog(id, title, message string) *Dialog {
 	return &Dialog{
-		id:      id,
-		dtype:   DialogConfirm,
-		title:   title,
-		message: message,
-		options: []string{"Yes", "No"},
-		cursor:  1, // Default to "No"
+		id:            id,
+		dtype:         DialogConfirm,
+		title:         title,
+		message:       message,
+		options:       []string{"Yes", "No"},
+		cursor:        1, // Default to "No"
+		defaultCursor: 1,
 	}
 }
 
@@ -232,8 +236,10 @@ func (d *Dialog) SetInputHidden(hidden bool) *Dialog {
 func (d *Dialog) SetDefaultConfirm(yes bool) *Dialog {
 	if yes {
 		d.cursor = 0
+		d.defaultCursor = 0
 	} else {
 		d.cursor = 1
+		d.defaultCursor = 1
 	}
 	return d
 }
@@ -270,7 +276,7 @@ func (d *Dialog) Show() {
 	d.visible = true
 	d.confirmed = false
 	d.validationErr = ""
-	d.cursor = 0
+	d.cursor = d.defaultCursor
 	d.checkboxFocused = false
 	d.checkbox2Focused = false
 	d.checkbox3Focused = false

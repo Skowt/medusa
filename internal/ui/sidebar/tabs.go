@@ -1,8 +1,6 @@
 package sidebar
 
 import (
-	"strings"
-
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -249,38 +247,6 @@ func (m *TabbedSidebar) renderTabBar() string {
 	return lipgloss.JoinHorizontal(lipgloss.Bottom, tabs...)
 }
 
-// View renders the tabbed sidebar
-func (m *TabbedSidebar) View() string {
-	if m.height <= 0 {
-		return ""
-	}
-	// Tab bar
-	tabBar := m.renderTabBar()
-
-	// Content based on active tab
-	contentHeight := m.height - 1 // -1 for tab bar
-	if contentHeight <= 0 {
-		return tabBar
-	}
-
-	var b strings.Builder
-	b.WriteString(tabBar)
-	b.WriteString("\n")
-
-	var content string
-	switch m.activeTab {
-	case TabChanges:
-		m.changes.SetSize(m.width, contentHeight)
-		content = m.changes.View()
-	case TabProject:
-		m.projectTree.SetSize(m.width, contentHeight)
-		content = m.projectTree.View()
-	}
-
-	b.WriteString(content)
-	return b.String()
-}
-
 // TabBarView returns only the tab bar view (for compositor)
 func (m *TabbedSidebar) TabBarView() string {
 	return m.renderTabBar()
@@ -347,17 +313,6 @@ func (m *TabbedSidebar) SetGitStatus(status *git.StatusResult) {
 	m.changes.SetGitStatus(status)
 }
 
-// ActiveTab returns the currently active tab
-func (m *TabbedSidebar) ActiveTab() SidebarTab {
-	return m.activeTab
-}
-
-// SetActiveTab sets the active tab
-func (m *TabbedSidebar) SetActiveTab(tab SidebarTab) {
-	m.activeTab = tab
-	m.updateFocus()
-}
-
 // NextTab switches to the next tab (circular)
 func (m *TabbedSidebar) NextTab() {
 	if m.activeTab == TabChanges {
@@ -378,12 +333,3 @@ func (m *TabbedSidebar) PrevTab() {
 	m.updateFocus()
 }
 
-// Changes returns the changes model (for direct access if needed)
-func (m *TabbedSidebar) Changes() *Model {
-	return m.changes
-}
-
-// ProjectTree returns the project tree model (for direct access if needed)
-func (m *TabbedSidebar) ProjectTree() *ProjectTree {
-	return m.projectTree
-}

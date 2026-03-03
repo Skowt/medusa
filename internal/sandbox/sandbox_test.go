@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/andyrewlee/medusa/internal/config"
+	"github.com/andyrewlee/medusa/internal/shellutil"
 )
 
 func TestGenerateSBPL(t *testing.T) {
@@ -348,9 +349,9 @@ func TestShellQuote(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shellQuote(tt.input)
+			got := shellutil.Quote(tt.input)
 			if got != tt.want {
-				t.Errorf("shellQuote(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("shellutil.Quote(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

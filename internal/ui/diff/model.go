@@ -243,21 +243,6 @@ func (m *Model) SetFocused(focused bool) {
 	m.focused = focused
 }
 
-// Focus sets the component as focused
-func (m *Model) Focus() {
-	m.focused = true
-}
-
-// Blur removes focus
-func (m *Model) Blur() {
-	m.focused = false
-}
-
-// Focused returns whether the component is focused
-func (m *Model) Focused() bool {
-	return m.focused
-}
-
 // SetSize sets the component dimensions
 func (m *Model) SetSize(width, height int) {
 	m.width = width
@@ -267,14 +252,6 @@ func (m *Model) SetSize(width, height int) {
 // SetStyles updates the component's styles
 func (m *Model) SetStyles(styles common.Styles) {
 	m.styles = styles
-}
-
-// GetPath returns the file path being viewed
-func (m *Model) GetPath() string {
-	if m.change != nil {
-		return m.change.Path
-	}
-	return ""
 }
 
 // View is defined in view.go
