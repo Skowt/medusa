@@ -24,7 +24,7 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 	}
 	// Show the "creating" indicator in the dashboard
 	if msg.Name != "" && len(msg.Repos) > 0 {
-		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
+		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name, msg.Repos[0].Name)
 		pending := data.NewWorkspace(msg.Name, msg.Name, msg.Bases[0], msg.Repos[0].Path, workspacePath)
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -45,6 +45,7 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	oldBranch := ws.Branch()
 	newBranch := newName
 	oldRoot := ws.Root()
+	oldPrimaryRoot := ws.PrimaryWorktreeRoot()
 	newRoot := filepath.Join(filepath.Dir(oldRoot), newName)
 	opts := a.tmuxOptions
 	oldWsID := string(ws.ID())
@@ -93,46 +94,33 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		}
 	}
 
-	// 5. Move worktrees.
-	if ws.IsMultiRepo() {
-		// Multi-repo: create new parent, move each worktree individually.
-		if err := os.MkdirAll(newRoot, 0o755); err != nil {
-			rollbackBranches()
-			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
-		}
-		for i, wt := range ws.Worktrees {
-			newWtPath := filepath.Join(newRoot, ws.Repos[i].Name)
-			if err := git.MoveWorkspace(ws.Repos[i].Path, wt.Root, newWtPath); err != nil {
-				// Rollback previously moved worktrees
-				for j := 0; j < i; j++ {
-					_ = git.MoveWorkspace(ws.Repos[j].Path, filepath.Join(newRoot, ws.Repos[j].Name), ws.Worktrees[j].Root)
-				}
-				_ = os.Remove(newRoot)
-				rollbackBranches()
-				return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed moving %s: %s", ws.Repos[i].Name, err.Error()))}
+	// 5. Move worktrees (uniform layout: always iterate).
+	if err := os.MkdirAll(newRoot, 0o755); err != nil {
+		rollbackBranches()
+		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+	}
+	for i, wt := range ws.Worktrees {
+		newWtPath := filepath.Join(newRoot, ws.Repos[i].Name)
+		if err := git.MoveWorkspace(ws.Repos[i].Path, wt.Root, newWtPath); err != nil {
+			// Rollback previously moved worktrees
+			for j := 0; j < i; j++ {
+				_ = git.MoveWorkspace(ws.Repos[j].Path, filepath.Join(newRoot, ws.Repos[j].Name), ws.Worktrees[j].Root)
 			}
-		}
-		// Remove old parent directory (should be empty now).
-		_ = os.Remove(oldRoot)
-	} else {
-		// Single-repo: move the worktree directly.
-		if err := git.MoveWorkspace(ws.Repos[0].Path, oldRoot, newRoot); err != nil {
+			_ = os.Remove(newRoot)
 			rollbackBranches()
-			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed moving %s: %s", ws.Repos[i].Name, err.Error()))}
 		}
 	}
+	// Remove old parent directory (should be empty now).
+	_ = os.Remove(oldRoot)
 
 	// rollbackMoves undoes all worktree moves.
 	rollbackMoves := func() {
-		if ws.IsMultiRepo() {
-			_ = os.MkdirAll(oldRoot, 0o755)
-			for i := range ws.Worktrees {
-				_ = git.MoveWorkspace(ws.Repos[i].Path, filepath.Join(newRoot, ws.Repos[i].Name), ws.Worktrees[i].Root)
-			}
-			_ = os.Remove(newRoot)
-		} else {
-			_ = git.MoveWorkspace(ws.Repos[0].Path, newRoot, oldRoot)
+		_ = os.MkdirAll(oldRoot, 0o755)
+		for i := range ws.Worktrees {
+			_ = git.MoveWorkspace(ws.Repos[i].Path, filepath.Join(newRoot, ws.Repos[i].Name), ws.Worktrees[i].Root)
 		}
+		_ = os.Remove(newRoot)
 	}
 
 	// 6. Update store.
@@ -145,11 +133,7 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	stored.Name = newName
 	for i := range stored.Worktrees {
 		stored.Worktrees[i].Branch = newBranch
-		if ws.IsMultiRepo() {
-			stored.Worktrees[i].Root = filepath.Join(newRoot, stored.Repos[i].Name)
-		} else {
-			stored.Worktrees[i].Root = newRoot
-		}
+		stored.Worktrees[i].Root = filepath.Join(newRoot, stored.Repos[i].Name)
 	}
 	if err := a.workspaces.Save(stored); err != nil {
 		rollbackMoves()
@@ -174,12 +158,8 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		if string(ws.ID()) == oldWsID {
 			ws.Name = newWs.Name
 			for i := range ws.Worktrees {
+				ws.Worktrees[i].Root = filepath.Join(newRoot, ws.Repos[i].Name)
 				ws.Worktrees[i].Branch = newBranch
-				if newWs.IsMultiRepo() {
-					ws.Worktrees[i].Root = filepath.Join(newRoot, ws.Repos[i].Name)
-				} else {
-					ws.Worktrees[i].Root = newRoot
-				}
 			}
 			ws.OpenTabs = nil
 		}
@@ -189,18 +169,18 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		a.dirtyWorkspaces[newID] = true
 	}
 	if a.fileWatcher != nil {
-		a.fileWatcher.Unwatch(oldRoot)
-		_ = a.fileWatcher.Watch(newWs.Root())
+		a.fileWatcher.Unwatch(oldPrimaryRoot)
+		_ = a.fileWatcher.Watch(newWs.PrimaryWorktreeRoot())
 	}
 	if a.permissionWatcher != nil {
 		a.permissionWatcher.Unwatch(oldRoot)
 		_ = a.permissionWatcher.Watch(newWs.Root())
 	}
 	if a.statusManager != nil {
-		a.statusManager.Invalidate(oldRoot)
+		a.statusManager.Invalidate(oldPrimaryRoot)
 	}
 	if a.dashboard != nil {
-		a.dashboard.InvalidateStatus(oldRoot)
+		a.dashboard.InvalidateStatus(oldPrimaryRoot)
 	}
 
 	// 8. Persist tab state, toast, reload, and relaunch agents.
@@ -397,6 +377,7 @@ func (a *App) handleAddReposToWorkspace(msg messages.AddReposToWorkspace) tea.Cm
 
 	return func() tea.Msg {
 		branch := ws.Branch()
+		oldID := string(ws.ID())
 
 		for _, repo := range newRepos {
 			// Check if branch already exists in the new repo
@@ -407,14 +388,8 @@ func (a *App) handleAddReposToWorkspace(msg messages.AddReposToWorkspace) tea.Cm
 			}
 		}
 
-		// Determine workspace root for new worktrees
-		var wsRoot string
-		if ws.IsMultiRepo() {
-			wsRoot = ws.Root() // Parent of all worktrees
-		} else {
-			// Single-repo becoming multi-repo: use parent of current worktree
-			wsRoot = filepath.Dir(ws.Worktrees[0].Root)
-		}
+		// Determine workspace root for new worktrees (uniform layout: always parent)
+		wsRoot := ws.Root()
 
 		// Fetch default base and create worktree for each new repo
 		for _, repo := range newRepos {
@@ -444,6 +419,14 @@ func (a *App) handleAddReposToWorkspace(msg messages.AddReposToWorkspace) tea.Cm
 		if err := a.workspaces.Save(ws); err != nil {
 			return messages.ReposAddFailed{
 				Err: fmt.Errorf("failed to save workspace: %w", err),
+			}
+		}
+
+		// Update registry if workspace ID changed (e.g. single-repo → multi-repo)
+		newID := string(ws.ID())
+		if oldID != newID {
+			if err := a.registry.UpdateWorkspace(oldID, ws.Name, newID); err != nil {
+				logging.Warn("Failed to update registry after adding repos: %v", err)
 			}
 		}
 

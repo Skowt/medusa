@@ -220,7 +220,7 @@ func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentW
 	}
 
 	// Git changes summary
-	root := ws.Root()
+	root := ws.PrimaryWorktreeRoot()
 	if status, ok := m.statusCache[root]; ok && status != nil && !status.Clean {
 		gitSummary := formatGitSummary(status)
 		if gitSummary != "" {

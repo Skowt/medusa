@@ -125,14 +125,20 @@ func (w Workspace) ID() WorkspaceID {
 	return workspaceIDFromIdentity(workspaceIdentity(w.Repos[0].Path, w.Root()))
 }
 
-// Root returns the primary worktree root (or group workspace root for multi-repo)
+// Root returns the workspace root directory (parent of all worktrees).
+// This is always the workspace-level directory, never a git repo itself.
 func (w Workspace) Root() string {
 	if len(w.Worktrees) == 0 {
 		return ""
 	}
-	if w.IsMultiRepo() {
-		// For multi-repo, root is the parent directory of all worktrees
-		return filepath.Dir(w.Worktrees[0].Root)
+	return filepath.Dir(w.Worktrees[0].Root)
+}
+
+// PrimaryWorktreeRoot returns the first worktree's root directory.
+// Use this for git operations (status, diff) and terminal CWD, since Root() is not a git repo.
+func (w Workspace) PrimaryWorktreeRoot() string {
+	if len(w.Worktrees) == 0 {
+		return ""
 	}
 	return w.Worktrees[0].Root
 }

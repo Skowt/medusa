@@ -70,23 +70,25 @@ func TestRenameWorkspace_UpdatesPermissionWatcher(t *testing.T) {
 
 	worktreeDir := normalizePath(t.TempDir())
 	oldName := "old-feature"
-	oldRoot := filepath.Join(worktreeDir, oldName)
-	runGit(t, repo, "worktree", "add", "--no-track", "-b", oldName, oldRoot, "main")
+	repoName := filepath.Base(repo)
+	worktreePath := filepath.Join(worktreeDir, oldName, repoName)
+	runGit(t, repo, "worktree", "add", "--no-track", "-b", oldName, worktreePath, "main")
 
 	// Persist workspace into the store so handleRenameWorkspace can Load it.
-	ws := data.NewWorkspace(oldName, oldName, "main", repo, oldRoot)
+	ws := data.NewWorkspace(oldName, oldName, "main", repo, worktreePath)
 	ws.Created = time.Now()
 	ws.Runtime = data.RuntimeLocalWorktree
 	if err := app.workspaces.Save(ws); err != nil {
 		t.Fatalf("Save workspace: %v", err)
 	}
 
-	// Register the old root with the permission watcher.
-	if err := pw.Watch(oldRoot); err != nil {
-		t.Fatalf("Watch old root: %v", err)
+	// Register the workspace root with the permission watcher.
+	wsRoot := ws.Root() // parent of worktree: .../worktreeDir/old-feature
+	if err := pw.Watch(wsRoot); err != nil {
+		t.Fatalf("Watch workspace root: %v", err)
 	}
-	if !pw.IsWatching(oldRoot) {
-		t.Fatal("expected permission watcher to be watching old root before rename")
+	if !pw.IsWatching(wsRoot) {
+		t.Fatal("expected permission watcher to be watching workspace root before rename")
 	}
 
 	// Rename the workspace.
@@ -100,8 +102,8 @@ func TestRenameWorkspace_UpdatesPermissionWatcher(t *testing.T) {
 	}
 
 	newRoot := filepath.Join(worktreeDir, newName)
-	if pw.IsWatching(oldRoot) {
-		t.Errorf("permission watcher still watching old root %s after rename", oldRoot)
+	if pw.IsWatching(wsRoot) {
+		t.Errorf("permission watcher still watching old root %s after rename", wsRoot)
 	}
 	if !pw.IsWatching(newRoot) {
 		t.Errorf("permission watcher not watching new root %s after rename", newRoot)

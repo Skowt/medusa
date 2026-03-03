@@ -167,7 +167,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// also runs inside the sandbox.
 	if opts.Isolated {
 		var gitDirs []string
-		if gd, err := git.ResolveWorktreeGitDir(ws.Root()); err == nil {
+		if gd, err := git.ResolveWorktreeGitDir(ws.PrimaryWorktreeRoot()); err == nil {
 			gitDirs = append(gitDirs, gd)
 		}
 		for _, root := range ws.SecondaryRoots() {
