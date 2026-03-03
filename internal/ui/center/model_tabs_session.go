@@ -193,6 +193,9 @@ func (m *Model) RestartActiveTab() tea.Cmd {
 		sessionName = tab.Agent.Session
 	}
 	claudeSessionID := tab.ClaudeSessionID
+	tabAllowEdits := tab.AllowEdits
+	tabIsolated := tab.Isolated
+	tabSkipPerms := tab.SkipPermissions
 	tab.mu.Unlock()
 	if running {
 		return func() tea.Msg {
@@ -225,18 +228,18 @@ func (m *Model) RestartActiveTab() tea.Cmd {
 	assistant := tab.Assistant
 
 	return func() tea.Msg {
-		// KillSession is synchronous: it calls cmd.Run() which blocks until the
-		// tmux server processes the kill and returns. By the time it completes,
-		// the session is fully removed from tmux's perspective.
-		// The subsequent CreateAgentWithTags uses `new-session -Ads` which is
-		// atomic (attach-if-exists, create-if-not), providing an additional
-		// safety net in the unlikely event of cleanup lag.
 		_ = tmux.KillSession(sessionName, tmuxOpts)
 
-		// Build agent options: resume the Claude conversation if we have a session ID.
-		agentOpts := appPty.AgentOptions{}
+		// Build agent options: resume the Claude conversation if we have a session ID,
+		// and use the tab's per-tab settings.
+		agentOpts := appPty.AgentOptions{
+			AllowEdits:      tabAllowEdits,
+			Isolated:        tabIsolated,
+			SkipPermissions: tabSkipPerms,
+		}
 		if claudeSessionID != "" {
-			agentOpts = appPty.AgentOptions{ClaudeSessionID: claudeSessionID, Resume: true}
+			agentOpts.ClaudeSessionID = claudeSessionID
+			agentOpts.Resume = true
 		}
 
 		tags := tmux.SessionTags{
@@ -312,13 +315,22 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		if i <= activeIdx {
 			lastBeforeActive = restoreCount
 		}
+		// Migration: tabs without per-tab settings get defaults (AllowEdits=true)
+		tabAllowEdits := tab.AllowEdits
+		if !tab.AllowEdits && !tab.Isolated && !tab.SkipPermissions {
+			tabAllowEdits = true // Default for migrated tabs
+		}
 		if status == "stopped" {
-			m.addStoppedTab(ws, tab)
+			info := tab
+			info.AllowEdits = tabAllowEdits
+			m.addStoppedTab(ws, info)
 			restoreCount++
 			continue
 		}
 		if status == "detached" {
-			m.addDetachedTab(ws, tab)
+			info := tab
+			info.AllowEdits = tabAllowEdits
+			m.addDetachedTab(ws, info)
 			restoreCount++
 			// Auto-reattach: find the tab we just added and trigger reattach
 			tabs := m.tabsByWorkspace[wsID]
@@ -329,7 +341,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			continue
 		}
 		restoreCount++
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, false, tab.ClaudeSessionID))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, false, tab.ClaudeSessionID, tabAllowEdits, tab.Isolated, tab.SkipPermissions))
 	}
 	if restoreCount > 0 {
 		desired := lastBeforeActive
@@ -383,12 +395,21 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 			existing[sessionName] = struct{}{}
 		}
 		status := strings.ToLower(strings.TrimSpace(tab.Status))
+		// Migration: tabs without per-tab settings get defaults
+		tabAllowEdits := tab.AllowEdits
+		if !tab.AllowEdits && !tab.Isolated && !tab.SkipPermissions {
+			tabAllowEdits = true
+		}
 		if status == "stopped" {
-			m.addStoppedTab(ws, tab)
+			info := tab
+			info.AllowEdits = tabAllowEdits
+			m.addStoppedTab(ws, info)
 			continue
 		}
 		if status == "detached" {
-			m.addDetachedTab(ws, tab)
+			info := tab
+			info.AllowEdits = tabAllowEdits
+			m.addDetachedTab(ws, info)
 			// Auto-reattach: find the tab we just added and trigger reattach
 			wsTabs := m.tabsByWorkspace[wsID]
 			if len(wsTabs) > 0 {
@@ -397,7 +418,7 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 			}
 			continue
 		}
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, tabAllowEdits, tab.Isolated, tab.SkipPermissions))
 	}
 	return safeBatch(cmds...)
 }
@@ -434,6 +455,9 @@ func (m *Model) addStoppedTab(ws *data.Workspace, info data.TabInfo) {
 		Detached:        false,
 		Running:         false,
 		Terminal:        term,
+		AllowEdits:      info.AllowEdits,
+		Isolated:        info.Isolated,
+		SkipPermissions: info.SkipPermissions,
 	}
 	wsID := string(ws.ID())
 	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)
@@ -468,6 +492,9 @@ func (m *Model) addDetachedTab(ws *data.Workspace, info data.TabInfo) {
 		Detached:        true,
 		Running:         false,
 		Terminal:        term,
+		AllowEdits:      info.AllowEdits,
+		Isolated:        info.Isolated,
+		SkipPermissions: info.SkipPermissions,
 	}
 	wsID := string(ws.ID())
 	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)

@@ -17,11 +17,7 @@ func setupSelectionModel(t *testing.T) (*Model, *Tab) {
 		t.Fatalf("default config: %v", err)
 	}
 	m := New(cfg)
-	wt := &data.Workspace{
-		Name: "wt",
-		Repo: "/tmp/repo",
-		Root: "/tmp/repo",
-	}
+	wt := data.NewWorkspace("wt", "", "", "/tmp/repo", "/tmp/repo")
 	m.SetWorkspace(wt)
 	wtID := string(wt.ID())
 	tab := &Tab{
@@ -127,11 +123,7 @@ func TestTabBarClickPlusButton(t *testing.T) {
 		t.Fatalf("default config: %v", err)
 	}
 	m := New(cfg)
-	wt := &data.Workspace{
-		Name: "wt",
-		Repo: "/tmp/repo",
-		Root: "/tmp/repo",
-	}
+	wt := data.NewWorkspace("wt", "", "", "/tmp/repo", "/tmp/repo")
 	m.SetWorkspace(wt)
 	wtID := string(wt.ID())
 	tab := &Tab{

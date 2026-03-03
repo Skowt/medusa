@@ -70,7 +70,7 @@ func (r *ScriptRunner) LoadConfig(repoPath string) (*WorkspaceConfig, error) {
 
 // RunSetup runs the setup scripts for a workspace
 func (r *ScriptRunner) RunSetup(ws *data.Workspace) error {
-	config, err := r.LoadConfig(ws.Repo)
+	config, err := r.LoadConfig(ws.PrimaryRepo().Path)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (r *ScriptRunner) RunSetup(ws *data.Workspace) error {
 	// Run each setup command sequentially
 	for _, cmdStr := range config.SetupWorkspace {
 		cmd := exec.Command("sh", "-c", cmdStr)
-		cmd.Dir = ws.Root
+		cmd.Dir = ws.Root()
 		cmd.Env = env
 
 		var stderr bytes.Buffer
@@ -96,7 +96,7 @@ func (r *ScriptRunner) RunSetup(ws *data.Workspace) error {
 
 // RunScript runs a script for a workspace
 func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*exec.Cmd, error) {
-	config, err := r.LoadConfig(ws.Repo)
+	config, err := r.LoadConfig(ws.PrimaryRepo().Path)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 	env := r.envBuilder.BuildEnv(ws)
 
 	cmd := exec.Command("sh", "-c", cmdStr)
-	cmd.Dir = ws.Root
+	cmd.Dir = ws.Root()
 	cmd.Env = env
 	SetProcessGroup(cmd)
 
@@ -136,14 +136,14 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 	}
 
 	r.mu.Lock()
-	r.running[ws.Root] = cmd
+	r.running[ws.Root()] = cmd
 	r.mu.Unlock()
 
 	// Monitor in background
 	safego.Go("process.script_wait", func() {
 		_ = cmd.Wait()
 		r.mu.Lock()
-		delete(r.running, ws.Root)
+		delete(r.running, ws.Root())
 		r.mu.Unlock()
 	})
 
@@ -153,7 +153,7 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 // Stop stops the running script for a workspace
 func (r *ScriptRunner) Stop(ws *data.Workspace) error {
 	r.mu.Lock()
-	cmd, ok := r.running[ws.Root]
+	cmd, ok := r.running[ws.Root()]
 	r.mu.Unlock()
 
 	if !ok {
@@ -171,7 +171,7 @@ func (r *ScriptRunner) Stop(ws *data.Workspace) error {
 func (r *ScriptRunner) IsRunning(ws *data.Workspace) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	_, ok := r.running[ws.Root]
+	_, ok := r.running[ws.Root()]
 	return ok
 }
 

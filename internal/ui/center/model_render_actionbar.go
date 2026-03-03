@@ -45,8 +45,8 @@ func (m *Model) getDefaultBranch() string {
 	}
 
 	// If Base is set and not "HEAD", use it (cleaned up)
-	if m.workspace.Base != "" && m.workspace.Base != "HEAD" {
-		base := m.workspace.Base
+	if m.workspace.Base() != "" && m.workspace.Base() != "HEAD" {
+		base := m.workspace.Base()
 		base = strings.TrimPrefix(base, "origin/")
 		return base
 	}
@@ -61,8 +61,8 @@ func (m *Model) getBaseBranchDisplay() string {
 	if m.workspace == nil {
 		return "main"
 	}
-	if m.workspace.Base != "" && m.workspace.Base != "HEAD" {
-		base := m.workspace.Base
+	if m.workspace.Base() != "" && m.workspace.Base() != "HEAD" {
+		base := m.workspace.Base()
 		if strings.HasPrefix(base, "origin/") {
 			return base
 		}
@@ -95,9 +95,9 @@ func (m *Model) renderInfoBar(width int) string {
 	baseBranchDisplay := m.getBaseBranchDisplay()
 	var branchInfo string
 	if ws.IsMainBranch() {
-		branchInfo = branchStyle.Render(ws.Branch)
+		branchInfo = branchStyle.Render(ws.Branch())
 	} else {
-		branchInfo = mutedStyle.Render(baseBranchDisplay) + mutedStyle.Render(" ← ") + branchStyle.Render(ws.Branch)
+		branchInfo = mutedStyle.Render(baseBranchDisplay) + mutedStyle.Render(" ← ") + branchStyle.Render(ws.Branch())
 	}
 
 	// Build action buttons (right side)
@@ -139,7 +139,7 @@ func (m *Model) renderInfoBar(width int) string {
 		availableForPath = 10
 	}
 
-	pathInfo := shortenPath(ws.Root, availableForPath)
+	pathInfo := shortenPath(ws.Root(), availableForPath)
 	pathRendered := pathStyle.Render(pathInfo)
 
 	// Left content: branch │ path [Copy] [IDE]
@@ -263,11 +263,11 @@ func (m *Model) actionBarCommand(kind actionBarButtonKind) tea.Cmd {
 	switch kind {
 	case actionBarCopyDir:
 		return func() tea.Msg {
-			return messages.ActionBarCopyDir{WorkspaceRoot: ws.Root}
+			return messages.ActionBarCopyDir{WorkspaceRoot: ws.Root()}
 		}
 	case actionBarOpenIDE:
 		return func() tea.Msg {
-			return messages.ActionBarOpenIDE{WorkspaceRoot: ws.Root}
+			return messages.ActionBarOpenIDE{WorkspaceRoot: ws.Root()}
 		}
 	case actionBarCommit:
 		// Send commit instruction to the agent (use \r for Enter key)
@@ -279,7 +279,7 @@ func (m *Model) actionBarCommand(kind actionBarButtonKind) tea.Cmd {
 		}
 		// Send merge instruction to the agent (use \r for Enter key)
 		// Format: git -C {repo path} merge {branch name}
-		instruction := "Merge this branch to the main branch by running git -C " + ws.Repo + " merge " + ws.Branch + "\r"
+		instruction := "Merge this branch to the main branch by running git -C " + ws.PrimaryRepo().Path + " merge " + ws.Branch() + "\r"
 		m.sendInputToActiveTab(instruction)
 		return nil
 	}
@@ -342,10 +342,6 @@ func (m *Model) sendInputToActiveTab(text string) {
 // infoBarHeight returns the height of the info bar (2 if visible: content + separator, 0 otherwise).
 func (m *Model) infoBarHeight() int {
 	if m.workspace == nil {
-		return 0
-	}
-	tabs := m.getTabs()
-	if len(tabs) == 0 {
 		return 0
 	}
 	return 2 // Main line + separator line

@@ -197,10 +197,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 // centerButtonCount returns the number of buttons shown on the current center screen
 func (a *App) centerButtonCount() int {
 	if a.showWelcome {
-		return 2 // [+ Add Project], [Settings]
-	}
-	if a.activeGroup != nil && a.activeGroupWs == nil && a.activeWorkspace == nil {
-		return 2 // [Edit repos], [New workspace]
+		return 2 // [+ New Workspace], [Settings]
 	}
 	return 0
 }
@@ -210,18 +207,9 @@ func (a *App) activateCenterButton() tea.Cmd {
 	if a.showWelcome {
 		switch a.centerBtnIndex {
 		case 0:
-			return func() tea.Msg { return messages.ShowAddProjectDialog{} }
+			return func() tea.Msg { return messages.ShowCreateWorkspaceDialog{} }
 		case 1:
 			return func() tea.Msg { return messages.ShowSettingsDialog{} }
-		}
-	} else if a.activeGroup != nil && a.activeGroupWs == nil && a.activeWorkspace == nil {
-		switch a.centerBtnIndex {
-		case 0:
-			group := a.activeGroup
-			return func() tea.Msg { return messages.ShowEditGroupReposDialog{Group: group} }
-		case 1:
-			group := a.activeGroup
-			return func() tea.Msg { return messages.ShowCreateGroupWorkspaceDialog{Group: group} }
 		}
 	}
 	return nil

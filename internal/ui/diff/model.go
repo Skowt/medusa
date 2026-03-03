@@ -74,11 +74,11 @@ func (m *Model) loadDiff() tea.Cmd {
 
 		switch {
 		case change.Kind == git.ChangeUntracked:
-			diff, err = git.GetUntrackedFileContent(ws.Root, change.Path)
+			diff, err = git.GetUntrackedFileContent(ws.Root(), change.Path)
 		case mode == git.DiffModeBranch:
-			diff, err = git.GetBranchFileDiff(ws.Root, change.Path)
+			diff, err = git.GetBranchFileDiff(ws.Root(), change.Path)
 		default:
-			diff, err = git.GetFileDiff(ws.Root, change.Path, mode)
+			diff, err = git.GetFileDiff(ws.Root(), change.Path, mode)
 		}
 
 		return diffLoaded{diff: diff, err: err}

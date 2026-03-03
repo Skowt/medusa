@@ -30,11 +30,9 @@ import (
 
 // DialogID constants
 const (
-	DialogAddProject      = "add_project"
 	DialogCreateWorkspace = "create_workspace"
 	DialogDeleteWorkspace = "delete_workspace"
-	DialogRemoveProject   = "remove_project"
-	DialogSelectAssistant = "select_assistant"
+	DialogCustomizeTab    = "customize_tab"
 	DialogQuit            = "quit"
 	DialogCleanupTmux     = "cleanup_tmux"
 	DialogSetProfile      = "set_profile"
@@ -42,17 +40,14 @@ const (
 	DialogRenameProfile   = "rename_profile"
 	DialogCreateProfile   = "create_profile"
 	DialogDeleteProfile   = "delete_profile"
-	DialogCommit                = "commit"
-	DialogCreateGroup           = "create_group"
-	DialogAddGroupRepo          = "add_group_repo"
-	DialogCreateGroupWorkspace  = "create_group_workspace"
-	DialogDeleteGroup           = "delete_group"
-	DialogDeleteGroupWorkspace  = "delete_group_workspace"
-	DialogSetGroupProfile       = "set_group_profile"
-	DialogRenameGroupWorkspace  = "rename_group_workspace"
-	DialogRenameGroup           = "rename_group"
-	DialogSelectBranchMode      = "select_branch_mode"
-	DialogCustomBranch          = "custom_branch"
+	DialogCommit          = "commit"
+	DialogSelectBranchMode = "select_branch_mode"
+	DialogCustomBranch     = "custom_branch"
+	DialogAddRepos              = "add_repos"
+	DialogAddReposToWorkspace   = "add_repos_to_workspace"
+	DialogSelectRecentRepos     = "select_recent_repos"
+	DialogCloseTab              = "close_tab"
+	DialogSetProfileForCreate   = "set_profile_for_create"
 )
 
 // Prefix mode constants
@@ -73,16 +68,14 @@ type App struct {
 	workspaces *data.WorkspaceStore
 
 	// State
-	projects         []data.Project
-	groups           []data.ProjectGroup
+	allWorkspaces    []*data.Workspace
+	recents          *data.RecentsStore
 	activeWorkspace  *data.Workspace
-	activeProject    *data.Project
-	activeGroup      *data.ProjectGroup
-	activeGroupWs    *data.GroupWorkspace
+	gitStatusRR      int // round-robin index for git status polling
 	focusedPane      messages.PaneType
 	showWelcome      bool
 	monitorMode      bool
-	monitorFilter    string // "" means "All", otherwise filter by project key (repo path)
+	monitorFilter    string
 	monitorLayoutKey string
 	monitorCanvas    *compositor.Canvas
 
@@ -116,15 +109,12 @@ type App struct {
 	creationOverlay *common.ProgressOverlay
 
 	// Dialog context
-	dialogProject       *data.Project
 	dialogWorkspace     *data.Workspace
 	dialogDefaultName   string
-	dialogWorkspaceRoot string // For commit dialog
-	dialogProfile       string // For rename/delete profile dialogs
-	dialogGroupName     string   // For group creation wizard
-	dialogGroupRepos    []string // For group creation wizard (between file picker and profile picker)
-	dialogGroup         *data.ProjectGroup
-	dialogGroupWs       *data.GroupWorkspace
+	dialogWorkspaceRoot string            // For commit dialog
+	dialogProfile       string            // For rename/delete profile dialogs
+	dialogCloseTabIdx   int               // For close tab confirmation
+	dialogRecents       []data.RecentEntry // Snapshot of recents for select dialog
 
 	// Process management
 	scripts *process.ScriptRunner
@@ -168,22 +158,13 @@ type App struct {
 	tmuxActiveWorkspaceIDs map[string]bool
 	sessionActivityStates  map[string]*sessionActivityState // Per-session hysteresis state
 
-	// Auto-start agent: stores workspace root for post-creation auto-launch.
-	// pendingAutoLaunch is set in handleWorkspaceCreated and consumed by
-	// handleProjectsLoaded once the workspace appears in the loaded projects.
-	// pendingAgentLaunch is set by handleProjectsLoaded to tell
-	// handleWorkspaceActivated to launch an agent for this specific workspace.
-	pendingAutoLaunch     string
-	pendingAgentLaunch    string
-	pendingNewProjectPath string // path of newly added project awaiting profile selection
+	// Auto-start agent
+	pendingAutoLaunch  string // workspace root for post-creation auto-launch
+	pendingAgentLaunch string // workspace root for activation auto-launch
 
-	// Group workspace auto-start: stores the group workspace name for post-creation auto-launch.
-	pendingGroupAutoLaunch string // group workspace name awaiting activation
-
-	// Profile gate: stores a pending agent launch while the profile dialog
-	// is shown. Consumed by handleSetProfile after the user sets a profile.
-	pendingProfileLaunch     string // assistant name awaiting profile
-	pendingProfileLaunchRoot string // workspace root awaiting profile
+	// Profile gate
+	pendingProfileLaunch     string
+	pendingProfileLaunchRoot string
 
 	// Workspace persistence debounce
 	dirtyWorkspaces map[string]bool
@@ -295,6 +276,7 @@ func New(version, commit, date string) (*App, error) {
 
 	registry := data.NewRegistry(cfg.Paths.RegistryPath)
 	workspaces := data.NewWorkspaceStore(cfg.Paths.MetadataRoot)
+	recents := data.NewRecentsStore(cfg.Paths.RecentsPath)
 	scripts := process.NewScriptRunner(cfg.PortStart, cfg.PortRangeSize)
 
 	// Create status manager (callback will be nil, we use it for caching only)
@@ -324,6 +306,7 @@ func New(version, commit, date string) (*App, error) {
 		config:                 cfg,
 		registry:               registry,
 		workspaces:             workspaces,
+		recents:                recents,
 		scripts:                scripts,
 		statusManager:          statusManager,
 		fileWatcher:            fileWatcher,
@@ -396,8 +379,7 @@ func New(version, commit, date string) (*App, error) {
 // Init initializes the application
 func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{
-		a.loadProjects(),
-		a.loadGroups(),
+		a.loadWorkspaces(),
 		a.dashboard.Init(),
 		a.center.Init(),
 		a.sidebar.Init(),
@@ -536,14 +518,11 @@ func applyTmuxEnvFromConfig(cfg *config.Config, force bool) {
 func (a *App) tmuxSyncWorkspaces() []*data.Workspace {
 	if a.monitorMode {
 		var targets []*data.Workspace
-		for i := range a.projects {
-			project := &a.projects[i]
-			if a.monitorFilter != "" && project.Path != a.monitorFilter {
+		for _, ws := range a.allWorkspaces {
+			if a.monitorFilter != "" && ws.Root() != a.monitorFilter {
 				continue
 			}
-			for j := range project.Workspaces {
-				targets = append(targets, &project.Workspaces[j])
-			}
+			targets = append(targets, ws)
 		}
 		return targets
 	}

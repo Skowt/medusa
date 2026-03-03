@@ -6,123 +6,83 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/git"
 	"github.com/andyrewlee/medusa/internal/logging"
 	"github.com/andyrewlee/medusa/internal/messages"
 	"github.com/andyrewlee/medusa/internal/ui/common"
-	"github.com/andyrewlee/medusa/internal/ui/sidebar"
 	"github.com/andyrewlee/medusa/internal/update"
 	"github.com/andyrewlee/medusa/internal/validation"
+	"github.com/andyrewlee/medusa/internal/ui/sidebar"
 )
 
 // handleDialogResult handles dialog completion
 func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
-	project := a.dialogProject
 	workspace := a.dialogWorkspace
 	defaultName := a.dialogDefaultName
 	workspaceRoot := a.dialogWorkspaceRoot
 	profile := a.dialogProfile
-	groupName := a.dialogGroupName
-	groupRepos := a.dialogGroupRepos
-	group := a.dialogGroup
-	groupWs := a.dialogGroupWs
 	a.dialog = nil
-	a.dialogProject = nil
 	a.dialogWorkspace = nil
 	a.dialogDefaultName = ""
 	a.dialogWorkspaceRoot = ""
 	a.dialogProfile = ""
-	// Only clear group state for terminal group dialogs
-	switch result.ID {
-	case DialogAddProject, DialogCreateGroup, DialogAddGroupRepo,
-		DialogCreateWorkspace, DialogSelectBranchMode, DialogCreateGroupWorkspace:
-		// Don't clear yet — wizard may continue (chained dialogs)
-	default:
-		a.dialogGroupName = ""
-		a.dialogGroupRepos = nil
-		a.dialogGroup = nil
-		a.dialogGroupWs = nil
-	}
 	logging.Debug("Dialog result: id=%s confirmed=%v value=%s", result.ID, result.Confirmed, result.Value)
 
 	if !result.Confirmed {
 		a.pendingProfileLaunch = ""
 		a.pendingProfileLaunchRoot = ""
 		logging.Debug("Dialog cancelled")
-		// If we were adding a new project and the user cancelled profile selection,
-		// remove the project since a profile is required.
-		if a.pendingNewProjectPath != "" {
-			path := a.pendingNewProjectPath
-			a.pendingNewProjectPath = ""
-			cmds := []tea.Cmd{
-				a.removeProjectByPath(path),
-			}
-			return a.safeBatch(cmds...)
-		}
 		// Return to profile manager if we were creating/renaming/deleting a profile
 		if result.ID == DialogCreateProfile || result.ID == DialogRenameProfile || result.ID == DialogDeleteProfile {
 			return func() tea.Msg { return common.ShowProfileManager{} }
-		}
-		// Cancelled a group wizard step — clean up group state
-		if a.dialogGroupName != "" {
-			a.dialogGroupName = ""
 		}
 		return nil
 	}
 
 	switch result.ID {
-	case DialogAddProject:
-		// Unified flow: multi-select picker returns Values
-		if len(result.Values) == 1 {
-			// Single repo → add as project
-			path := validation.SanitizeInput(result.Values[0])
-			logging.Info("Adding single project from unified dialog: %s", path)
-			if err := validation.ValidateProjectPath(path); err != nil {
-				logging.Warn("Project path validation failed: %v", err)
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating project path"}
-				}
-			}
-			return func() tea.Msg {
-				return messages.AddProject{Path: path}
-			}
-		} else if len(result.Values) >= 2 {
-			// Multiple repos → create group (show name dialog first)
-			logging.Info("Creating group from unified dialog with %d repos", len(result.Values))
-			a.dialogGroupRepos = result.Values
-			a.dialog = common.NewInputDialog(DialogCreateGroup, "Name Your Workspace", "")
-			a.dialog.SetMessage("Enter a name for the workspace.")
-			a.dialog.SetInputValidate(func(s string) string {
-				s = validation.SanitizeInput(s)
-				if s == "" {
-					return ""
-				}
-				if err := validation.ValidateWorkspaceName(s); err != nil {
-					return err.Error()
-				}
-				return ""
-			})
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
+	case DialogSelectRecentRepos:
+		// Use the snapshot stored when the dialog was opened to avoid race conditions
+		recents := a.dialogRecents
+		a.dialogRecents = nil
+		if result.Index >= len(recents) {
+			// User chose "Select repos…" — open file picker
+			a.showRepoFilePicker()
 			return nil
-		} else if result.Value != "" {
-			// Legacy: non-multi-select fallback
-			path := validation.SanitizeInput(result.Value)
-			logging.Info("Adding project from dialog: %s", path)
-			if err := validation.ValidateProjectPath(path); err != nil {
-				logging.Warn("Project path validation failed: %v", err)
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating project path"}
-				}
+		}
+		// User chose a recent combo — use those repos directly
+		entry := recents[result.Index]
+		repos := make([]data.RepoRef, len(entry.Repos))
+		copy(repos, entry.Repos)
+		a.showNameWorkspaceDialog(repos)
+		return nil
+
+	case DialogAddRepos:
+		// File picker returns selected repos
+		if len(result.Values) > 0 {
+			repos := make([]data.RepoRef, len(result.Values))
+			for i, p := range result.Values {
+				repos[i] = data.RepoRef{Path: p, Name: filepath.Base(p)}
 			}
+			a.showNameWorkspaceDialog(repos)
+			return nil
+		}
+
+	case DialogAddReposToWorkspace:
+		// File picker returns repos to add to existing workspace
+		if workspace != nil && len(result.Values) > 0 {
+			repos := make([]data.RepoRef, len(result.Values))
+			for i, p := range result.Values {
+				repos[i] = data.RepoRef{Path: p, Name: filepath.Base(p)}
+			}
+			ws := workspace
 			return func() tea.Msg {
-				return messages.AddProject{Path: path}
+				return messages.AddReposToWorkspace{Workspace: ws, Repos: repos}
 			}
 		}
 
 	case DialogCreateWorkspace:
-		if project != nil {
+		if workspace != nil && len(workspace.Repos) > 0 {
 			name := validation.SanitizeInput(result.Value)
 			if name == "" {
 				name = defaultName
@@ -132,66 +92,41 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 					return messages.Error{Err: err, Context: "validating workspace name"}
 				}
 			}
-			// Remember checkbox states for next workspace creation
-			allowEdits := result.CheckboxValue
-			isolated := result.Checkbox2Value
-			skipPermissions := result.Checkbox3Value
-			a.config.UI.LastAllowEdits = allowEdits
-			a.config.UI.LastIsolated = isolated
-			a.config.UI.LastSkipPermissions = skipPermissions
-			_ = a.config.SaveUISettings()
-			// Re-set dialog state for chaining and show branch mode picker
-			a.dialogProject = project
+			// Re-set dialog state for chaining and show profile picker
+			a.dialogWorkspace = workspace
 			a.dialogDefaultName = name
-			a.dialog = common.NewSelectDialog(
-				DialogSelectBranchMode,
-				"Base Branch",
-				"Which branch should this worktree be based on?",
-				[]string{"Latest remote main", "Checked out branch", "Custom branch"},
-			)
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
+			a.showProfilePickerForCreate()
 			return nil
 		}
 
 	case DialogDeleteWorkspace:
-		if project != nil && workspace != nil {
+		if workspace != nil {
 			ws := workspace
 			return func() tea.Msg {
 				return messages.DeleteWorkspace{
-					Project:   project,
 					Workspace: ws,
 				}
 			}
 		}
 
-	case DialogRemoveProject:
-		if project != nil {
-			proj := project
-			return func() tea.Msg {
-				return messages.RemoveProject{
-					Project: proj,
-				}
-			}
-		}
-
-	case DialogSelectAssistant, "agent-picker":
+	case DialogCustomizeTab:
 		if a.activeWorkspace != nil {
-			assistant := result.Value
-			if err := validation.ValidateAssistant(assistant); err != nil {
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating assistant"}
-				}
-			}
-			// Remember the selected agent as the default for future launches
-			a.config.UI.DefaultAgent = assistant
+			// Read checkbox values and save as last-used settings
+			allowEdits := result.CheckboxValue
+			isolated := result.Checkbox2Value
+			skipPerms := result.Checkbox3Value
+			a.config.UI.LastAllowEdits = allowEdits
+			a.config.UI.LastIsolated = isolated
+			a.config.UI.LastSkipPermissions = skipPerms
 			_ = a.config.SaveUISettings()
 			ws := a.activeWorkspace
 			return func() tea.Msg {
 				return messages.LaunchAgent{
-					Assistant: assistant,
-					Workspace: ws,
+					Assistant:       "claude",
+					Workspace:       ws,
+					AllowEdits:      allowEdits,
+					Isolated:        isolated,
+					SkipPermissions: skipPerms,
 				}
 			}
 		}
@@ -208,21 +143,51 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				}
 			}
 			ws := workspace
-			proj := project
 			return func() tea.Msg {
-				return messages.RenameWorkspace{Project: proj, Workspace: ws, NewName: name}
+				return messages.RenameWorkspace{Workspace: ws, NewName: name}
 			}
 		}
 
+	case DialogSetProfileForCreate:
+		if workspace != nil && len(workspace.Repos) > 0 {
+			if result.Value == common.NewProfileOption {
+				// User chose "New profile..." — show the input dialog, chain back
+				a.dialogWorkspace = workspace
+				a.dialogDefaultName = defaultName
+				a.dialog = common.NewInputDialog(DialogSetProfileForCreate, "Set Profile", "Default")
+				a.dialog.SetMessage("Profile isolates Claude settings (permissions, memory) for this workspace.")
+				a.dialog.SetSize(a.width, a.height)
+				a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+				a.dialog.Show()
+				return nil
+			}
+			selectedProfile := result.Value
+			if selectedProfile == "" {
+				selectedProfile = "Default"
+			}
+			workspace.Profile = selectedProfile
+			a.dialogWorkspace = workspace
+			a.dialogDefaultName = defaultName
+			a.dialog = common.NewSelectDialog(
+				DialogSelectBranchMode,
+				"Base Branch",
+				"Which branch should this worktree be based on?",
+				[]string{"Latest remote main", "Checked out branch", "Custom branch"},
+			)
+			a.dialog.SetSize(a.width, a.height)
+			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+			a.dialog.Show()
+			return nil
+		}
+
 	case DialogSetProfile:
-		a.pendingNewProjectPath = "" // profile selected (or existing project), clear pending state
-		if project != nil {
+		if workspace != nil {
 			if result.Value == common.NewProfileOption {
 				// User chose "New profile..." — show the input dialog
-				a.dialogProject = project
+				a.dialogWorkspace = workspace
 				a.dialogDefaultName = "Default"
 				a.dialog = common.NewInputDialog(DialogSetProfile, "Set Profile", "Default")
-				a.dialog.SetMessage("Profile isolates Claude settings (permissions, memory) for this project.")
+				a.dialog.SetMessage("Profile isolates Claude settings (permissions, memory) for this workspace.")
 				a.dialog.SetSize(a.width, a.height)
 				a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 				a.dialog.Show()
@@ -232,11 +197,11 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			if selectedProfile == "" {
 				selectedProfile = defaultName
 			}
-			proj := project
+			ws := workspace
 			return func() tea.Msg {
-				return messages.SetProfile{
-					Project: proj,
-					Profile: selectedProfile,
+				return messages.SetWorkspaceProfile{
+					Workspace: ws,
+					Profile:   selectedProfile,
 				}
 			}
 		}
@@ -272,6 +237,12 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			return messages.CreateProfile{Name: name}
 		}
 
+	case DialogCloseTab:
+		idx := a.dialogCloseTabIdx
+		return func() tea.Msg {
+			return messages.ConfirmCloseTab{Index: idx}
+		}
+
 	case DialogDeleteProfile:
 		if profile != "" {
 			p := profile
@@ -280,154 +251,33 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			}
 		}
 
-	// --- Group dialog results ---
-
-	case DialogCreateGroup:
-		name := validation.SanitizeInput(result.Value)
-		if name == "" {
-			return nil
-		}
-		// Group name entered — repos are already in dialogGroupRepos (from unified flow or edit)
-		repos := groupRepos
-		if len(repos) < 2 {
-			a.dialogGroupName = ""
-			a.dialogGroupRepos = nil
-			return a.toast.ShowError("A group needs at least 2 repos")
-		}
-		a.dialogGroupName = name
-
-		// Show profile picker
-		profiles := a.listProfiles()
-		if len(profiles) > 0 {
-			a.dialogGroupRepos = repos
-			a.dialog = common.NewProfilePicker(DialogSetGroupProfile, profiles, "")
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
-			return nil
-		}
-		// No profiles exist — create with default
-		a.dialogGroupName = ""
-		a.dialogGroupRepos = nil
-		return func() tea.Msg {
-			return messages.CreateGroup{Name: name, RepoPaths: repos, Profile: "Default"}
-		}
-
-	case DialogAddGroupRepo:
-		// Used for editing group repos (add/remove flow)
-		repos := result.Values
-		if len(repos) < 2 {
-			return a.toast.ShowError("A group needs at least 2 repos")
-		}
-		if group != nil {
-			grp := group
-			return func() tea.Msg {
-				return messages.UpdateGroupRepos{Group: grp, RepoPaths: repos}
-			}
-		}
-		return nil
-
-	case DialogCreateGroupWorkspace:
-		if group != nil {
-			name := validation.SanitizeInput(result.Value)
-			if name == "" {
-				name = defaultName
-			}
-			if err := validation.ValidateWorkspaceName(name); err != nil {
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating group workspace name"}
-				}
-			}
-			allowEdits := result.CheckboxValue
-			isolated := result.Checkbox2Value
-			skipPermissions := result.Checkbox3Value
-			a.config.UI.LastAllowEdits = allowEdits
-			a.config.UI.LastIsolated = isolated
-			a.config.UI.LastSkipPermissions = skipPermissions
-			_ = a.config.SaveUISettings()
-			// Re-set dialog state for chaining and show branch mode picker
-			a.dialogGroup = group
-			a.dialogDefaultName = name
-			a.dialog = common.NewSelectDialog(
-				DialogSelectBranchMode,
-				"Base Branch",
-				"Which branch should worktrees be based on?",
-				[]string{"Latest remote main", "Checked out branch", "Custom branch"},
-			)
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
-			return nil
-		}
-
 	case DialogSelectBranchMode:
-		allowEdits := a.config.UI.LastAllowEdits
-		isolated := a.config.UI.LastIsolated
-		skipPermissions := a.config.UI.LastSkipPermissions
-		if project != nil {
-			// Single workspace
+		if workspace != nil && len(workspace.Repos) > 0 {
 			name := defaultName
+			repos := workspace.Repos
+			wsProfile := workspace.Profile
 			switch result.Index {
 			case 0: // Latest remote main
 				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
 					"Fetching latest changes",
 					"Creating worktree",
 				})
-				a.creationOverlay.SetStepDetail(filepath.Base(project.Path))
+				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchRemoteBase(project, name, allowEdits, isolated, skipPermissions)
+				return a.fetchRemoteBase(repos, name, wsProfile)
 			case 1: // Checked out branch
 				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
 					"Resolving checked out branch",
 					"Creating worktree",
 				})
-				a.creationOverlay.SetStepDetail(filepath.Base(project.Path))
+				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchCheckedOutBase(project, name, allowEdits, isolated, skipPermissions)
+				return a.fetchCheckedOutBase(repos, name, wsProfile)
 			case 2: // Custom branch
-				a.dialogProject = project
+				a.dialogWorkspace = workspace
 				a.dialogDefaultName = name
 				a.dialog = common.NewInputDialog(DialogCustomBranch, "Custom Branch", "")
 				a.dialog.SetMessage("Branch will be looked up locally first, then on remote.")
-				a.dialog.SetSize(a.width, a.height)
-				a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-				a.dialog.Show()
-				return nil
-			}
-		} else if group != nil {
-			// Grouped workspace
-			name := defaultName
-			grpName := group.Name
-			switch result.Index {
-			case 0: // Latest remote main
-				return func() tea.Msg {
-					return messages.CreateGroupWorkspace{
-						GroupName:       grpName,
-						Name:            name,
-						AllowEdits:      allowEdits,
-						Isolated:        isolated,
-						SkipPermissions: skipPermissions,
-						LoadClaudeMD:    false,
-						BranchMode:      git.BranchModeRemoteMain,
-					}
-				}
-			case 1: // Checked out branch
-				return func() tea.Msg {
-					return messages.CreateGroupWorkspace{
-						GroupName:       grpName,
-						Name:            name,
-						AllowEdits:      allowEdits,
-						Isolated:        isolated,
-						SkipPermissions: skipPermissions,
-						LoadClaudeMD:    false,
-						BranchMode:      git.BranchModeCheckedOut,
-					}
-				}
-			case 2: // Custom branch
-				a.dialogGroup = group
-				a.dialogDefaultName = name
-				a.dialog = common.NewInputDialog(DialogCustomBranch, "Custom Branch", "")
-				a.dialog.SetMessage("Each repo will try this branch locally then remotely.\nFalls back to remote main if not found.")
 				a.dialog.SetSize(a.width, a.height)
 				a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 				a.dialog.Show()
@@ -440,127 +290,21 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 		if customBranch == "" {
 			return nil
 		}
-		allowEdits := a.config.UI.LastAllowEdits
-		isolated := a.config.UI.LastIsolated
-		skipPermissions := a.config.UI.LastSkipPermissions
-		if project != nil {
-			// Single workspace
+		if workspace != nil && len(workspace.Repos) > 0 {
 			name := defaultName
+			repos := workspace.Repos
+			wsProfile := workspace.Profile
 			a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
 				"Resolving custom branch",
 				"Creating worktree",
 			})
-			a.creationOverlay.SetStepDetail(filepath.Base(project.Path))
+			a.creationOverlay.SetStepDetail(repos[0].Name)
 			a.creationOverlay.SetSize(a.width, a.height)
-			return a.fetchCustomBase(project, name, customBranch, allowEdits, isolated, skipPermissions)
-		} else if group != nil {
-			// Grouped workspace
-			name := defaultName
-			grpName := group.Name
-			return func() tea.Msg {
-				return messages.CreateGroupWorkspace{
-					GroupName:       grpName,
-					Name:            name,
-					AllowEdits:      allowEdits,
-					Isolated:        isolated,
-					SkipPermissions: skipPermissions,
-					LoadClaudeMD:    false,
-					BranchMode:      git.BranchModeCustom,
-					CustomBranch:    customBranch,
-				}
-			}
-		}
-
-	case DialogDeleteGroup:
-		if groupName != "" {
-			name := groupName
-			return func() tea.Msg {
-				return messages.RemoveGroup{Name: name}
-			}
-		}
-
-	case DialogRenameGroup:
-		if group != nil {
-			name := validation.SanitizeInput(result.Value)
-			if name == "" || name == group.Name {
-				return nil
-			}
-			if err := validation.ValidateWorkspaceName(name); err != nil {
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating group name"}
-				}
-			}
-			g := group
-			return func() tea.Msg {
-				return messages.RenameGroup{Group: g, NewName: name}
-			}
-		}
-
-	case DialogRenameGroupWorkspace:
-		if group != nil && groupWs != nil {
-			name := validation.SanitizeInput(result.Value)
-			if name == "" || name == groupWs.Name {
-				return nil
-			}
-			if err := validation.ValidateWorkspaceName(name); err != nil {
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating workspace name"}
-				}
-			}
-			g := group
-			gw := groupWs
-			return func() tea.Msg {
-				return messages.RenameGroupWorkspace{Group: g, Workspace: gw, NewName: name}
-			}
-		}
-
-	case DialogDeleteGroupWorkspace:
-		if group != nil && groupWs != nil {
-			g := group
-			gw := groupWs
-			return func() tea.Msg {
-				return messages.DeleteGroupWorkspace{Group: g, Workspace: gw}
-			}
-		}
-
-	case DialogSetGroupProfile:
-		selectedProfile := result.Value
-		if selectedProfile == common.NewProfileOption {
-			// User chose "New profile..." — show input dialog
-			a.dialog = common.NewInputDialog(DialogSetGroupProfile, "Set Profile", "Default")
-			a.dialog.SetMessage("Profile isolates Claude settings for this group.")
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
-			return nil
-		}
-		if selectedProfile == "" {
-			selectedProfile = "Default"
-		}
-
-		// Check if this was from the group creation wizard
-		if groupName != "" && len(groupRepos) > 0 {
-			name := groupName
-			repos := groupRepos
-			a.dialogGroupName = ""
-			a.dialogGroupRepos = nil
-			return func() tea.Msg {
-				return messages.CreateGroup{Name: name, RepoPaths: repos, Profile: selectedProfile}
-			}
-		}
-
-		// Normal group profile update
-		if group != nil {
-			grpName := group.Name
-			return func() tea.Msg {
-				return messages.SetGroupProfile{GroupName: grpName, Profile: selectedProfile}
-			}
+			return a.fetchCustomBase(repos, name, wsProfile, customBranch)
 		}
 
 	case DialogQuit:
 		// Persist workspace tabs synchronously before shutdown.
-		// Shutdown() closes tabs (sets Running=false), so we must
-		// capture current state first to avoid saving "stopped" status.
 		a.persistAllWorkspacesNow()
 		a.Shutdown()
 		a.quitting = true
@@ -585,6 +329,41 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 	}
 
 	return nil
+}
+
+// showNameWorkspaceDialog sets up the workspace name input dialog for a given set of repos.
+func (a *App) showNameWorkspaceDialog(repos []data.RepoRef) {
+	a.dialogWorkspace = &data.Workspace{Repos: repos}
+	a.dialogDefaultName = generateWorkspaceName(repos)
+	a.dialog = common.NewInputDialog(DialogCreateWorkspace, "Name Your Workspace", a.dialogDefaultName)
+	a.dialog.SetMessage("Enter a name for the workspace.")
+	a.dialog.SetInputValidate(func(s string) string {
+		s = validation.SanitizeInput(s)
+		if s == "" {
+			return ""
+		}
+		if err := validation.ValidateWorkspaceName(s); err != nil {
+			return err.Error()
+		}
+		return ""
+	})
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
+}
+
+// showProfilePickerForCreate shows the profile picker during workspace creation flow.
+func (a *App) showProfilePickerForCreate() {
+	profiles := a.listProfiles()
+	if len(profiles) > 0 {
+		a.dialog = common.NewProfilePicker(DialogSetProfileForCreate, profiles, "")
+	} else {
+		a.dialog = common.NewInputDialog(DialogSetProfileForCreate, "Set Profile", "Default")
+		a.dialog.SetMessage("Profile isolates Claude settings (permissions, memory) for this workspace.")
+	}
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
 }
 
 func (a *App) showQuitDialog() {
@@ -667,7 +446,6 @@ func (a *App) handleUpgradeComplete(msg messages.UpgradeComplete) tea.Cmd {
 }
 
 // handleOpenFileInEditor handles the OpenFileInEditor message from the project tree.
-// This opens the file in vim in the center pane.
 func (a *App) handleOpenFileInEditor(msg sidebar.OpenFileInEditor) tea.Cmd {
 	if msg.Workspace == nil || msg.Path == "" {
 		return nil

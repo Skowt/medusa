@@ -58,7 +58,7 @@ func (m *TerminalModel) createTerminalTab(ws *data.Workspace) tea.Cmd {
 
 		env := []string{"COLORTERM=truecolor"}
 		command := "exec " + shell + " -l"
-		term, err := pty.NewWithSize(command, ws.Root, env, uint16(termHeight), uint16(termWidth))
+		term, err := pty.NewWithSize(command, ws.Root(), env, uint16(termHeight), uint16(termWidth))
 		if err != nil {
 			return SidebarTerminalCreateFailed{WorkspaceID: wsID, Err: err}
 		}
@@ -101,7 +101,7 @@ func (m *TerminalModel) RestartActiveTab() tea.Cmd {
 		}
 		env := []string{"COLORTERM=truecolor"}
 		command := "exec " + shell + " -l"
-		term, err := pty.NewWithSize(command, ws.Root, env, uint16(termHeight), uint16(termWidth))
+		term, err := pty.NewWithSize(command, ws.Root(), env, uint16(termHeight), uint16(termWidth))
 		if err != nil {
 			return SidebarTerminalCreateFailed{WorkspaceID: wsID, Err: err}
 		}

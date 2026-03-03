@@ -27,7 +27,7 @@ func TestScreenToTerminalFallback(t *testing.T) {
 }
 
 func TestScreenToTerminalWithVTerm(t *testing.T) {
-	wt := &data.Workspace{Repo: "/repo", Root: "/repo/wt"}
+	wt := data.NewWorkspace("wt", "", "", "/repo", "/repo/wt")
 	m := NewTerminalModel()
 	m.workspace = wt
 	wtID := string(wt.ID())

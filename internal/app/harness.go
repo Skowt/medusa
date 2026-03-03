@@ -93,12 +93,17 @@ func newMonitorHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 	centerModel.SetMonitorMode(true)
 
 	tabs := make([]*center.Tab, 0, opts.Tabs)
+	workspaces := make([]*data.Workspace, 0, opts.Tabs)
 	for i := 0; i < opts.Tabs; i++ {
-		ws := &data.Workspace{
-			Name: fmt.Sprintf("ws-%d", i),
-			Repo: fmt.Sprintf("/repo/%d", i),
-			Root: fmt.Sprintf("/repo/%d/ws", i),
-		}
+		repoPath := fmt.Sprintf("/repo/%d", i)
+		wsPath := fmt.Sprintf("/repo/%d/ws", i)
+		ws := data.NewWorkspace(
+			fmt.Sprintf("ws-%d", i),
+			fmt.Sprintf("ws-%d", i),
+			"main",
+			repoPath,
+			wsPath,
+		)
 		term := vterm.New(80, 24)
 		tab := &center.Tab{
 			ID:        center.TabID(fmt.Sprintf("tab-%d", i)),
@@ -110,11 +115,13 @@ func newMonitorHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 		}
 		centerModel.AddTab(tab)
 		tabs = append(tabs, tab)
+		workspaces = append(workspaces, ws)
 	}
 
 	app := &App{
 		config:          cfg,
 		center:          centerModel,
+		allWorkspaces:   workspaces,
 		styles:          common.DefaultStyles(),
 		width:           opts.Width,
 		height:          opts.Height,
@@ -125,14 +132,6 @@ func newMonitorHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 		sidebarChrome:   &compositor.ChromeCache{},
 	}
 	app.monitorMode = true
-
-	app.projects = make([]data.Project, 0, opts.Tabs)
-	for i := 0; i < opts.Tabs; i++ {
-		app.projects = append(app.projects, data.Project{
-			Name: fmt.Sprintf("repo-%d", i),
-			Path: fmt.Sprintf("/repo/%d", i),
-		})
-	}
 
 	return &Harness{
 		app:          app,
@@ -158,12 +157,7 @@ func newCenterHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 	layoutMgr := layout.NewManager()
 	layoutMgr.Resize(opts.Width, opts.Height)
 
-	ws := &data.Workspace{
-		Name: "primary",
-		Repo: "/repo/primary",
-		Root: "/repo/primary/ws",
-	}
-	project := data.Project{Name: "primary", Path: ws.Repo}
+	ws := data.NewWorkspace("primary", "primary", "main", "/repo/primary", "/repo/primary/ws")
 
 	tabs := make([]*center.Tab, 0, opts.Tabs)
 	for i := 0; i < opts.Tabs; i++ {
@@ -181,7 +175,7 @@ func newCenterHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 	}
 	centerModel.SetWorkspace(ws)
 
-	dash.SetProjects([]data.Project{project})
+	dash.SetWorkspaces([]*data.Workspace{ws})
 
 	tabbedSidebar := sidebar.NewTabbedSidebar()
 	tabbedSidebar.SetShowKeymapHints(opts.ShowKeymapHints)
@@ -193,6 +187,7 @@ func newCenterHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 		center:          centerModel,
 		sidebar:         tabbedSidebar,
 		sidebarTerminal: sideTerm,
+		allWorkspaces:   []*data.Workspace{ws},
 		styles:          common.DefaultStyles(),
 		width:           opts.Width,
 		height:          opts.Height,
@@ -233,14 +228,9 @@ func newSidebarHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 	layoutMgr := layout.NewManager()
 	layoutMgr.Resize(opts.Width, opts.Height)
 
-	ws := &data.Workspace{
-		Name: "primary",
-		Repo: "/repo/primary",
-		Root: "/repo/primary/ws",
-	}
-	project := data.Project{Name: "primary", Path: ws.Repo}
+	ws := data.NewWorkspace("primary", "primary", "main", "/repo/primary", "/repo/primary/ws")
 
-	dash.SetProjects([]data.Project{project})
+	dash.SetWorkspaces([]*data.Workspace{ws})
 
 	app := &App{
 		config:          cfg,
@@ -249,6 +239,7 @@ func newSidebarHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 		center:          centerModel,
 		sidebar:         side,
 		sidebarTerminal: sideTerm,
+		allWorkspaces:   []*data.Workspace{ws},
 		styles:          common.DefaultStyles(),
 		width:           opts.Width,
 		height:          opts.Height,

@@ -88,6 +88,9 @@ type Dialog struct {
 	checkbox3Value   bool      // Current third checkbox state
 	checkbox3Hit     HitRegion // Click region for third checkbox
 	checkbox3Focused bool      // True when third checkbox is focused
+
+	// Input visibility
+	inputHidden bool // Hide the text input field (checkbox-only dialog)
 }
 
 type dialogOptionHit struct {
@@ -216,6 +219,29 @@ func (d *Dialog) SetCheckbox3(label string, defaultValue bool) *Dialog {
 // Checkbox3Value returns the current third checkbox state.
 func (d *Dialog) Checkbox3Value() bool {
 	return d.checkbox3Value
+}
+
+// SetInputHidden hides the text input field, useful for checkbox-only dialogs.
+func (d *Dialog) SetInputHidden(hidden bool) *Dialog {
+	d.inputHidden = hidden
+	return d
+}
+
+// SetDefaultConfirm sets the default cursor position for confirm dialogs.
+// If yes is true, the cursor defaults to "Yes"; otherwise it defaults to "No".
+func (d *Dialog) SetDefaultConfirm(yes bool) *Dialog {
+	if yes {
+		d.cursor = 0
+	} else {
+		d.cursor = 1
+	}
+	return d
+}
+
+// SetVerticalLayout sets the dialog to render options vertically instead of horizontally.
+func (d *Dialog) SetVerticalLayout(vertical bool) *Dialog {
+	d.verticalLayout = vertical
+	return d
 }
 
 // transformInputMsg applies the input transform to key press and paste messages

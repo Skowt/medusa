@@ -9,21 +9,9 @@ func (a *App) findWorkspaceByID(id string) *data.Workspace {
 	if a.activeWorkspace != nil && string(a.activeWorkspace.ID()) == id {
 		return a.activeWorkspace
 	}
-	for i := range a.projects {
-		for j := range a.projects[i].Workspaces {
-			ws := &a.projects[i].Workspaces[j]
-			if string(ws.ID()) == id {
-				return ws
-			}
-		}
-	}
-	// Also search group workspace primary workspaces
-	for i := range a.groups {
-		for j := range a.groups[i].Workspaces {
-			ws := &a.groups[i].Workspaces[j].Primary
-			if string(ws.ID()) == id {
-				return ws
-			}
+	for _, ws := range a.allWorkspaces {
+		if string(ws.ID()) == id {
+			return ws
 		}
 	}
 	return nil

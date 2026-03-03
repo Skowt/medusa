@@ -45,10 +45,8 @@ func (a *App) watchAllWorkspacePermissions() {
 	if a.permissionWatcher == nil {
 		return
 	}
-	for i := range a.projects {
-		for j := range a.projects[i].Workspaces {
-			_ = a.permissionWatcher.Watch(a.projects[i].Workspaces[j].Root)
-		}
+	for _, ws := range a.allWorkspaces {
+		_ = a.permissionWatcher.Watch(ws.Root())
 	}
 }
 
@@ -57,10 +55,8 @@ func (a *App) unwatchAllWorkspacePermissions() {
 	if a.permissionWatcher == nil {
 		return
 	}
-	for i := range a.projects {
-		for j := range a.projects[i].Workspaces {
-			a.permissionWatcher.Unwatch(a.projects[i].Workspaces[j].Root)
-		}
+	for _, ws := range a.allWorkspaces {
+		a.permissionWatcher.Unwatch(ws.Root())
 	}
 }
 
@@ -90,14 +86,9 @@ func (a *App) handlePermissionWatcherEvent(msg messages.PermissionWatcherEvent) 
 
 	// Find workspace name for the toast
 	wsName := ""
-	for i := range a.projects {
-		for j := range a.projects[i].Workspaces {
-			if a.projects[i].Workspaces[j].Root == msg.Root {
-				wsName = a.projects[i].Workspaces[j].Name
-				break
-			}
-		}
-		if wsName != "" {
+	for _, ws := range a.allWorkspaces {
+		if ws.Root() == msg.Root {
+			wsName = ws.Name
 			break
 		}
 	}

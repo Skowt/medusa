@@ -2,16 +2,13 @@ package data
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/andyrewlee/medusa/internal/logging"
 )
 
 const workspaceFilename = "workspace.json"
-const groupWorkspaceFilename = "group_workspace.json"
 
 // WorkspaceStore manages workspace persistence
 type WorkspaceStore struct {
@@ -45,7 +42,6 @@ func (s *WorkspaceStore) List() ([]WorkspaceID, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		// Check if workspace.json exists in this directory
 		wsPath := filepath.Join(s.root, entry.Name(), workspaceFilename)
 		if _, err := os.Stat(wsPath); err == nil {
 			ids = append(ids, WorkspaceID(entry.Name()))
@@ -57,43 +53,20 @@ func (s *WorkspaceStore) List() ([]WorkspaceID, error) {
 // Load loads a workspace by its ID
 func (s *WorkspaceStore) Load(id WorkspaceID) (*Workspace, error) {
 	path := s.workspacePath(id)
-	data, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	// Use workspaceJSON for backward-compatible loading
-	var raw workspaceJSON
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var ws Workspace
+	if err := json.Unmarshal(raw, &ws); err != nil {
 		return nil, err
 	}
 
-	ws := &Workspace{
-		Name:           raw.Name,
-		Branch:         raw.Branch,
-		Base:           raw.Base,
-		Repo:           raw.Repo,
-		Root:           raw.Root,
-		Created:        parseCreated(raw.Created),
-		Runtime:        NormalizeRuntime(raw.Runtime),
-		Assistant:      raw.Assistant,
-		Scripts:        raw.Scripts,
-		ScriptMode:     raw.ScriptMode,
-		Env:            raw.Env,
-		OpenTabs:       raw.OpenTabs,
-		ActiveTabIndex: raw.ActiveTabIndex,
-		Archived:       raw.Archived,
-		ArchivedAt:     parseCreated(raw.ArchivedAt),
-		AllowEdits:      raw.AllowEdits,
-		Isolated:        raw.Isolated,
-		SkipPermissions: raw.SkipPermissions,
-	}
 	ws.storeID = id
+	applyWorkspaceDefaults(&ws)
 
-	// Apply defaults for missing fields
-	applyWorkspaceDefaults(ws)
-
-	return ws, nil
+	return &ws, nil
 }
 
 // Save saves a workspace to the store using atomic write
@@ -117,12 +90,12 @@ func (s *WorkspaceStore) Save(ws *Workspace) error {
 		return err
 	}
 	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath) // Clean up temp file on rename failure
+		os.Remove(tempPath)
 		return err
 	}
 	if ws.storeID != "" && ws.storeID != id {
 		if err := s.Delete(ws.storeID); err != nil {
-			logging.Warn("Failed to remove legacy workspace metadata %s: %v", ws.storeID, err)
+			logging.Warn("Failed to remove old workspace metadata %s: %v", ws.storeID, err)
 		}
 	}
 	ws.storeID = id
@@ -135,184 +108,23 @@ func (s *WorkspaceStore) Delete(id WorkspaceID) error {
 	return os.RemoveAll(dir)
 }
 
-// ListByRepo returns all workspaces for a given repository path
-func (s *WorkspaceStore) ListByRepo(repoPath string) ([]*Workspace, error) {
-	return s.listByRepo(repoPath, false)
-}
-
-// HasLegacyWorkspaces reports whether the store has legacy metadata entries
-// (missing Root) for the given repo path.
-func (s *WorkspaceStore) HasLegacyWorkspaces(repoPath string) (bool, error) {
+// ListAll loads all workspaces in the store
+func (s *WorkspaceStore) ListAll() ([]*Workspace, error) {
 	ids, err := s.List()
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	targetRepo := NormalizePath(repoPath)
+	var workspaces []*Workspace
 	for _, id := range ids {
 		ws, err := s.Load(id)
 		if err != nil {
 			logging.Warn("Failed to load workspace %s: %v", id, err)
 			continue
 		}
-		if ws.Root != "" {
-			continue
-		}
-		if ws.Repo == "" || NormalizePath(ws.Repo) == targetRepo {
-			return true, nil
-		}
+		workspaces = append(workspaces, ws)
 	}
-
-	return false, nil
-}
-
-// LoadMetadataFor loads stored metadata for a workspace and merges it into the provided workspace.
-// This handles legacy metadata files that don't have Root/Repo fields by using the workspace's
-// computed ID (based on Repo+Root from git discovery), with normalization to avoid duplicates.
-// Returns (true, nil) if metadata was found and merged.
-// Returns (false, nil) if no metadata file exists (safe to apply defaults).
-// Returns (false, err) if metadata exists but couldn't be read (don't overwrite).
-func (s *WorkspaceStore) LoadMetadataFor(ws *Workspace) (bool, error) {
-	stored, _, err := s.findStoredWorkspace(ws.Repo, ws.Root)
-	if err != nil {
-		return false, err
-	}
-	if stored == nil {
-		return false, nil // No metadata file, safe to apply defaults
-	}
-
-	// Merge stored metadata into workspace. Store owns metadata/UI state;
-	// discovery only updates Root/Repo/Branch (and Name if stored is empty).
-	if stored.Name != "" {
-		ws.Name = stored.Name
-	}
-	ws.Created = stored.Created
-	ws.Base = stored.Base
-	ws.Runtime = stored.Runtime
-	ws.Assistant = stored.Assistant
-	ws.Scripts = stored.Scripts
-	ws.ScriptMode = stored.ScriptMode
-	ws.Env = stored.Env
-	ws.OpenTabs = stored.OpenTabs
-	ws.ActiveTabIndex = stored.ActiveTabIndex
-	ws.Archived = stored.Archived
-	ws.ArchivedAt = stored.ArchivedAt
-	ws.AllowEdits = stored.AllowEdits
-	ws.Isolated = stored.Isolated
-	ws.SkipPermissions = stored.SkipPermissions
-	ws.storeID = stored.storeID
-
-	// Apply defaults if stored metadata had empty values (legacy files)
-	applyWorkspaceDefaults(ws)
-
-	return true, nil
-}
-
-// UpsertFromDiscovery merges a discovered workspace into the store.
-// Store metadata wins; discovery updates Repo/Root/Branch (and Name if empty).
-// Archived state is cleared on discovery.
-func (s *WorkspaceStore) UpsertFromDiscovery(discovered *Workspace) error {
-	return s.upsertFromDiscovery(discovered, false)
-}
-
-// UpsertFromDiscoveryPreserveArchived merges a discovered workspace into the store,
-// but preserves archived state if it was set in stored metadata.
-func (s *WorkspaceStore) UpsertFromDiscoveryPreserveArchived(discovered *Workspace) error {
-	return s.upsertFromDiscovery(discovered, true)
-}
-
-func (s *WorkspaceStore) upsertFromDiscovery(discovered *Workspace, preserveArchived bool) error {
-	if discovered == nil {
-		return nil
-	}
-
-	stored, storedID, err := s.findStoredWorkspace(discovered.Repo, discovered.Root)
-	if err != nil {
-		return err
-	}
-
-	if stored == nil {
-		if discovered.Created.IsZero() {
-			discovered.Created = time.Now()
-		}
-		applyWorkspaceDefaults(discovered)
-		return s.Save(discovered)
-	}
-
-	merged := *stored
-	merged.Repo = discovered.Repo
-	merged.Root = discovered.Root
-	merged.Branch = discovered.Branch
-	if merged.Name == "" {
-		merged.Name = discovered.Name
-	}
-	if merged.Created.IsZero() && !discovered.Created.IsZero() {
-		merged.Created = discovered.Created
-	}
-	if !preserveArchived {
-		merged.Archived = false
-		merged.ArchivedAt = time.Time{}
-	}
-	applyWorkspaceDefaults(&merged)
-
-	newID := merged.ID()
-	if err := s.Save(&merged); err != nil {
-		return err
-	}
-	if storedID != "" && storedID != newID {
-		if err := s.Delete(storedID); err != nil {
-			logging.Warn("Failed to remove legacy workspace metadata %s: %v", storedID, err)
-		}
-	}
-	return nil
-}
-
-// workspaceJSON is used for loading old-format metadata files during migration
-type workspaceJSON struct {
-	Name           string            `json:"name"`
-	Branch         string            `json:"branch"`
-	Repo           string            `json:"repo"`
-	Base           string            `json:"base"`
-	Root           string            `json:"root"`
-	Created        json.RawMessage   `json:"created"` // Can be time.Time or string
-	Archived       bool              `json:"archived"`
-	ArchivedAt     json.RawMessage   `json:"archived_at,omitempty"`
-	Assistant      string            `json:"assistant"`
-	Runtime        string            `json:"runtime"`
-	Scripts        ScriptsConfig     `json:"scripts"`
-	ScriptMode     string            `json:"script_mode"`
-	Env            map[string]string `json:"env"`
-	OpenTabs       []TabInfo         `json:"open_tabs,omitempty"`
-	ActiveTabIndex int               `json:"active_tab_index"`
-	AllowEdits      bool              `json:"allow_edits,omitempty"`
-	Isolated        bool              `json:"isolated,omitempty"`
-	SkipPermissions bool              `json:"skip_permissions,omitempty"`
-}
-
-// parseCreated parses a created timestamp from either time.Time format or string format
-func parseCreated(raw json.RawMessage) time.Time {
-	if len(raw) == 0 {
-		return time.Time{}
-	}
-
-	// Try parsing as time.Time first (JSON format)
-	var t time.Time
-	if err := json.Unmarshal(raw, &t); err == nil && !t.IsZero() {
-		return t
-	}
-
-	// Try parsing as string (RFC3339 format from old metadata)
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil && s != "" {
-		if parsed, err := time.Parse(time.RFC3339, s); err == nil {
-			return parsed
-		}
-		if parsed, err := time.Parse(time.RFC3339Nano, s); err == nil {
-			return parsed
-		}
-	}
-
-	return time.Time{}
+	return workspaces, nil
 }
 
 func applyWorkspaceDefaults(ws *Workspace) {
@@ -330,236 +142,31 @@ func applyWorkspaceDefaults(ws *Workspace) {
 	}
 }
 
-func shouldPreferWorkspace(candidate, existing *Workspace) bool {
-	if existing == nil {
-		return true
+// snapshotWorkspaceForSave creates a copy of the workspace suitable for saving.
+// This exists so callers can safely pass a snapshot to a goroutine.
+func SnapshotWorkspaceForSave(ws *Workspace) *Workspace {
+	if ws == nil {
+		return nil
 	}
-	if candidate == nil {
-		return false
+	snap := *ws
+	// Deep copy slices that matter
+	if ws.OpenTabs != nil {
+		snap.OpenTabs = make([]TabInfo, len(ws.OpenTabs))
+		copy(snap.OpenTabs, ws.OpenTabs)
 	}
-	if existing.Archived && !candidate.Archived {
-		return true
+	if ws.Repos != nil {
+		snap.Repos = make([]RepoRef, len(ws.Repos))
+		copy(snap.Repos, ws.Repos)
 	}
-	if !existing.Archived && candidate.Archived {
-		return false
+	if ws.Worktrees != nil {
+		snap.Worktrees = make([]WorktreeRef, len(ws.Worktrees))
+		copy(snap.Worktrees, ws.Worktrees)
 	}
-	if existing.Created.IsZero() && !candidate.Created.IsZero() {
-		return true
-	}
-	if !existing.Created.IsZero() && candidate.Created.IsZero() {
-		return false
-	}
-	if existing.Name == "" && candidate.Name != "" {
-		return true
-	}
-	return false
-}
-
-func (s *WorkspaceStore) findStoredWorkspace(repo, root string) (*Workspace, WorkspaceID, error) {
-	canonicalID := Workspace{Repo: repo, Root: root}.ID()
-	rawWs, err := s.Load(canonicalID)
-	if err == nil {
-		return rawWs, canonicalID, nil
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return nil, "", err
-	}
-
-	legacyID := legacyWorkspaceID(repo, root)
-	if legacyID != canonicalID {
-		legacyWs, err := s.Load(legacyID)
-		if err == nil {
-			return legacyWs, legacyID, nil
-		}
-		if err != nil && !os.IsNotExist(err) {
-			return nil, "", err
+	if ws.Env != nil {
+		snap.Env = make(map[string]string, len(ws.Env))
+		for k, v := range ws.Env {
+			snap.Env[k] = v
 		}
 	}
-
-	ids, err := s.List()
-	if err != nil {
-		return nil, "", err
-	}
-
-	target := workspaceIdentity(repo, root)
-	for _, id := range ids {
-		ws, err := s.Load(id)
-		if err != nil {
-			logging.Warn("Failed to load workspace %s: %v", id, err)
-			continue
-		}
-		if ws.Root == "" {
-			continue
-		}
-		if workspaceIdentity(ws.Repo, ws.Root) == target {
-			return ws, id, nil
-		}
-	}
-
-	return nil, "", nil
-}
-
-func (s *WorkspaceStore) ListByRepoIncludingArchived(repoPath string) ([]*Workspace, error) {
-	return s.listByRepo(repoPath, true)
-}
-
-// groupWorkspacePath returns the path to the group workspace metadata file.
-func (s *WorkspaceStore) groupWorkspacePath(id WorkspaceID) string {
-	return filepath.Join(s.root, string(id), groupWorkspaceFilename)
-}
-
-// SaveGroupWorkspace saves a group workspace to the store using atomic write.
-func (s *WorkspaceStore) SaveGroupWorkspace(gw *GroupWorkspace) error {
-	id := gw.ID()
-	path := s.groupWorkspacePath(id)
-	dir := filepath.Dir(path)
-
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(gw, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath)
-		return err
-	}
-	return nil
-}
-
-// LoadGroupWorkspace loads a group workspace by its ID.
-func (s *WorkspaceStore) LoadGroupWorkspace(id WorkspaceID) (*GroupWorkspace, error) {
-	path := s.groupWorkspacePath(id)
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var gw GroupWorkspace
-	if err := json.Unmarshal(raw, &gw); err != nil {
-		return nil, err
-	}
-
-	applyGroupWorkspaceDefaults(&gw)
-	return &gw, nil
-}
-
-// DeleteGroupWorkspace removes a group workspace's metadata from the store.
-func (s *WorkspaceStore) DeleteGroupWorkspace(id WorkspaceID) error {
-	dir := filepath.Join(s.root, string(id))
-	return os.RemoveAll(dir)
-}
-
-// ListGroupWorkspacesByGroup returns all group workspaces for a given group name.
-func (s *WorkspaceStore) ListGroupWorkspacesByGroup(groupName string) ([]*GroupWorkspace, error) {
-	ids, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-
-	// Also check for directories that contain group_workspace.json
-	entries, err := os.ReadDir(s.root)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	idSet := make(map[WorkspaceID]bool, len(ids))
-	for _, id := range ids {
-		idSet[id] = true
-	}
-
-	var workspaces []*GroupWorkspace
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		gwPath := filepath.Join(s.root, entry.Name(), groupWorkspaceFilename)
-		if _, err := os.Stat(gwPath); err != nil {
-			continue
-		}
-
-		id := WorkspaceID(entry.Name())
-		gw, err := s.LoadGroupWorkspace(id)
-		if err != nil {
-			logging.Warn("Failed to load group workspace %s: %v", id, err)
-			continue
-		}
-		if gw.GroupName == groupName {
-			workspaces = append(workspaces, gw)
-		}
-	}
-
-	return workspaces, nil
-}
-
-func applyGroupWorkspaceDefaults(gw *GroupWorkspace) {
-	if gw.Assistant == "" {
-		gw.Assistant = "claude"
-	}
-	if gw.ScriptMode == "" {
-		gw.ScriptMode = "nonconcurrent"
-	}
-	if gw.Env == nil {
-		gw.Env = make(map[string]string)
-	}
-}
-
-func (s *WorkspaceStore) listByRepo(repoPath string, includeArchived bool) ([]*Workspace, error) {
-	ids, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-
-	targetRepo := NormalizePath(repoPath)
-	var workspaces []*Workspace
-	seen := make(map[string]int)
-	var loadErrors int
-	for _, id := range ids {
-		ws, err := s.Load(id)
-		if err != nil {
-			logging.Warn("Failed to load workspace %s: %v", id, err)
-			loadErrors++
-			continue
-		}
-		// Skip legacy workspaces with empty Root - they are handled via
-		// LoadMetadataFor which matches by ID computed from discovered Root/Repo.
-		// Including them here would create duplicates since their computed ID
-		// (from empty Root) differs from the stored directory name.
-		if ws.Root == "" {
-			continue
-		}
-		if !includeArchived && ws.Archived {
-			continue
-		}
-		if NormalizePath(ws.Repo) != targetRepo {
-			continue
-		}
-		key := workspaceIdentity(ws.Repo, ws.Root)
-		if idx, ok := seen[key]; ok {
-			if shouldPreferWorkspace(ws, workspaces[idx]) {
-				workspaces[idx] = ws
-			}
-			continue
-		}
-		seen[key] = len(workspaces)
-		workspaces = append(workspaces, ws)
-	}
-
-	// If we had workspace IDs but couldn't load any, surface the error
-	// so callers can distinguish between "no workspaces" and "data corruption"
-	if loadErrors > 0 && len(workspaces) == 0 && len(ids) > 0 {
-		return nil, fmt.Errorf("failed to load %d workspace(s) for repo %s", loadErrors, repoPath)
-	}
-
-	return workspaces, nil
+	return &snap
 }

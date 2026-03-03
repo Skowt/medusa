@@ -37,11 +37,7 @@ func TestPerfScenario(t *testing.T) {
 	}
 
 	m := New(cfg)
-	wt := &data.Workspace{
-		Name: "perf",
-		Repo: "/tmp/perf-repo",
-		Root: "/tmp/perf-repo",
-	}
+	wt := data.NewWorkspace("perf", "", "", "/tmp/perf-repo", "/tmp/perf-repo")
 	m.SetWorkspace(wt)
 	wtID := string(wt.ID())
 	tab := &Tab{

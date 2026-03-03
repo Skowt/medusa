@@ -21,6 +21,9 @@ import (
 type AgentOptions struct {
 	ClaudeSessionID string // UUID to pass as --session-id or --resume
 	Resume          bool   // If true, use --resume instead of --session-id
+	AllowEdits      bool   // Pre-grant Edit permission
+	Isolated        bool   // Run in sandbox-exec
+	SkipPermissions bool   // Run with --dangerously-skip-permissions
 }
 
 // GenerateSessionID returns a new random UUID v4 string.
@@ -46,13 +49,7 @@ func GenerateSessionID() string {
 type AgentType string
 
 const (
-	AgentClaude   AgentType = "claude"
-	AgentCodex    AgentType = "codex"
-	AgentGemini   AgentType = "gemini"
-	AgentAmp      AgentType = "amp"
-	AgentOpencode AgentType = "opencode"
-	AgentDroid    AgentType = "droid"
-	AgentCursor   AgentType = "cursor"
+	AgentClaude AgentType = "claude"
 )
 
 // Agent represents a running AI agent instance
@@ -102,7 +99,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 
 	// Build environment
 	env := []string{
-		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root),
+		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root()),
 		fmt.Sprintf("WORKSPACE_NAME=%s", ws.Name),
 		"LINES=",   // Unset to force ioctl usage
 		"COLUMNS=", // Unset to force ioctl usage
@@ -126,9 +123,9 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 				_ = config.InjectGlobalPermissions(profileDir, global)
 			}
 		}
-		// Inject Edit permission if workspace has AllowEdits enabled
-		if ws.AllowEdits {
-			_ = config.InjectAllowEdits(ws.Root)
+		// Inject Edit permission if AllowEdits enabled
+		if opts.AllowEdits {
+			_ = config.InjectAllowEdits(ws.Root())
 		}
 		agentCommand = fmt.Sprintf("CLAUDE_CONFIG_DIR=%s %s", shellQuote(profileDir), agentCommand)
 	}
@@ -136,7 +133,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// Pre-trust the workspace directory so Claude doesn't prompt
 	// Use profile config dir if set, otherwise default ~/.claude.json
 	if agentType == AgentClaude {
-		_ = config.InjectTrustedDirectory(ws.Root, profileDir)
+		_ = config.InjectTrustedDirectory(ws.Root(), profileDir)
 	}
 
 	// Append Claude session flags for conversation resumption.
@@ -150,7 +147,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 
 	// Skip permissions: append --dangerously-skip-permissions independently of sandbox.
 	var sbplCleanup func()
-	if ws.SkipPermissions && agentType == AgentClaude {
+	if opts.SkipPermissions && agentType == AgentClaude {
 		agentCommand += " --dangerously-skip-permissions"
 		_ = config.InjectSkipPermissionPrompt(profileDir)
 	}
@@ -168,12 +165,12 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 
 	// Wrap the entire command chain in sandbox-exec so the fallback shell
 	// also runs inside the sandbox.
-	if ws.Isolated {
+	if opts.Isolated {
 		var gitDirs []string
-		if gd, err := git.ResolveWorktreeGitDir(ws.Root); err == nil {
+		if gd, err := git.ResolveWorktreeGitDir(ws.Root()); err == nil {
 			gitDirs = append(gitDirs, gd)
 		}
-		for _, root := range ws.SecondaryRoots {
+		for _, root := range ws.SecondaryRoots() {
 			if gd, err := git.ResolveWorktreeGitDir(root); err == nil {
 				gitDirs = append(gitDirs, gd)
 			}
@@ -182,7 +179,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		if rulesErr != nil {
 			rules = config.DefaultSandboxRules()
 		}
-		sbpl := sandbox.GenerateSBPL(ws.Root, gitDirs, profileDir, rules.Rules)
+		sbpl := sandbox.GenerateSBPL(ws.Root(), gitDirs, profileDir, rules.Rules)
 		sbplPath, cleanup, sErr := sandbox.WriteTempProfile(sbpl)
 		if sErr == nil {
 			sbplCleanup = cleanup
@@ -190,8 +187,8 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		}
 	}
 
-	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root, fullCommand, tmux.DefaultOptions(), tags)
-	term, err := NewWithSize(termCommand, ws.Root, env, rows, cols)
+	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root(), fullCommand, tmux.DefaultOptions(), tags)
+	term, err := NewWithSize(termCommand, ws.Root(), env, rows, cols)
 	if err != nil {
 		if sbplCleanup != nil {
 			sbplCleanup()
@@ -232,14 +229,14 @@ func (m *AgentManager) CreateViewerWithTags(ws *data.Workspace, command string, 
 	}
 	// Build environment
 	env := []string{
-		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root),
+		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root()),
 		fmt.Sprintf("WORKSPACE_NAME=%s", ws.Name),
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 	}
 
-	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root, command, tmux.DefaultOptions(), tags)
-	term, err := NewWithSize(termCommand, ws.Root, env, rows, cols)
+	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root(), command, tmux.DefaultOptions(), tags)
+	term, err := NewWithSize(termCommand, ws.Root(), env, rows, cols)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create terminal: %w", err)
 	}

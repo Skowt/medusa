@@ -289,7 +289,7 @@ func (m *Model) listHeaderLines() int {
 		return 0
 	}
 	header := 0
-	if m.workspace != nil && m.workspace.Branch != "" {
+	if m.workspace != nil && m.workspace.Branch() != "" {
 		header++
 	}
 	if m.filterMode || m.filterQuery != "" {
@@ -377,7 +377,7 @@ func (m *Model) refreshStatus() tea.Cmd {
 		return nil
 	}
 
-	root := m.workspace.Root
+	root := m.workspace.Root()
 	return func() tea.Msg {
 		status, err := git.GetStatus(root)
 		return messages.GitStatusResult{Root: root, Status: status, Err: err}

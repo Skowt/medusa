@@ -11,7 +11,7 @@ import (
 	"github.com/andyrewlee/medusa/internal/messages"
 )
 
-func TestLoadProjects_StoreFirstMerge(t *testing.T) {
+func TestLoadWorkspaces_LoadsFromRegistry(t *testing.T) {
 	skipIfNoGit(t)
 
 	repo := t.TempDir()
@@ -27,240 +27,77 @@ func TestLoadProjects_StoreFirstMerge(t *testing.T) {
 	runGit(t, repo, "worktree", "add", "-b", "feature", worktreePath, "main")
 
 	tmp := t.TempDir()
-	registry := data.NewRegistry(filepath.Join(tmp, "projects.json"))
-	if err := registry.AddProject(repo); err != nil {
-		t.Fatalf("AddProject: %v", err)
-	}
-
+	registry := data.NewRegistry(filepath.Join(tmp, "workspaces.json"))
 	store := data.NewWorkspaceStore(filepath.Join(tmp, "workspaces-metadata"))
+
 	createdAt := time.Date(2024, 6, 15, 14, 30, 0, 0, time.UTC)
-	stored := &data.Workspace{
-		Name:       filepath.Base(worktreePath),
-		Branch:     "feature",
-		Repo:       repo,
-		Root:       worktreePath,
-		Created:    createdAt,
-		Assistant:  "codex",
-		ScriptMode: "nonconcurrent",
-		Env:        map[string]string{},
-		Runtime:    data.RuntimeLocalWorktree,
+	ws := data.NewWorkspace("feature", "feature", "main", repo, worktreePath)
+	ws.Created = createdAt
+	ws.Assistant = "codex"
+	ws.ScriptMode = "nonconcurrent"
+	ws.Runtime = data.RuntimeLocalWorktree
+
+	if err := store.Save(ws); err != nil {
+		t.Fatalf("Save workspace: %v", err)
 	}
-	if err := store.Save(stored); err != nil {
-		t.Fatalf("Save stored workspace: %v", err)
+	if err := registry.AddWorkspace(ws.Name, string(ws.ID()), ""); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
 	}
 
 	app := &App{
 		registry:   registry,
 		workspaces: store,
 	}
-	msg := app.loadProjects()()
-	loaded, ok := msg.(messages.ProjectsLoaded)
+	msg := app.loadWorkspaces()()
+	loaded, ok := msg.(messages.WorkspacesLoaded)
 	if !ok {
-		t.Fatalf("expected ProjectsLoaded, got %T", msg)
+		t.Fatalf("expected WorkspacesLoaded, got %T", msg)
 	}
 
-	var project *data.Project
-	for i := range loaded.Projects {
-		if loaded.Projects[i].Path == repo {
-			project = &loaded.Projects[i]
-			break
-		}
-	}
-	if project == nil {
-		t.Fatalf("expected project %s to be loaded", repo)
+	if len(loaded.Workspaces) != 1 {
+		t.Fatalf("expected 1 workspace, got %d", len(loaded.Workspaces))
 	}
 
-	var (
-		found     bool
-		matchAsst string
-		matchTime time.Time
-		count     int
-	)
-	expectedRoot := normalizePath(worktreePath)
-	for i := range project.Workspaces {
-		ws := &project.Workspaces[i]
-		if normalizePath(ws.Root) == expectedRoot {
-			count++
-			found = true
-			matchAsst = ws.Assistant
-			matchTime = ws.Created
-		}
+	got := loaded.Workspaces[0]
+	if got.Name != "feature" {
+		t.Fatalf("name = %q, want %q", got.Name, "feature")
 	}
-	if !found {
-		t.Fatalf("expected workspace for %s", worktreePath)
+	if got.Assistant != "codex" {
+		t.Fatalf("assistant = %q, want %q", got.Assistant, "codex")
 	}
-	if count != 1 {
-		t.Fatalf("expected 1 workspace entry for %s, got %d", worktreePath, count)
-	}
-	if matchAsst != "codex" {
-		t.Fatalf("assistant = %q, want %q", matchAsst, "codex")
-	}
-	if !matchTime.Equal(createdAt) {
-		t.Fatalf("created = %v, want %v", matchTime, createdAt)
+	if !got.Created.Equal(createdAt) {
+		t.Fatalf("created = %v, want %v", got.Created, createdAt)
 	}
 }
 
-func TestRescanWorkspaces_ImportsDiscoveredWorkspaces(t *testing.T) {
-	skipIfNoGit(t)
-
-	repo := t.TempDir()
-	runGit(t, repo, "init", "-b", "main")
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("ok\n"), 0644); err != nil {
-		t.Fatalf("write README: %v", err)
-	}
-	runGit(t, repo, "add", "README.md")
-	runGit(t, repo, "commit", "-m", "init")
-
-	worktreeDir := normalizePath(t.TempDir())
-	worktreePath := filepath.Join(worktreeDir, "feature")
-	runGit(t, repo, "worktree", "add", "-b", "feature", worktreePath, "main")
-
+func TestLoadWorkspaces_AppliesProfileFromRegistry(t *testing.T) {
 	tmp := t.TempDir()
-	registry := data.NewRegistry(filepath.Join(tmp, "projects.json"))
-	if err := registry.AddProject(repo); err != nil {
-		t.Fatalf("AddProject: %v", err)
-	}
-
+	registry := data.NewRegistry(filepath.Join(tmp, "workspaces.json"))
 	store := data.NewWorkspaceStore(filepath.Join(tmp, "workspaces-metadata"))
-	app := &App{
-		registry:   registry,
-		workspaces: store,
-	}
 
-	msg := app.loadProjects()()
-	loaded, ok := msg.(messages.ProjectsLoaded)
-	if !ok {
-		t.Fatalf("expected ProjectsLoaded, got %T", msg)
+	ws := data.NewWorkspace("ws1", "", "", "/tmp/repo", "/tmp/ws1")
+	if err := store.Save(ws); err != nil {
+		t.Fatalf("Save workspace: %v", err)
 	}
-
-	var project *data.Project
-	for i := range loaded.Projects {
-		if loaded.Projects[i].Path == repo {
-			project = &loaded.Projects[i]
-			break
-		}
-	}
-	if project == nil {
-		t.Fatalf("expected project %s to be loaded", repo)
-	}
-
-	var (
-		found bool
-	)
-	expectedRoot := normalizePath(worktreePath)
-	for i := range project.Workspaces {
-		ws := &project.Workspaces[i]
-		if normalizePath(ws.Root) == expectedRoot {
-			found = true
-		}
-	}
-	if found {
-		t.Fatalf("did not expect workspace for %s before rescan", worktreePath)
-	}
-
-	rescanMsg := app.rescanWorkspaces()()
-	if _, ok := rescanMsg.(messages.RefreshDashboard); !ok {
-		t.Fatalf("expected RefreshDashboard from rescan, got %T", rescanMsg)
-	}
-
-	msg = app.loadProjects()()
-	loaded, ok = msg.(messages.ProjectsLoaded)
-	if !ok {
-		t.Fatalf("expected ProjectsLoaded, got %T", msg)
-	}
-
-	project = nil
-	for i := range loaded.Projects {
-		if loaded.Projects[i].Path == repo {
-			project = &loaded.Projects[i]
-			break
-		}
-	}
-	if project == nil {
-		t.Fatalf("expected project %s to be loaded after rescan", repo)
-	}
-
-	var (
-		count int
-	)
-	for i := range project.Workspaces {
-		ws := &project.Workspaces[i]
-		if normalizePath(ws.Root) == expectedRoot {
-			found = true
-			count++
-		}
-	}
-	if !found {
-		t.Fatalf("expected workspace for %s after rescan", worktreePath)
-	}
-	if count != 1 {
-		t.Fatalf("expected 1 workspace entry for %s, got %d", worktreePath, count)
-	}
-
-	ws := &data.Workspace{
-		Name:   filepath.Base(worktreePath),
-		Branch: "feature",
-		Repo:   repo,
-		Root:   worktreePath,
-	}
-	_, err := store.LoadMetadataFor(ws)
-	if err != nil {
-		t.Fatalf("LoadMetadataFor: %v", err)
-	}
-	if ws.Created.IsZero() {
-		t.Fatalf("expected imported metadata to set Created")
-	}
-	if ws.Assistant == "" {
-		t.Fatalf("expected imported metadata to set Assistant")
-	}
-}
-
-func TestRescanWorkspaces_ArchivesMissingWorkspaces(t *testing.T) {
-	skipIfNoGit(t)
-
-	repo := t.TempDir()
-	runGit(t, repo, "init", "-b", "main")
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("ok\n"), 0644); err != nil {
-		t.Fatalf("write README: %v", err)
-	}
-	runGit(t, repo, "add", "README.md")
-	runGit(t, repo, "commit", "-m", "init")
-
-	tmp := t.TempDir()
-	registry := data.NewRegistry(filepath.Join(tmp, "projects.json"))
-	if err := registry.AddProject(repo); err != nil {
-		t.Fatalf("AddProject: %v", err)
-	}
-
-	store := data.NewWorkspaceStore(filepath.Join(tmp, "workspaces-metadata"))
-	ghost := &data.Workspace{
-		Name: "ghost",
-		Repo: repo,
-		Root: filepath.Join(repo, ".medusa", "workspaces", "ghost"),
-	}
-	if err := store.Save(ghost); err != nil {
-		t.Fatalf("Save ghost workspace: %v", err)
+	if err := registry.AddWorkspace(ws.Name, string(ws.ID()), "my-profile"); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
 	}
 
 	app := &App{
 		registry:   registry,
 		workspaces: store,
 	}
-
-	rescanMsg := app.rescanWorkspaces()()
-	if _, ok := rescanMsg.(messages.RefreshDashboard); !ok {
-		t.Fatalf("expected RefreshDashboard from rescan, got %T", rescanMsg)
+	msg := app.loadWorkspaces()()
+	loaded, ok := msg.(messages.WorkspacesLoaded)
+	if !ok {
+		t.Fatalf("expected WorkspacesLoaded, got %T", msg)
 	}
 
-	loaded, err := store.Load(ghost.ID())
-	if err != nil {
-		t.Fatalf("Load ghost workspace: %v", err)
+	if len(loaded.Workspaces) != 1 {
+		t.Fatalf("expected 1 workspace, got %d", len(loaded.Workspaces))
 	}
-	if !loaded.Archived {
-		t.Fatalf("expected ghost workspace to be archived after rescan")
-	}
-	if loaded.ArchivedAt.IsZero() {
-		t.Fatalf("expected archived workspace to set ArchivedAt")
+	if loaded.Workspaces[0].Profile != "my-profile" {
+		t.Fatalf("profile = %q, want %q", loaded.Workspaces[0].Profile, "my-profile")
 	}
 }
 

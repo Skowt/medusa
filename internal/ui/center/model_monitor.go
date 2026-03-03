@@ -401,7 +401,7 @@ func (m *Model) monitorTabs() []*Tab {
 		key := wsID
 		for _, tab := range workspaceTabs {
 			if tab != nil && tab.Workspace != nil {
-				key = tab.Workspace.Repo + "::" + tab.Workspace.Name
+				key = tab.Workspace.PrimaryRepo().Path + "::" + tab.Workspace.Name
 				break
 			}
 		}

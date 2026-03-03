@@ -9,9 +9,9 @@ import (
 type Paths struct {
 	Home                  string // ~/.medusa
 	WorkspacesRoot        string // ~/.medusa/workspaces
-	GroupsWorkspacesRoot  string // ~/.medusa/workspaces/groups
-	RegistryPath          string // ~/.medusa/projects.json
+	RegistryPath          string // ~/.medusa/workspaces.json
 	MetadataRoot          string // ~/.medusa/workspaces-metadata
+	RecentsPath           string // ~/.medusa/recents.json
 	ConfigPath            string // ~/.medusa/config.json
 	ProfilesRoot          string // ~/.medusa/profiles
 	SharedProfileRoot     string // ~/.medusa/profiles/shared
@@ -19,23 +19,34 @@ type Paths struct {
 	SandboxRulesPath      string // ~/.medusa/sandbox_rules.json
 }
 
+// MedusaHome returns the base medusa directory. It respects the MEDUSA_HOME
+// environment variable, falling back to ~/.medusa.
+func MedusaHome() (string, error) {
+	if env := os.Getenv("MEDUSA_HOME"); env != "" {
+		return filepath.Abs(env)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".medusa"), nil
+}
+
 // DefaultPaths returns the default paths configuration
 func DefaultPaths() (*Paths, error) {
-	home, err := os.UserHomeDir()
+	medusaHome, err := MedusaHome()
 	if err != nil {
 		return nil, err
 	}
-
-	medusaHome := filepath.Join(home, ".medusa")
 
 	profilesRoot := filepath.Join(medusaHome, "profiles")
 	workspacesRoot := filepath.Join(medusaHome, "workspaces")
 	return &Paths{
 		Home:                  medusaHome,
 		WorkspacesRoot:        workspacesRoot,
-		GroupsWorkspacesRoot:  filepath.Join(workspacesRoot, "groups"),
-		RegistryPath:          filepath.Join(medusaHome, "projects.json"),
+		RegistryPath:          filepath.Join(medusaHome, "workspaces.json"),
 		MetadataRoot:          filepath.Join(medusaHome, "workspaces-metadata"),
+		RecentsPath:           filepath.Join(medusaHome, "recents.json"),
 		ConfigPath:            filepath.Join(medusaHome, "config.json"),
 		ProfilesRoot:          profilesRoot,
 		SharedProfileRoot:     filepath.Join(profilesRoot, "shared"),
@@ -49,7 +60,6 @@ func (p *Paths) EnsureDirectories() error {
 	dirs := []string{
 		p.Home,
 		p.WorkspacesRoot,
-		p.GroupsWorkspacesRoot,
 		p.MetadataRoot,
 		p.ProfilesRoot,
 		filepath.Join(p.SharedProfileRoot, "skills"),

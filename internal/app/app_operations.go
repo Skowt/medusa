@@ -14,312 +14,331 @@ import (
 	"github.com/andyrewlee/medusa/internal/messages"
 )
 
-// groupOwnedRoots returns a set of all worktree root paths owned by group workspaces.
-func (a *App) groupOwnedRoots() map[string]bool {
-	roots := make(map[string]bool)
-	groups, err := a.registry.LoadGroups()
-	if err != nil {
-		return roots
-	}
-	for _, group := range groups {
-		gwList, err := a.workspaces.ListGroupWorkspacesByGroup(group.Name)
+// loadWorkspaces loads all workspaces from the store and applies profiles from the registry.
+func (a *App) loadWorkspaces() tea.Cmd {
+	return func() tea.Msg {
+		entries, err := a.registry.ListWorkspaces()
 		if err != nil {
-			continue
+			logging.Warn("Failed to load registry: %v", err)
+			return messages.WorkspacesLoaded{Workspaces: nil}
 		}
-		for _, gw := range gwList {
-			for _, root := range gw.AllRoots() {
-				roots[data.NormalizePath(root)] = true
+
+		var workspaces []*data.Workspace
+		for _, entry := range entries {
+			ws, err := a.workspaces.Load(data.WorkspaceID(entry.ID))
+			if err != nil {
+				logging.Warn("Failed to load workspace %s: %v", entry.Name, err)
+				continue
 			}
+			if ws == nil {
+				continue
+			}
+			// Apply profile from registry
+			ws.Profile = entry.Profile
+			workspaces = append(workspaces, ws)
 		}
+
+		return messages.WorkspacesLoaded{Workspaces: workspaces}
 	}
-	return roots
 }
 
-// adoptOrphanedWorkspaces scans the workspaces directory for directories not
-// associated with any registered project. For each orphan, it traces the git
-// worktree back to the original repo and auto-registers it in projects.json.
-func (a *App) adoptOrphanedWorkspaces() {
-	if a.config == nil || a.config.Paths == nil || a.config.Paths.WorkspacesRoot == "" {
-		return
-	}
-
-	regProjects, err := a.registry.LoadFull()
-	if err != nil {
-		logging.Warn("Failed to load registry for orphan scan: %v", err)
-		return
-	}
-
-	registeredNames := make(map[string]bool, len(regProjects))
-	registeredPaths := make(map[string]bool, len(regProjects))
-	for _, rp := range regProjects {
-		registeredNames[filepath.Base(rp.Path)] = true
-		registeredPaths[data.NormalizePath(rp.Path)] = true
-	}
-
-	entries, err := os.ReadDir(a.config.Paths.WorkspacesRoot)
-	if err != nil {
-		logging.Warn("Failed to read workspaces root for orphan scan: %v", err)
-		return
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "groups" {
-			continue
+// fetchRemoteBase fetches the remote base branch asynchronously.
+func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string) tea.Cmd {
+	reposCopy := make([]data.RepoRef, len(repos))
+	copy(reposCopy, repos)
+	return func() tea.Msg {
+		bases := make([]string, len(reposCopy))
+		for i, repo := range reposCopy {
+			base, err := git.GetFreshRemoteBase(repo.Path)
+			if err != nil {
+				base = "HEAD"
+			}
+			// Verify the base ref resolves to a commit
+			if err := git.ValidateRef(repo.Path, base); err != nil {
+				return messages.WorkspaceCreateFailed{
+					Err: fmt.Errorf("%s: repo has no commits on %q", repo.Name, base),
+				}
+			}
+			bases[i] = base
 		}
-		if registeredNames[entry.Name()] {
-			continue
+		return messages.WorkspaceFetchDone{
+			Name:    name,
+			Repos:   reposCopy,
+			Bases:   bases,
+			Profile: profile,
+		}
+	}
+}
+
+// fetchCheckedOutBase resolves the currently checked-out branch as the base (no fetch).
+func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile string) tea.Cmd {
+	reposCopy := make([]data.RepoRef, len(repos))
+	copy(reposCopy, repos)
+	return func() tea.Msg {
+		bases := make([]string, len(reposCopy))
+		for i, repo := range reposCopy {
+			base, err := git.GetCheckedOutBase(repo.Path)
+			if err != nil {
+				base = "HEAD"
+			}
+			bases[i] = base
+		}
+		return messages.WorkspaceFetchDone{
+			Name:    name,
+			Repos:   reposCopy,
+			Bases:   bases,
+			Profile: profile,
+		}
+	}
+}
+
+// fetchCustomBase fetches if stale, then resolves a custom branch name locally or on remote.
+func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, customBranch string) tea.Cmd {
+	reposCopy := make([]data.RepoRef, len(repos))
+	copy(reposCopy, repos)
+	return func() tea.Msg {
+		bases := make([]string, len(reposCopy))
+		for i, repo := range reposCopy {
+			_ = git.FetchIfStale(repo.Path)
+			base, _, err := git.ResolveCustomBranchWithFallback(repo.Path, customBranch)
+			if err != nil {
+				return messages.WorkspaceCreateFailed{
+					Err: fmt.Errorf("custom branch in %s: %w", repo.Name, err),
+				}
+			}
+			bases[i] = base
+		}
+		return messages.WorkspaceFetchDone{
+			Name:    name,
+			Repos:   reposCopy,
+			Bases:   bases,
+			Profile: profile,
+		}
+	}
+}
+
+// createWorkspace creates a new workspace (single or multi-repo).
+func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string, profile string) tea.Cmd {
+	return func() (msg tea.Msg) {
+		var ws *data.Workspace
+		defer func() {
+			if r := recover(); r != nil {
+				logging.Error("panic in createWorkspace: %v", r)
+				msg = messages.WorkspaceCreateFailed{
+					Workspace: ws,
+					Err:       fmt.Errorf("create workspace panicked: %v", r),
+				}
+			}
+		}()
+
+		if len(repos) == 0 || name == "" {
+			return messages.WorkspaceCreateFailed{
+				Err: fmt.Errorf("missing repos or workspace name"),
+			}
 		}
 
-		projectDir := filepath.Join(a.config.Paths.WorkspacesRoot, entry.Name())
-		repoPath := resolveOrphanedRepo(projectDir)
-		if repoPath == "" {
-			continue
-		}
-		if registeredPaths[data.NormalizePath(repoPath)] {
-			continue
+		// Validate branch doesn't exist in any repo
+		for _, repo := range repos {
+			if git.BranchExists(repo.Path, name) {
+				return messages.WorkspaceCreateFailed{
+					Err: fmt.Errorf("branch '%s' already exists in %s", name, repo.Name),
+				}
+			}
 		}
 
-		logging.Info("Auto-adopting orphaned workspace dir %s -> repo %s", entry.Name(), repoPath)
-		if err := a.registry.AddProject(repoPath); err != nil {
-			logging.Warn("Failed to auto-register orphaned project %s: %v", repoPath, err)
+		if len(repos) == 1 {
+			// Single-repo workspace
+			repo := repos[0]
+			base := bases[0]
+			workspacePath := filepath.Join(
+				a.config.Paths.WorkspacesRoot,
+				name,
+			)
+
+			ws = data.NewWorkspace(name, name, base, repo.Path, workspacePath)
+
+			if err := git.CreateWorkspace(repo.Path, workspacePath, name, base); err != nil {
+				return messages.WorkspaceCreateFailed{Workspace: ws, Err: err}
+			}
+
+			// Wait for .git file to exist
+			waitForGitFile(workspacePath)
+
+			// Copy .env* files
+			copyEnvFiles(repo.Path, workspacePath)
 		} else {
-			registeredNames[filepath.Base(repoPath)] = true
-			registeredPaths[data.NormalizePath(repoPath)] = true
+			// Multi-repo workspace
+			specs := make([]git.RepoSpec, len(repos))
+			for i, repo := range repos {
+				wsPath := filepath.Join(
+					a.config.Paths.WorkspacesRoot,
+					name,
+					repo.Name,
+				)
+				specs[i] = git.RepoSpec{
+					RepoPath:      repo.Path,
+					RepoName:      repo.Name,
+					WorkspacePath: wsPath,
+					Branch:        name,
+					Base:          bases[i],
+				}
+			}
+
+			if err := git.CreateGroupWorkspace(specs); err != nil {
+				return messages.WorkspaceCreateFailed{Err: err}
+			}
+
+			// Wait for .git files
+			for _, spec := range specs {
+				waitForGitFile(spec.WorkspacePath)
+			}
+
+			// Copy .env* files
+			for _, spec := range specs {
+				copyEnvFiles(spec.RepoPath, spec.WorkspacePath)
+			}
+
+			worktrees := make([]data.WorktreeRef, len(specs))
+			for i, spec := range specs {
+				worktrees[i] = data.WorktreeRef{
+					Branch: spec.Branch,
+					Base:   spec.Base,
+					Root:   spec.WorkspacePath,
+				}
+			}
+			ws = data.NewMultiRepoWorkspace(name, repos, worktrees)
 		}
+
+		// Save workspace
+		if err := a.workspaces.Save(ws); err != nil {
+			// Rollback
+			if len(repos) == 1 {
+				_ = git.RemoveWorkspace(repos[0].Path, ws.Root())
+				_ = git.DeleteBranch(repos[0].Path, name)
+			} else {
+				specs := make([]git.RepoSpec, len(repos))
+				for i, repo := range repos {
+					specs[i] = git.RepoSpec{
+						RepoPath:      repo.Path,
+						WorkspacePath: ws.Worktrees[i].Root,
+						Branch:        name,
+					}
+				}
+				git.RemoveGroupWorkspace(specs)
+			}
+			return messages.WorkspaceCreateFailed{Workspace: ws, Err: err}
+		}
+
+		// Set profile on workspace
+		if profile != "" {
+			ws.Profile = profile
+		}
+
+		// Register in registry
+		if err := a.registry.AddWorkspace(ws.Name, string(ws.ID()), profile); err != nil {
+			logging.Warn("Failed to register workspace: %v", err)
+		}
+
+		// Add to recents
+		a.recents.Add(repos)
+
+		return messages.WorkspaceCreated{Workspace: ws}
 	}
 }
 
-// resolveOrphanedRepo scans subdirectories of an orphaned project directory
-// for git worktrees and resolves the first one back to its parent repo.
-func resolveOrphanedRepo(projectDir string) string {
-	subEntries, err := os.ReadDir(projectDir)
-	if err != nil {
-		logging.Warn("Failed to read orphaned dir %s: %v", projectDir, err)
-		return ""
+// waitForGitFile waits for a .git file to appear (race condition from workspace creation).
+func waitForGitFile(workspacePath string) {
+	gitPath := filepath.Join(workspacePath, ".git")
+	for i := 0; i < 10; i++ {
+		if _, err := os.Stat(gitPath); err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-
-	for _, sub := range subEntries {
-		if !sub.IsDir() {
-			continue
-		}
-		worktreePath := filepath.Join(projectDir, sub.Name())
-		resolved, err := git.ResolveWorktreeRepo(worktreePath)
-		if err != nil {
-			continue
-		}
-		if git.IsGitRepository(resolved) {
-			return resolved
-		}
-	}
-	return ""
 }
 
-// loadProjects loads all registered projects and their workspaces
-func (a *App) loadProjects() tea.Cmd {
+// runSetupAsync runs setup scripts asynchronously and returns a WorkspaceSetupComplete message
+func (a *App) runSetupAsync(ws *data.Workspace) tea.Cmd {
 	return func() tea.Msg {
-		a.adoptOrphanedWorkspaces()
-
-		regProjects, err := a.registry.LoadFull()
-		if err != nil {
-			return messages.Error{Err: err, Context: "loading projects"}
+		if err := a.scripts.RunSetup(ws); err != nil {
+			return messages.WorkspaceSetupComplete{Workspace: ws, Err: err}
 		}
-
-		groupRoots := a.groupOwnedRoots()
-
-		var projects []data.Project
-		for _, rp := range regProjects {
-			path := rp.Path
-			if !git.IsGitRepository(path) {
-				continue
-			}
-
-			project := data.NewProject(path)
-			project.Profile = rp.Profile
-
-			// Start from stored workspaces so metadata is authoritative.
-			storedWorkspaces, err := a.workspaces.ListByRepo(path)
-			if err != nil {
-				logging.Warn("Failed to load stored workspaces for %s: %v", path, err)
-			}
-			needsLegacyImport, err := a.workspaces.HasLegacyWorkspaces(path)
-			if err != nil {
-				logging.Warn("Failed to check legacy workspaces for %s: %v", path, err)
-			}
-			if needsLegacyImport {
-				discoveredWorkspaces, err := git.DiscoverWorkspaces(project)
-				if err != nil {
-					logging.Warn("Failed to discover workspaces for %s: %v", path, err)
-				} else {
-					for i := range discoveredWorkspaces {
-						ws := &discoveredWorkspaces[i]
-						if groupRoots[data.NormalizePath(ws.Root)] {
-							continue // Skip worktrees owned by group workspaces
-						}
-						if err := a.workspaces.UpsertFromDiscoveryPreserveArchived(ws); err != nil {
-							logging.Warn("Failed to import workspace %s: %v", ws.Name, err)
-						}
-					}
-					storedWorkspaces, err = a.workspaces.ListByRepo(path)
-					if err != nil {
-						logging.Warn("Failed to reload stored workspaces for %s: %v", path, err)
-					}
-				}
-			}
-
-			var workspaces []data.Workspace
-			for _, ws := range storedWorkspaces {
-				if groupRoots[data.NormalizePath(ws.Root)] {
-					continue // Skip worktrees owned by group workspaces
-				}
-				workspaces = append(workspaces, *ws)
-			}
-
-			// Stored workspaces not discovered on disk are already included (store-first).
-			// These may be workspaces whose directories were deleted.
-
-			// Add primary checkout as transient workspace if not present
-			hasPrimary := false
-			for _, ws := range workspaces {
-				if ws.IsPrimaryCheckout() {
-					hasPrimary = true
-					break
-				}
-			}
-
-			if !hasPrimary {
-				branch, err := git.GetCurrentBranch(path)
-				if err != nil {
-					logging.Warn("Failed to get current branch for %s: %v", path, err)
-					// Skip creating primary workspace if we can't get the branch -
-					// the repo may be in a bad state or no longer a valid git repo
-				} else {
-					primaryWs := data.NewWorkspace(
-						filepath.Base(path), // name
-						branch,              // branch
-						"",                  // base
-						path,                // repo
-						path,                // root (same as repo for primary)
-					)
-					// Load any persisted UI state (OpenTabs, etc.) for the primary checkout
-					found, loadErr := a.workspaces.LoadMetadataFor(primaryWs)
-					if loadErr != nil {
-						logging.Warn("Failed to load metadata for primary checkout %s: %v", path, loadErr)
-					} else if !found {
-						// No stored metadata - save so UI state persists across restarts
-						if err := a.workspaces.Save(primaryWs); err != nil {
-							logging.Warn("Failed to save primary checkout %s: %v", path, err)
-						}
-					}
-					workspaces = append([]data.Workspace{*primaryWs}, workspaces...)
-				}
-			}
-
-			// Propagate project profile to all workspaces
-			for i := range workspaces {
-				workspaces[i].Profile = project.Profile
-			}
-			project.Workspaces = workspaces
-			projects = append(projects, *project)
-		}
-
-		return messages.ProjectsLoaded{Projects: projects}
+		return messages.WorkspaceSetupComplete{Workspace: ws}
 	}
 }
 
-// rescanWorkspaces discovers git worktrees and updates the workspace store.
-func (a *App) rescanWorkspaces() tea.Cmd {
-	return func() tea.Msg {
-		paths, err := a.registry.Projects()
-		if err != nil {
-			return messages.Error{Err: err, Context: "rescanning workspaces"}
-		}
-
-		groupRoots := a.groupOwnedRoots()
-
-		for _, path := range paths {
-			if !git.IsGitRepository(path) {
-				continue
-			}
-
-			project := data.NewProject(path)
-			discoveredWorkspaces, err := git.DiscoverWorkspaces(project)
-			if err != nil {
-				logging.Warn("Failed to discover workspaces for %s: %v", path, err)
-				continue
-			}
-
-			discoveredSet := make(map[string]bool, len(discoveredWorkspaces))
-			for i := range discoveredWorkspaces {
-				ws := &discoveredWorkspaces[i]
-				if groupRoots[data.NormalizePath(ws.Root)] {
-					continue // Skip worktrees owned by group workspaces
-				}
-				discoveredSet[string(ws.ID())] = true
-				if err := a.workspaces.UpsertFromDiscovery(ws); err != nil {
-					logging.Warn("Failed to import workspace %s: %v", ws.Name, err)
-				}
-			}
-
-			storedWorkspaces, err := a.workspaces.ListByRepoIncludingArchived(path)
-			if err != nil {
-				logging.Warn("Failed to load stored workspaces for %s: %v", path, err)
-				continue
-			}
-
-			for _, ws := range storedWorkspaces {
-				if ws == nil || ws.Root == "" {
-					continue
-				}
-				if groupRoots[data.NormalizePath(ws.Root)] {
-					continue // Skip worktrees owned by group workspaces
-				}
-				if discoveredSet[string(ws.ID())] {
-					continue
-				}
-				if !ws.Archived {
-					ws.Archived = true
-					ws.ArchivedAt = time.Now()
-					if err := a.workspaces.Save(ws); err != nil {
-						logging.Warn("Failed to archive workspace %s: %v", ws.Name, err)
-					}
-				}
+// deleteWorkspace deletes a workspace
+func (a *App) deleteWorkspace(ws *data.Workspace) tea.Cmd {
+	if ws == nil {
+		return func() tea.Msg {
+			return messages.WorkspaceDeleteFailed{
+				Workspace: ws,
+				Err:       fmt.Errorf("missing workspace"),
 			}
 		}
-
-		// Also rescan group workspaces
-		groups, grpErr := a.registry.LoadGroups()
-		if grpErr == nil {
-			for _, group := range groups {
-				groupWSList, err := a.workspaces.ListGroupWorkspacesByGroup(group.Name)
-				if err != nil {
-					logging.Warn("Failed to load group workspaces for %s: %v", group.Name, err)
-					continue
-				}
-				for _, gw := range groupWSList {
-					if gw.Archived {
-						continue
-					}
-					// Check that all worktree directories still exist
-					allExist := true
-					for _, root := range gw.AllRoots() {
-						if _, err := os.Stat(root); os.IsNotExist(err) {
-							allExist = false
-							break
-						}
-					}
-					if !allExist {
-						gw.Archived = true
-						gw.ArchivedAt = time.Now()
-						if err := a.workspaces.SaveGroupWorkspace(gw); err != nil {
-							logging.Warn("Failed to archive group workspace %s: %v", gw.Name, err)
-						}
-					}
-				}
-			}
-		}
-
-		return messages.RefreshDashboard{}
 	}
+
+	// Clear UI components if deleting the active workspace
+	if a.activeWorkspace != nil && a.activeWorkspace.Root() == ws.Root() {
+		a.goHome()
+	}
+
+	return func() tea.Msg {
+		var branchWarning string
+
+		if ws.IsMultiRepo() {
+			// Multi-repo: remove all worktrees
+			specs := make([]git.RepoSpec, len(ws.Repos))
+			for i, repo := range ws.Repos {
+				specs[i] = git.RepoSpec{
+					RepoPath:      repo.Path,
+					RepoName:      repo.Name,
+					WorkspacePath: ws.Worktrees[i].Root,
+					Branch:        ws.Name,
+				}
+			}
+			_, branchErrs := git.RemoveGroupWorkspace(specs)
+			if len(branchErrs) > 0 {
+				msgs := make([]string, len(branchErrs))
+				for i, e := range branchErrs {
+					msgs[i] = e.Error()
+				}
+				branchWarning = "Failed to delete branches: " + joinStrings(msgs, "; ")
+			}
+			// Clean up the workspace root directory
+			_ = os.RemoveAll(ws.Root())
+		} else {
+			// Single-repo: remove worktree and branch
+			repo := ws.PrimaryRepo()
+			if err := git.RemoveWorkspace(repo.Path, ws.Root()); err != nil {
+				return messages.WorkspaceDeleteFailed{Workspace: ws, Err: err}
+			}
+			if err := git.DeleteBranch(repo.Path, ws.Branch()); err != nil {
+				branchWarning = fmt.Sprintf("Failed to delete branch %q: %v", ws.Branch(), err)
+				logging.Warn("%s", branchWarning)
+			}
+		}
+
+		_ = a.workspaces.Delete(ws.ID())
+		_ = a.registry.RemoveWorkspace(string(ws.ID()))
+
+		return messages.WorkspaceDeleted{
+			Workspace:     ws,
+			BranchWarning: branchWarning,
+		}
+	}
+}
+
+// joinStrings joins strings with a separator.
+func joinStrings(strs []string, sep string) string {
+	result := ""
+	for i, s := range strs {
+		if i > 0 {
+			result += sep
+		}
+		result += s
+	}
+	return result
 }
 
 // requestGitStatus requests git status for a workspace (always fetches fresh)
@@ -361,282 +380,7 @@ func (a *App) unwatchAllWorkspaces() {
 	if a.fileWatcher == nil {
 		return
 	}
-	for _, p := range a.projects {
-		for _, ws := range p.Workspaces {
-			a.fileWatcher.Unwatch(ws.Root)
-		}
-	}
-}
-
-// addProject adds a new project to the registry
-func (a *App) addProject(path string) tea.Cmd {
-	return func() tea.Msg {
-		logging.Info("Adding project: %s", path)
-
-		// Expand path
-		if len(path) > 0 && path[0] == '~' {
-			home, err := os.UserHomeDir()
-			if err == nil {
-				path = filepath.Join(home, path[1:])
-				logging.Debug("Expanded path to: %s", path)
-			}
-		}
-
-		// Verify it's a git repo
-		if !git.IsGitRepository(path) {
-			logging.Warn("Path is not a git repository: %s", path)
-			return messages.Error{
-				Err:     fmt.Errorf("not a git repository: %s", path),
-				Context: "adding project",
-			}
-		}
-
-		// Add to registry
-		if err := a.registry.AddProject(path); err != nil {
-			logging.Error("Failed to add project to registry: %v", err)
-			return messages.Error{Err: err, Context: "adding project"}
-		}
-
-		logging.Info("Project added successfully: %s", path)
-		return messages.RefreshDashboard{}
-	}
-}
-
-// fetchRemoteBase fetches the remote base branch asynchronously and returns a WorkspaceFetchDone message.
-func (a *App) fetchRemoteBase(project *data.Project, name string, allowEdits, isolated, skipPermissions bool) tea.Cmd {
-	proj := project
-	return func() tea.Msg {
-		base, err := git.GetFreshRemoteBase(proj.Path)
-		if err != nil {
-			base = "HEAD"
-		}
-		return messages.WorkspaceFetchDone{
-			Project:         proj,
-			Name:            name,
-			Base:            base,
-			AllowEdits:      allowEdits,
-			Isolated:        isolated,
-			SkipPermissions: skipPermissions,
-		}
-	}
-}
-
-// fetchCheckedOutBase resolves the currently checked-out branch as the base (no fetch).
-func (a *App) fetchCheckedOutBase(project *data.Project, name string, allowEdits, isolated, skipPermissions bool) tea.Cmd {
-	proj := project
-	return func() tea.Msg {
-		base, err := git.GetCheckedOutBase(proj.Path)
-		if err != nil {
-			base = "HEAD"
-		}
-		return messages.WorkspaceFetchDone{
-			Project:         proj,
-			Name:            name,
-			Base:            base,
-			AllowEdits:      allowEdits,
-			Isolated:        isolated,
-			SkipPermissions: skipPermissions,
-		}
-	}
-}
-
-// fetchCustomBase fetches if stale, then resolves a custom branch name locally or on remote.
-func (a *App) fetchCustomBase(project *data.Project, name, customBranch string, allowEdits, isolated, skipPermissions bool) tea.Cmd {
-	proj := project
-	return func() tea.Msg {
-		_ = git.FetchIfStale(proj.Path)
-		base, err := git.ResolveCustomBranch(proj.Path, customBranch)
-		if err != nil {
-			return messages.WorkspaceCreateFailed{
-				Err: fmt.Errorf("custom branch: %w", err),
-			}
-		}
-		return messages.WorkspaceFetchDone{
-			Project:         proj,
-			Name:            name,
-			Base:            base,
-			AllowEdits:      allowEdits,
-			Isolated:        isolated,
-			SkipPermissions: skipPermissions,
-		}
-	}
-}
-
-// createWorkspace creates a new workspace
-func (a *App) createWorkspace(project *data.Project, name, base string, allowEdits, isolated, skipPermissions bool) tea.Cmd {
-	return func() (msg tea.Msg) {
-		var ws *data.Workspace
-		defer func() {
-			if r := recover(); r != nil {
-				logging.Error("panic in createWorkspace: %v", r)
-				msg = messages.WorkspaceCreateFailed{
-					Workspace: ws,
-					Err:       fmt.Errorf("create workspace panicked: %v", r),
-				}
-			}
-		}()
-
-		if project == nil || name == "" {
-			return messages.WorkspaceCreateFailed{
-				Err: fmt.Errorf("missing project or workspace name"),
-			}
-		}
-
-		workspacePath := filepath.Join(
-			a.config.Paths.WorkspacesRoot,
-			project.Name,
-			name,
-		)
-
-		branch := name
-		ws = data.NewWorkspace(name, branch, base, project.Path, workspacePath)
-		ws.AllowEdits = allowEdits
-		ws.Isolated = isolated
-		ws.SkipPermissions = skipPermissions
-
-		if err := git.CreateWorkspace(project.Path, workspacePath, branch, base); err != nil {
-			return messages.WorkspaceCreateFailed{
-				Workspace: ws,
-				Err:       err,
-			}
-		}
-
-		// Wait for .git file to exist (race condition from workspace creation)
-		gitPath := filepath.Join(workspacePath, ".git")
-		for i := 0; i < 10; i++ {
-			if _, err := os.Stat(gitPath); err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// Copy .env* files from the project directory (one level deep)
-		copyEnvFiles(project.Path, workspacePath)
-
-		// Save unified workspace
-		if err := a.workspaces.Save(ws); err != nil {
-			_ = git.RemoveWorkspace(project.Path, workspacePath)
-			_ = git.DeleteBranch(project.Path, branch)
-			return messages.WorkspaceCreateFailed{
-				Workspace: ws,
-				Err:       err,
-			}
-		}
-
-		// Return immediately for async setup
-		return messages.WorkspaceCreated{Workspace: ws}
-	}
-}
-
-// runSetupAsync runs setup scripts asynchronously and returns a WorkspaceSetupComplete message
-func (a *App) runSetupAsync(ws *data.Workspace) tea.Cmd {
-	return func() tea.Msg {
-		if err := a.scripts.RunSetup(ws); err != nil {
-			return messages.WorkspaceSetupComplete{Workspace: ws, Err: err}
-		}
-		return messages.WorkspaceSetupComplete{Workspace: ws}
-	}
-}
-
-// deleteWorkspace deletes a workspace
-func (a *App) deleteWorkspace(project *data.Project, ws *data.Workspace) tea.Cmd {
-	// Defensive nil checks
-	if project == nil || ws == nil {
-		return func() tea.Msg {
-			return messages.WorkspaceDeleteFailed{
-				Project:   project,
-				Workspace: ws,
-				Err:       fmt.Errorf("missing project or workspace"),
-			}
-		}
-	}
-
-	// Clear UI components if deleting the active workspace
-	if a.activeWorkspace != nil && a.activeWorkspace.Root == ws.Root {
-		a.goHome()
-	}
-
-	return func() tea.Msg {
-		if ws.IsPrimaryCheckout() {
-			return messages.WorkspaceDeleteFailed{
-				Project:   project,
-				Workspace: ws,
-				Err:       fmt.Errorf("cannot delete primary checkout"),
-			}
-		}
-
-		if err := git.RemoveWorkspace(project.Path, ws.Root); err != nil {
-			return messages.WorkspaceDeleteFailed{
-				Project:   project,
-				Workspace: ws,
-				Err:       err,
-			}
-		}
-
-		var branchWarning string
-		if err := git.DeleteBranch(project.Path, ws.Branch); err != nil {
-			branchWarning = fmt.Sprintf("Failed to delete branch %q: %v", ws.Branch, err)
-			logging.Warn("%s", branchWarning)
-		}
-		_ = a.workspaces.Delete(ws.ID())
-
-		return messages.WorkspaceDeleted{
-			Project:       project,
-			Workspace:     ws,
-			BranchWarning: branchWarning,
-		}
-	}
-}
-
-// findProjectForWorkspace returns the project that owns the given workspace,
-// matching by ws.Repo == project.Path.
-func (a *App) findProjectForWorkspace(ws *data.Workspace) *data.Project {
-	if ws == nil {
-		return nil
-	}
-	for i := range a.projects {
-		if a.projects[i].Path == ws.Repo {
-			return &a.projects[i]
-		}
-	}
-	return nil
-}
-
-// removeProjectByPath removes a project from the registry by path string.
-// Unlike removeProject, this does not require a *data.Project pointer, which
-// is useful when the dialog state has already been cleared (e.g. on cancel).
-func (a *App) removeProjectByPath(path string) tea.Cmd {
-	workspacesRoot := a.config.Paths.WorkspacesRoot
-	return func() tea.Msg {
-		if err := a.registry.RemoveProject(path); err != nil {
-			return messages.Error{Err: err, Context: "removing project"}
-		}
-		// Clean up empty project workspace directory
-		_ = os.Remove(filepath.Join(workspacesRoot, filepath.Base(path)))
-		return messages.ProjectRemoved{Path: path}
-	}
-}
-
-// removeProject removes a project from the registry (does not delete files).
-func (a *App) removeProject(project *data.Project) tea.Cmd {
-	if project == nil {
-		return func() tea.Msg {
-			return messages.Error{Err: fmt.Errorf("missing project"), Context: "removing project"}
-		}
-	}
-
-	if a.activeWorkspace != nil && a.activeWorkspace.Repo == project.Path {
-		a.goHome()
-	}
-
-	workspacesRoot := a.config.Paths.WorkspacesRoot
-	projectName := project.Name
-	return func() tea.Msg {
-		if err := a.registry.RemoveProject(project.Path); err != nil {
-			return messages.Error{Err: err, Context: "removing project"}
-		}
-		// Clean up empty project workspace directory
-		_ = os.Remove(filepath.Join(workspacesRoot, projectName))
-		return messages.ProjectRemoved{Path: project.Path}
+	for _, ws := range a.allWorkspaces {
+		a.fileWatcher.Unwatch(ws.Root())
 	}
 }

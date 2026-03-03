@@ -159,7 +159,7 @@ type tabSessionInfo struct {
 
 // Concurrency safety: builds the map synchronously in the Update loop.
 // Goroutine closures capture only the returned map, never accessing
-// a.projects or ws.OpenTabs directly.
+// a.allWorkspaces or ws.OpenTabs directly.
 func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 	infoBySession := make(map[string]tabSessionInfo)
 	assistants := map[string]struct{}{}
@@ -168,26 +168,23 @@ func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 			assistants[name] = struct{}{}
 		}
 	}
-	for _, project := range a.projects {
-		for i := range project.Workspaces {
-			ws := &project.Workspaces[i]
-			for _, tab := range ws.OpenTabs {
-				name := strings.TrimSpace(tab.SessionName)
-				if name == "" {
-					continue
-				}
-				status := strings.ToLower(strings.TrimSpace(tab.Status))
-				if status == "" {
-					status = "running"
-				}
-				assistant := strings.TrimSpace(tab.Assistant)
-				_, isChat := assistants[assistant]
-				infoBySession[name] = tabSessionInfo{
-					Status:      status,
-					WorkspaceID: string(ws.ID()),
-					Assistant:   assistant,
-					IsChat:      isChat,
-				}
+	for _, ws := range a.allWorkspaces {
+		for _, tab := range ws.OpenTabs {
+			name := strings.TrimSpace(tab.SessionName)
+			if name == "" {
+				continue
+			}
+			status := strings.ToLower(strings.TrimSpace(tab.Status))
+			if status == "" {
+				status = "running"
+			}
+			assistant := strings.TrimSpace(tab.Assistant)
+			_, isChat := assistants[assistant]
+			infoBySession[name] = tabSessionInfo{
+				Status:      status,
+				WorkspaceID: string(ws.ID()),
+				Assistant:   assistant,
+				IsChat:      isChat,
 			}
 		}
 	}
@@ -344,19 +341,16 @@ func (a *App) handleTmuxAvailableResult(msg tmuxAvailableResult) []tea.Cmd {
 // the UI doesn't show stale running/detached status.
 func (a *App) resetAllTabStatuses() []tea.Cmd {
 	var cmds []tea.Cmd
-	for i := range a.projects {
-		for j := range a.projects[i].Workspaces {
-			ws := &a.projects[i].Workspaces[j]
-			changed := false
-			for k := range ws.OpenTabs {
-				if ws.OpenTabs[k].Status != "" && ws.OpenTabs[k].Status != "stopped" {
-					ws.OpenTabs[k].Status = "stopped"
-					changed = true
-				}
+	for _, ws := range a.allWorkspaces {
+		changed := false
+		for k := range ws.OpenTabs {
+			if ws.OpenTabs[k].Status != "" && ws.OpenTabs[k].Status != "stopped" {
+				ws.OpenTabs[k].Status = "stopped"
+				changed = true
 			}
-			if changed {
-				cmds = append(cmds, a.persistWorkspaceTabs(string(ws.ID())))
-			}
+		}
+		if changed {
+			cmds = append(cmds, a.persistWorkspaceTabs(string(ws.ID())))
 		}
 	}
 	return cmds

@@ -8,33 +8,20 @@ import (
 	"sync"
 )
 
-// Registry manages the projects.json file for persistent project tracking
+// Registry manages the workspaces.json file for persistent workspace tracking
 type Registry struct {
 	path string
 	mu   sync.RWMutex
 }
 
-// registryFile represents the JSON structure of projects.json
-// Supports both legacy format (plain array) and new format (object with projects)
+// registryFile represents the JSON structure of workspaces.json
 type registryFile struct {
-	Projects []registryProject `json:"projects"`
-	Groups   []registryGroup   `json:"groups,omitempty"`
+	Workspaces []registryWorkspace `json:"workspaces"`
 }
 
-type registryGroup struct {
-	Name    string      `json:"name"`
-	Repos   []GroupRepo `json:"repos"`
-	Profile string      `json:"profile,omitempty"`
-}
-
-// registryFileStrings is an alternate format where projects is just string paths
-type registryFileStrings struct {
-	Projects []string `json:"projects"`
-}
-
-type registryProject struct {
+type registryWorkspace struct {
 	Name    string `json:"name"`
-	Path    string `json:"path"`
+	ID      string `json:"id"`
 	Profile string `json:"profile,omitempty"`
 }
 
@@ -45,264 +32,8 @@ func NewRegistry(path string) *Registry {
 	}
 }
 
-// Load reads the project paths from the registry file
-func (r *Registry) Load() ([]string, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	data, err := os.ReadFile(r.path)
-	if os.IsNotExist(err) {
-		return []string{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// Try new format first: {"projects": [{name, path}, ...]}
-	var registry registryFile
-	if err := json.Unmarshal(data, &registry); err == nil {
-		if len(registry.Projects) == 0 {
-			return []string{}, nil
-		}
-		paths := make([]string, len(registry.Projects))
-		for i, p := range registry.Projects {
-			paths[i] = p.Path
-		}
-		return paths, nil
-	}
-
-	// Try alternate format: {"projects": ["path1", "path2"]}
-	var registryStrings registryFileStrings
-	if err := json.Unmarshal(data, &registryStrings); err == nil {
-		return registryStrings.Projects, nil
-	}
-
-	// Fall back to legacy format: ["path1", "path2"]
-	var paths []string
-	if err := json.Unmarshal(data, &paths); err != nil {
-		return nil, err
-	}
-
-	return paths, nil
-}
-
-// Save writes the project paths to the registry file
-func (r *Registry) Save(paths []string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	dir := filepath.Dir(r.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	// Build registry structure
-	projects := make([]registryProject, len(paths))
-	for i, path := range paths {
-		projects[i] = registryProject{
-			Name: filepath.Base(path),
-			Path: path,
-		}
-	}
-	groups := r.readGroupsFromFile()
-	registry := registryFile{
-		Projects: projects,
-		Groups:   groups,
-	}
-
-	data, err := json.MarshalIndent(registry, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(r.path, data, 0644)
-}
-
-// AddProject adds a project path to the registry
-func (r *Registry) AddProject(path string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-
-	// Check if already exists
-	for _, p := range projects {
-		if p.Path == path {
-			return nil // Already registered
-		}
-	}
-
-	projects = append(projects, registryProject{
-		Name: filepath.Base(path),
-		Path: path,
-	})
-	return r.saveFull(projects)
-}
-
-// RemoveProject removes a project path from the registry
-func (r *Registry) RemoveProject(path string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-
-	var filtered []registryProject
-	for _, p := range projects {
-		if p.Path != path {
-			filtered = append(filtered, p)
-		}
-	}
-
-	return r.saveFull(filtered)
-}
-
-// Projects returns a copy of all registered project paths
-func (r *Registry) Projects() ([]string, error) {
-	return r.Load()
-}
-
-// LoadFull reads the full project records (name, path, profile) from the registry file.
-func (r *Registry) LoadFull() ([]registryProject, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	raw, err := os.ReadFile(r.path)
-	if os.IsNotExist(err) {
-		return []registryProject{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// Try structured format: {"projects": [{name, path, profile}, ...]}
-	var registry registryFile
-	if err := json.Unmarshal(raw, &registry); err == nil {
-		if len(registry.Projects) == 0 {
-			return []registryProject{}, nil
-		}
-		return registry.Projects, nil
-	}
-
-	// Try string array format: {"projects": ["path1", "path2"]}
-	var registryStrings registryFileStrings
-	if err := json.Unmarshal(raw, &registryStrings); err == nil {
-		projects := make([]registryProject, len(registryStrings.Projects))
-		for i, p := range registryStrings.Projects {
-			projects[i] = registryProject{Name: filepath.Base(p), Path: p}
-		}
-		return projects, nil
-	}
-
-	// Legacy plain array: ["path1", "path2"]
-	var paths []string
-	if err := json.Unmarshal(raw, &paths); err != nil {
-		return nil, err
-	}
-	projects := make([]registryProject, len(paths))
-	for i, p := range paths {
-		projects[i] = registryProject{Name: filepath.Base(p), Path: p}
-	}
-	return projects, nil
-}
-
-// saveFull writes the full project records to the registry file.
-func (r *Registry) saveFull(projects []registryProject) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	dir := filepath.Dir(r.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	if projects == nil {
-		projects = []registryProject{}
-	}
-	groups := r.readGroupsFromFile()
-	registry := registryFile{Projects: projects, Groups: groups}
-	raw, err := json.MarshalIndent(registry, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(r.path, raw, 0644)
-}
-
-// readGroupsFromFile reads groups directly from the JSON file.
-// Caller must already hold r.mu (write lock).
-func (r *Registry) readGroupsFromFile() []registryGroup {
-	raw, err := os.ReadFile(r.path)
-	if err != nil {
-		return nil
-	}
-	var registry registryFile
-	if err := json.Unmarshal(raw, &registry); err != nil {
-		return nil
-	}
-	return registry.Groups
-}
-
-// SetProfile sets the profile for a project identified by its path.
-func (r *Registry) SetProfile(projectPath, profile string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-
-	for i := range projects {
-		if projects[i].Path == projectPath {
-			projects[i].Profile = profile
-			return r.saveFull(projects)
-		}
-	}
-
-	return fmt.Errorf("project not found: %s", projectPath)
-}
-
-// RenameProfile updates all projects using oldProfile to use newProfile.
-func (r *Registry) RenameProfile(oldProfile, newProfile string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-
-	changed := false
-	for i := range projects {
-		if projects[i].Profile == oldProfile {
-			projects[i].Profile = newProfile
-			changed = true
-		}
-	}
-
-	if changed {
-		return r.saveFull(projects)
-	}
-	return nil
-}
-
-// ClearProfile clears the profile from all projects using the specified profile.
-func (r *Registry) ClearProfile(profile string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-
-	changed := false
-	for i := range projects {
-		if projects[i].Profile == profile {
-			projects[i].Profile = ""
-			changed = true
-		}
-	}
-
-	if changed {
-		return r.saveFull(projects)
-	}
-	return nil
-}
-
-// LoadGroups reads all project groups from the registry file.
-func (r *Registry) LoadGroups() ([]ProjectGroup, error) {
+// ListWorkspaces reads all workspace entries from the registry
+func (r *Registry) ListWorkspaces() ([]registryWorkspace, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -316,194 +47,129 @@ func (r *Registry) LoadGroups() ([]ProjectGroup, error) {
 
 	var registry registryFile
 	if err := json.Unmarshal(raw, &registry); err != nil {
-		return nil, nil // Old format without groups
+		return nil, err
 	}
-
-	groups := make([]ProjectGroup, len(registry.Groups))
-	for i, rg := range registry.Groups {
-		groups[i] = ProjectGroup{
-			Name:    rg.Name,
-			Repos:   rg.Repos,
-			Profile: rg.Profile,
-		}
-	}
-	return groups, nil
+	return registry.Workspaces, nil
 }
 
-// AddGroup adds a project group to the registry.
-func (r *Registry) AddGroup(name string, repos []GroupRepo, profile string) error {
-	projects, err := r.LoadFull()
+// AddWorkspace adds a workspace to the registry
+func (r *Registry) AddWorkspace(name, id, profile string) error {
+	workspaces, err := r.ListWorkspaces()
 	if err != nil {
 		return err
 	}
-	groups, err := r.LoadGroups()
-	if err != nil {
-		groups = nil
-	}
 
-	// Check for duplicate name
-	for _, g := range groups {
-		if g.Name == name {
-			return fmt.Errorf("group already exists: %s", name)
+	// Check if already exists
+	for _, ws := range workspaces {
+		if ws.ID == id {
+			return nil // Already registered
 		}
 	}
 
-	groups = append(groups, ProjectGroup{
+	workspaces = append(workspaces, registryWorkspace{
 		Name:    name,
-		Repos:   repos,
+		ID:      id,
 		Profile: profile,
 	})
-
-	return r.saveFullWithGroups(projects, groups)
+	return r.save(workspaces)
 }
 
-// RemoveGroup removes a project group from the registry.
-func (r *Registry) RemoveGroup(name string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-	groups, err := r.LoadGroups()
+// RemoveWorkspace removes a workspace from the registry by ID
+func (r *Registry) RemoveWorkspace(id string) error {
+	workspaces, err := r.ListWorkspaces()
 	if err != nil {
 		return err
 	}
 
-	var filtered []ProjectGroup
-	for _, g := range groups {
-		if g.Name != name {
-			filtered = append(filtered, g)
+	var filtered []registryWorkspace
+	for _, ws := range workspaces {
+		if ws.ID != id {
+			filtered = append(filtered, ws)
 		}
 	}
 
-	return r.saveFullWithGroups(projects, filtered)
+	return r.save(filtered)
 }
 
-// SetGroupProfile sets the profile for a group.
-func (r *Registry) SetGroupProfile(groupName, profile string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-	groups, err := r.LoadGroups()
+// UpdateWorkspace updates the name and ID of an existing workspace entry.
+func (r *Registry) UpdateWorkspace(oldID, newName, newID string) error {
+	workspaces, err := r.ListWorkspaces()
 	if err != nil {
 		return err
 	}
 
-	for i := range groups {
-		if groups[i].Name == groupName {
-			groups[i].Profile = profile
-			return r.saveFullWithGroups(projects, groups)
+	for i := range workspaces {
+		if workspaces[i].ID == oldID {
+			workspaces[i].Name = newName
+			workspaces[i].ID = newID
+			return r.save(workspaces)
 		}
 	}
 
-	return fmt.Errorf("group not found: %s", groupName)
+	return fmt.Errorf("workspace not found: %s", oldID)
 }
 
-// RenameGroupProfile updates all groups using oldProfile to use newProfile.
-func (r *Registry) RenameGroupProfile(oldProfile, newProfile string) error {
-	projects, err := r.LoadFull()
+// SetProfile sets the profile for a workspace identified by its ID
+func (r *Registry) SetProfile(id, profile string) error {
+	workspaces, err := r.ListWorkspaces()
 	if err != nil {
 		return err
 	}
-	groups, err := r.LoadGroups()
+
+	for i := range workspaces {
+		if workspaces[i].ID == id {
+			workspaces[i].Profile = profile
+			return r.save(workspaces)
+		}
+	}
+
+	return fmt.Errorf("workspace not found: %s", id)
+}
+
+// RenameProfile updates all workspaces using oldProfile to use newProfile
+func (r *Registry) RenameProfile(oldProfile, newProfile string) error {
+	workspaces, err := r.ListWorkspaces()
 	if err != nil {
 		return err
 	}
 
 	changed := false
-	for i := range groups {
-		if groups[i].Profile == oldProfile {
-			groups[i].Profile = newProfile
+	for i := range workspaces {
+		if workspaces[i].Profile == oldProfile {
+			workspaces[i].Profile = newProfile
 			changed = true
 		}
 	}
 
 	if changed {
-		return r.saveFullWithGroups(projects, groups)
+		return r.save(workspaces)
 	}
 	return nil
 }
 
-// ClearGroupProfile clears the profile from all groups using the specified profile.
-func (r *Registry) ClearGroupProfile(profile string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-	groups, err := r.LoadGroups()
+// ClearProfile clears the profile from all workspaces using the specified profile
+func (r *Registry) ClearProfile(profile string) error {
+	workspaces, err := r.ListWorkspaces()
 	if err != nil {
 		return err
 	}
 
 	changed := false
-	for i := range groups {
-		if groups[i].Profile == profile {
-			groups[i].Profile = ""
+	for i := range workspaces {
+		if workspaces[i].Profile == profile {
+			workspaces[i].Profile = ""
 			changed = true
 		}
 	}
 
 	if changed {
-		return r.saveFullWithGroups(projects, groups)
+		return r.save(workspaces)
 	}
 	return nil
 }
 
-// RenameGroup renames a project group in the registry.
-func (r *Registry) RenameGroup(oldName, newName string) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-	groups, err := r.LoadGroups()
-	if err != nil {
-		return err
-	}
-
-	for i := range groups {
-		if groups[i].Name == newName {
-			return fmt.Errorf("group already exists: %s", newName)
-		}
-	}
-
-	found := false
-	for i := range groups {
-		if groups[i].Name == oldName {
-			groups[i].Name = newName
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("group not found: %s", oldName)
-	}
-
-	return r.saveFullWithGroups(projects, groups)
-}
-
-// UpdateGroupRepos updates the repos list for a group.
-func (r *Registry) UpdateGroupRepos(groupName string, repos []GroupRepo) error {
-	projects, err := r.LoadFull()
-	if err != nil {
-		return err
-	}
-	groups, err := r.LoadGroups()
-	if err != nil {
-		return err
-	}
-
-	for i := range groups {
-		if groups[i].Name == groupName {
-			groups[i].Repos = repos
-			return r.saveFullWithGroups(projects, groups)
-		}
-	}
-
-	return fmt.Errorf("group not found: %s", groupName)
-}
-
-// saveFullWithGroups writes both projects and groups to the registry file.
-func (r *Registry) saveFullWithGroups(projects []registryProject, groups []ProjectGroup) error {
+// save writes the workspace entries to the registry file
+func (r *Registry) save(workspaces []registryWorkspace) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -512,23 +178,11 @@ func (r *Registry) saveFullWithGroups(projects []registryProject, groups []Proje
 		return err
 	}
 
-	if projects == nil {
-		projects = []registryProject{}
+	if workspaces == nil {
+		workspaces = []registryWorkspace{}
 	}
 
-	var regGroups []registryGroup
-	for _, g := range groups {
-		regGroups = append(regGroups, registryGroup{
-			Name:    g.Name,
-			Repos:   g.Repos,
-			Profile: g.Profile,
-		})
-	}
-
-	registry := registryFile{
-		Projects: projects,
-		Groups:   regGroups,
-	}
+	registry := registryFile{Workspaces: workspaces}
 	raw, err := json.MarshalIndent(registry, "", "  ")
 	if err != nil {
 		return err

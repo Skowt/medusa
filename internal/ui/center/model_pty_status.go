@@ -99,7 +99,7 @@ func (m *Model) GetActiveWorkspaceRoots() []string {
 			// Get the root path from one of the tabs
 			for _, tab := range tabs {
 				if tab.Workspace != nil {
-					active = append(active, tab.Workspace.Root)
+					active = append(active, tab.Workspace.Root())
 					break
 				}
 			}
@@ -129,7 +129,7 @@ func (m *Model) GetRunningWorkspaceRoots() []string {
 				continue
 			}
 			if tab.Running && tab.Workspace != nil {
-				running = append(running, tab.Workspace.Root)
+				running = append(running, tab.Workspace.Root())
 				break // Only need one per workspace
 			}
 		}
@@ -179,12 +179,7 @@ func (m *Model) isChatTab(tab *Tab) bool {
 		_, ok := m.config.Assistants[tab.Assistant]
 		return ok
 	}
-	switch tab.Assistant {
-	case "claude", "codex", "gemini", "amp", "opencode", "droid", "cursor":
-		return true
-	default:
-		return false
-	}
+	return tab.Assistant == "claude"
 }
 
 // StartPTYReaders starts reading from all PTYs across all workspaces

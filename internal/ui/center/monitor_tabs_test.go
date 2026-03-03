@@ -29,8 +29,8 @@ func TestNextAssistantName(t *testing.T) {
 }
 
 func TestMonitorTabsIncludesAllTabs(t *testing.T) {
-	wtA := &data.Workspace{Name: "alpha", Repo: "/repoA", Root: "/repoA/alpha"}
-	wtB := &data.Workspace{Name: "beta", Repo: "/repoB", Root: "/repoB/beta"}
+	wtA := data.NewWorkspace("alpha", "", "", "/repoA", "/repoA/alpha")
+	wtB := data.NewWorkspace("beta", "", "", "/repoB", "/repoB/beta")
 
 	model := &Model{
 		tabsByWorkspace: map[string][]*Tab{
@@ -55,8 +55,8 @@ func TestMonitorTabsIncludesAllTabs(t *testing.T) {
 }
 
 func TestCleanupWorkspace(t *testing.T) {
-	wtA := &data.Workspace{Name: "alpha", Repo: "/repoA", Root: "/repoA/alpha"}
-	wtB := &data.Workspace{Name: "beta", Repo: "/repoB", Root: "/repoB/beta"}
+	wtA := data.NewWorkspace("alpha", "", "", "/repoA", "/repoA/alpha")
+	wtB := data.NewWorkspace("beta", "", "", "/repoB", "/repoB/beta")
 
 	model := &Model{
 		tabsByWorkspace: map[string][]*Tab{

@@ -2,11 +2,12 @@ package app
 
 import (
 	"fmt"
-	"path/filepath"
+	"os"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/messages"
 	"github.com/andyrewlee/medusa/internal/ui/common"
 )
@@ -40,11 +41,6 @@ func (a *App) renderCenterPaneContent() string {
 		return a.renderWorkspaceInfo()
 	}
 
-	// Show group info when a group header is highlighted
-	if a.activeGroup != nil && a.activeGroupWs == nil {
-		return a.renderGroupInfo()
-	}
-
 	return "Select a worktree from the dashboard"
 }
 
@@ -63,8 +59,6 @@ func (a *App) centerPaneContentOrigin() (x, y int) {
 func (a *App) goHome() {
 	a.showWelcome = true
 	a.activeWorkspace = nil
-	a.activeGroup = nil
-	a.activeGroupWs = nil
 	a.center.SetWorkspace(nil)
 	a.sidebar.SetWorkspace(nil)
 	a.sidebar.SetGitStatus(nil)
@@ -74,102 +68,84 @@ func (a *App) goHome() {
 	a.centerBtnIndex = 0
 }
 
-// renderGroupInfo renders information about the active group (when group header is highlighted)
-func (a *App) renderGroupInfo() string {
-	group := a.activeGroup
-	title := a.styles.Title.Render(group.Name)
-	content := title + "\n\n"
-
-	repoLabel := lipgloss.NewStyle().Foreground(common.ColorMuted).Render("Repos:")
-	content += repoLabel + "\n"
-	for _, repo := range group.Repos {
-		content += "    " + repo.Path + "\n"
-	}
-
-	activeStyle := lipgloss.NewStyle().Foreground(common.ColorForeground).Bold(true)
-	inactiveStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-
-	// Edit repos button
-	editStyle := inactiveStyle
-	if a.centerBtnFocused && a.centerBtnIndex == 0 {
-		editStyle = activeStyle
-	}
-	editBtn := editStyle.Render("[Edit repos]")
-
-	// New worktree button
-	newWsStyle := inactiveStyle
-	if a.centerBtnFocused && a.centerBtnIndex == 1 {
-		newWsStyle = activeStyle
-	}
-	newWsBtn := newWsStyle.Render("[New worktree]")
-
-	content += "\n" + lipgloss.JoinHorizontal(lipgloss.Left, editBtn, "  ", newWsBtn)
-
-	return content
-}
-
 // renderWorkspaceInfo renders information about the active workspace (for center pane and Info tab)
 func (a *App) renderWorkspaceInfo() string {
 	ws := a.activeWorkspace
 
-	var content string
+	label := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	value := lipgloss.NewStyle().Foreground(common.ColorForeground)
+	on := lipgloss.NewStyle().Foreground(common.ColorSuccess)
+	off := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	danger := lipgloss.NewStyle().Foreground(common.ColorError)
+	cursor := a.center.InfoCursor()
+	cursorStyle := lipgloss.NewStyle().Foreground(common.ColorPrimary)
 
-	// For group workspaces, show group details
-	if a.activeGroupWs != nil {
-		content += fmt.Sprintf("Group: %s\n", a.activeGroupWs.GroupName)
-		content += fmt.Sprintf("Branch: %s\n", ws.Branch)
-		content += fmt.Sprintf("Path: %s\n", ws.Root)
-
-		repoLabel := lipgloss.NewStyle().Foreground(common.ColorMuted).Render("Repos:")
-		content += "\n" + repoLabel + "\n"
-		for _, sec := range a.activeGroupWs.Secondary {
-			repoName := filepath.Base(sec.Repo)
-			baseInfo := ""
-			if sec.Base != "" {
-				baseInfo = lipgloss.NewStyle().Foreground(common.ColorMuted).Render(
-					fmt.Sprintf(" [%s]", sec.Base),
-				)
-			}
-			content += fmt.Sprintf("    %s%s\n", repoName, baseInfo)
+	prefix := func(idx int) string {
+		if idx == cursor {
+			return cursorStyle.Render("▸ ")
 		}
-
-		if a.activeGroupWs.Isolated || a.activeGroupWs.SkipPermissions {
-			content += a.renderIsolationInfo(a.activeGroupWs.Isolated, a.activeGroupWs.SkipPermissions)
-		}
-	} else {
-		content += fmt.Sprintf("Branch: %s\n", ws.Branch)
-		content += fmt.Sprintf("Path: %s\n", ws.Root)
-
-		if a.activeProject != nil {
-			content += fmt.Sprintf("Project: %s\n", a.activeProject.Name)
-		}
-
-		if ws.Isolated || ws.SkipPermissions {
-			content += a.renderIsolationInfo(ws.Isolated, ws.SkipPermissions)
-		}
+		return "  "
 	}
 
-	return content
-}
+	copyHint := lipgloss.NewStyle().Foreground(common.ColorMuted)
 
-// renderIsolationInfo renders the sandbox/permissions details for the info tab.
-func (a *App) renderIsolationInfo(isolated, skipPermissions bool) string {
-	detail := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	// Shorten path with ~ for home directory
+	displayPath := ws.Root()
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(displayPath, home) {
+		displayPath = "~" + displayPath[len(home):]
+	}
 
 	var b strings.Builder
-	if isolated {
-		sandboxLabel := lipgloss.NewStyle().Foreground(common.ColorError).Bold(true).Render("Sandboxed")
-		b.WriteString("\n" + sandboxLabel + "\n")
-		b.WriteString(detail.Render("  Writes allowed:  workspace, git dir, claude profile config, ~/.npm, /tmp") + "\n")
-		b.WriteString(detail.Render("  Writes blocked:  everything else (home, system, etc.)") + "\n")
-		b.WriteString(detail.Render("  Reads blocked:   ~/.ssh, ~/.gnupg, ~/.aws, ~/.docker, ~/.kube") + "\n")
+	b.WriteString(label.Render("Branch: ") + value.Render(ws.Branch()) + " " + copyHint.Render("[Copy]") + " " + copyHint.Render("[Rename]") + "\n")
+	b.WriteString(label.Render("Path:   ") + value.Render(displayPath) + " " + copyHint.Render("[Copy]") + "\n")
+
+	// Settings section
+	b.WriteString("\n" + label.Render("Settings") + "\n")
+
+	// Status
+	statusStr := "In Progress"
+	statusStyle := on
+	switch ws.Status {
+	case data.StatusStarted, data.StatusNone:
+		statusStr = "In Progress"
+		statusStyle = on
+	case data.StatusBlocked:
+		statusStr = "Blocked"
+		statusStyle = danger
+	case data.StatusMerged:
+		statusStr = "Complete"
+		statusStyle = lipgloss.NewStyle().Foreground(common.ColorPrimary)
+	case data.StatusArchived:
+		statusStr = "Archived"
+		statusStyle = off
 	}
-	if skipPermissions {
-		skipLabel := lipgloss.NewStyle().Foreground(common.ColorError).Bold(true).Render("Skip Permissions")
-		b.WriteString("\n" + skipLabel + "\n")
-		b.WriteString(detail.Render("  All tool calls auto-approved (--dangerously-skip-permissions)") + "\n")
-		b.WriteString(detail.Render("  Claude will not prompt before running commands or editing files") + "\n")
+	b.WriteString(prefix(0) + label.Render("Status:  ") + statusStyle.Render(statusStr) + "\n")
+
+	// Profile
+	profileStr := "Default"
+	if ws.Profile != "" {
+		profileStr = ws.Profile
 	}
+	b.WriteString(prefix(1) + label.Render("Profile: ") + value.Render(profileStr) + "\n")
+
+	// Repos
+	if ws.IsMultiRepo() {
+		b.WriteString("\n" + label.Render("Repos:") + "\n")
+		for _, repo := range ws.Repos {
+			baseInfo := ""
+			for _, wt := range ws.Worktrees {
+				if wt.Base != "" {
+					baseInfo = label.Render(fmt.Sprintf(" [%s]", wt.Base))
+					break
+				}
+			}
+			b.WriteString(fmt.Sprintf("  %s%s\n", repo.Name, baseInfo))
+		}
+	}
+
+	// Edit Repos
+	b.WriteString(prefix(2) + label.Render(fmt.Sprintf("Edit Repos: (%d repos)", len(ws.Repos))) + "\n")
+
 	return b.String()
 }
 

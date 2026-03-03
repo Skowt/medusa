@@ -11,14 +11,9 @@ func TestEnvBuilder_BuildEnv(t *testing.T) {
 	ports := NewPortAllocator(6200, 10)
 	builder := NewEnvBuilder(ports)
 
-	wt := &data.Workspace{
-		Name:   "feature-1",
-		Branch: "feature-1",
-		Repo:   "/home/user/repo",
-		Root:   "/home/user/.medusa/workspaces/feature-1",
-		Env: map[string]string{
-			"CUSTOM_VAR": "custom_value",
-		},
+	wt := data.NewWorkspace("feature-1", "feature-1", "main", "/home/user/repo", "/home/user/.medusa/workspaces/feature-1")
+	wt.Env = map[string]string{
+		"CUSTOM_VAR": "custom_value",
 	}
 
 	env := builder.BuildEnv(wt)
@@ -28,8 +23,8 @@ func TestEnvBuilder_BuildEnv(t *testing.T) {
 		"MEDUSA_WORKSPACE_NAME":   "feature-1",
 		"MEDUSA_WORKSPACE_ROOT":   "/home/user/.medusa/workspaces/feature-1",
 		"MEDUSA_WORKSPACE_BRANCH": "feature-1",
-		"ROOT_WORKSPACE_PATH":   "/home/user/repo",
-		"CUSTOM_VAR":            "custom_value",
+		"ROOT_WORKSPACE_PATH":     "/home/user/repo",
+		"CUSTOM_VAR":              "custom_value",
 	}
 
 	for key, wantValue := range checks {
@@ -66,12 +61,7 @@ func TestEnvBuilder_BuildEnvMap(t *testing.T) {
 	ports := NewPortAllocator(6200, 10)
 	builder := NewEnvBuilder(ports)
 
-	wt := &data.Workspace{
-		Name:   "feature-1",
-		Branch: "feature-1",
-		Repo:   "/home/user/repo",
-		Root:   "/home/user/.medusa/workspaces/feature-1",
-	}
+	wt := data.NewWorkspace("feature-1", "feature-1", "main", "/home/user/repo", "/home/user/.medusa/workspaces/feature-1")
 
 	envMap := builder.BuildEnvMap(wt)
 
@@ -86,10 +76,7 @@ func TestEnvBuilder_BuildEnvMap(t *testing.T) {
 func TestEnvBuilder_NilPortAllocator(t *testing.T) {
 	builder := NewEnvBuilder(nil)
 
-	wt := &data.Workspace{
-		Name: "feature-1",
-		Root: "/path/to/wt",
-	}
+	wt := data.NewWorkspace("feature-1", "", "", "", "/path/to/wt")
 
 	env := builder.BuildEnv(wt)
 

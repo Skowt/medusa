@@ -6,7 +6,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/ui/center"
 	"github.com/andyrewlee/medusa/internal/ui/common"
 	"github.com/andyrewlee/medusa/internal/ui/compositor"
@@ -119,11 +118,6 @@ func (a *App) renderMonitorGrid() string {
 
 	// Header/toolbar is rendered separately in viewMonitorMode to support styled buttons
 
-	projectNames := make(map[string]string, len(a.projects))
-	for _, project := range a.projects {
-		projectNames[project.Path] = project.Name
-	}
-
 	for idx, tab := range tabs {
 		rect := monitorTileRect(grid, idx, gridX, gridY)
 		focused := idx == selectedIndex
@@ -149,13 +143,7 @@ func (a *App) renderMonitorGrid() string {
 		if tab.Workspace != nil && tab.Workspace.Name != "" {
 			workspaceName = tab.Workspace.Name
 		}
-		projectName := ""
-		if tab.Workspace != nil {
-			projectName = projectNames[tab.Workspace.Repo]
-		}
-		if projectName == "" {
-			projectName = monitorProjectName(tab.Workspace)
-		}
+		projectName := monitorProjectName(tab.Workspace)
 
 		statusIcon := common.Icons.Idle
 		if tab.Running {
@@ -228,20 +216,3 @@ func (a *App) handleMonitorInput(msg tea.KeyPressMsg) tea.Cmd {
 	return a.center.HandleMonitorInput(tabs[idx].ID, msg)
 }
 
-func (a *App) projectForWorkspace(ws *data.Workspace) *data.Project {
-	if ws == nil {
-		return nil
-	}
-	for i := range a.projects {
-		project := &a.projects[i]
-		if project.Path == ws.Repo {
-			return project
-		}
-		for j := range project.Workspaces {
-			if project.Workspaces[j].Root == ws.Root {
-				return project
-			}
-		}
-	}
-	return nil
-}

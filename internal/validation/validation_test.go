@@ -99,10 +99,8 @@ func TestValidateAssistant(t *testing.T) {
 		wantErr   bool
 	}{
 		{"claude", "claude", false},
-		{"codex", "codex", false},
-		{"gemini", "gemini", false},
 		{"term", "term", false},
-		{"cursor", "cursor", false},
+		{"codex_rejected", "codex", true},
 		{"unknown", "gpt4", true},
 		{"empty", "", true},
 	}

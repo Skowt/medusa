@@ -59,9 +59,9 @@ func (m *Model) renderChanges() string {
 	var b strings.Builder
 
 	// Show branch info
-	if m.workspace != nil && m.workspace.Branch != "" {
+	if m.workspace != nil && m.workspace.Branch() != "" {
 		b.WriteString(m.styles.Muted.Render("branch: "))
-		b.WriteString(m.styles.BranchName.Render(m.workspace.Branch))
+		b.WriteString(m.styles.BranchName.Render(m.workspace.Branch()))
 		b.WriteString("\n")
 	}
 

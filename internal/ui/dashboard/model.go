@@ -24,24 +24,17 @@ type RowType int
 
 const (
 	RowHome RowType = iota
-	RowAddProject
-	RowProject
-	RowWorkspace
-	RowCreate
+	RowWorkspace     // 3-line entry
+	RowCreate        // "+ New Workspace"
 	RowSpacer
-	RowGroupHeader    // Group header (like RowProject)
-	RowGroupWorkspace // Workspace within a group
-	RowGroupCreate    // "+ New" button for group workspace
-	RowAddGroup       // "Add Group" button
+	RowSectionHeader // status group header
 )
 
 // Row represents a single row in the dashboard
 type Row struct {
-	Type           RowType
-	Project        *data.Project
-	Workspace      *data.Workspace
-	Group          *data.ProjectGroup
-	GroupWorkspace *data.GroupWorkspace
+	Type      RowType
+	Workspace *data.Workspace
+	Label     string // for RowSectionHeader
 }
 
 // toolbarButtonKind identifies toolbar buttons
@@ -62,8 +55,7 @@ type toolbarButton struct {
 // Model is the Bubbletea model for the dashboard pane
 type Model struct {
 	// Data
-	projects    []data.Project
-	groups      []data.ProjectGroup
+	workspaces  []*data.Workspace
 	rows        []Row
 	activeRoot  string // Currently active workspace root
 	statusCache map[string]*git.StatusResult
@@ -87,13 +79,13 @@ type Model struct {
 	deletingWorkspaces map[string]bool            // Workspaces currently being deleted
 	spinnerFrame       int                        // Current spinner animation frame
 	spinnerActive      bool                       // Whether spinner ticks are active
-	forceSpinner       bool                       // Force spinner to stay active (e.g. during group creation)
+	forceSpinner       bool                       // Force spinner to stay active
 
 	// Agent activity state
-	activeWorkspaceIDs   map[string]bool // Workspace IDs with active agents (synced from center)
-	workspaceAgentStates map[string]int  // Workspace ID → agent state (0=idle, 1=running, 2=active)
-	unreadWorkspaces      map[string]bool // Workspace IDs with unread changes (agent finished since last viewed)
-	tmuxConfirmedActive  map[string]bool // Workspace IDs confirmed active by tmux content-hash system
+	activeWorkspaceIDs   map[string]bool // Workspace IDs with active agents
+	workspaceAgentStates map[string]int  // Workspace ID -> agent state (0=idle, 1=running, 2=active)
+	unreadWorkspaces     map[string]bool // Workspace IDs with unread changes
+	tmuxConfirmedActive  map[string]bool // Workspace IDs confirmed active by tmux
 
 	// Styles
 	styles common.Styles
@@ -102,14 +94,14 @@ type Model struct {
 // New creates a new dashboard model
 func New() *Model {
 	return &Model{
-		projects:           []data.Project{},
+		workspaces:         []*data.Workspace{},
 		rows:               []Row{},
 		statusCache:        make(map[string]*git.StatusResult),
 		creatingWorkspaces: make(map[string]*data.Workspace),
 		deletingWorkspaces: make(map[string]bool),
 		activeWorkspaceIDs:   make(map[string]bool),
 		workspaceAgentStates: make(map[string]int),
-		unreadWorkspaces:      make(map[string]bool),
+		unreadWorkspaces:     make(map[string]bool),
 		tmuxConfirmedActive:  make(map[string]bool),
 		cursor:             0,
 		focused:            true,
@@ -123,11 +115,8 @@ func (m *Model) SetActiveWorkspaces(active map[string]bool) {
 }
 
 // SetTmuxConfirmedActive updates the set of workspace IDs confirmed as genuinely
-// active by the tmux "esc to interrupt" detection. Detects active→inactive
-// transitions to mark workspaces as ready for review.
-// Returns true if any workspace just became ready.
+// active by the tmux "esc to interrupt" detection.
 func (m *Model) SetTmuxConfirmedActive(active map[string]bool) bool {
-	// Don't mark the currently viewed workspace as unread.
 	viewedWSID := m.selectedWorkspaceID()
 
 	newUnread := false
@@ -142,46 +131,29 @@ func (m *Model) SetTmuxConfirmedActive(active map[string]bool) bool {
 }
 
 // SetWorkspaceAgentStates updates the agent state map for workspaces.
-// Keys present indicate a workspace has agent tabs.
-// Values: 0=idle, 1=running but waiting, 2=actively processing.
 func (m *Model) SetWorkspaceAgentStates(states map[string]int) tea.Cmd {
 	m.workspaceAgentStates = states
 	return m.startSpinnerIfNeeded()
 }
 
-// selectedWorkspaceID returns the workspace ID of the currently selected
-// dashboard row, or "" if no workspace row is selected.
+// selectedWorkspaceID returns the workspace ID of the currently selected row.
 func (m *Model) selectedWorkspaceID() string {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return ""
 	}
 	row := m.rows[m.cursor]
-	switch row.Type {
-	case RowWorkspace:
-		if row.Workspace != nil {
-			return string(row.Workspace.ID())
-		}
-	case RowProject:
-		// A project row previews/activates its main workspace.
-		if main := m.getMainWorkspace(row.Project); main != nil {
-			return string(main.ID())
-		}
-	case RowGroupWorkspace:
-		if row.GroupWorkspace != nil {
-			return string(row.GroupWorkspace.Primary.ID())
-		}
+	if row.Type == RowWorkspace && row.Workspace != nil {
+		return string(row.Workspace.ID())
 	}
 	return ""
 }
 
-// MarkRead clears the unread flag for a workspace (user has viewed it).
+// MarkRead clears the unread flag for a workspace.
 func (m *Model) MarkRead(wsID string) {
 	delete(m.unreadWorkspaces, wsID)
 }
 
 // InvalidateStatus removes a workspace's cached status.
-// This should be called when git status is invalidated externally (e.g., file watcher events)
-// to keep the dashboard cache in sync with the StatusManager cache.
 func (m *Model) InvalidateStatus(root string) {
 	delete(m.statusCache, root)
 }
@@ -196,7 +168,7 @@ func (m *Model) SetShowKeymapHints(show bool) {
 	m.showKeymapHints = show
 }
 
-// SetStyles updates the component's styles (for theme changes).
+// SetStyles updates the component's styles.
 func (m *Model) SetStyles(styles common.Styles) {
 	m.styles = styles
 }
@@ -216,12 +188,10 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Button == tea.MouseLeft {
-			// Check toolbar clicks first
 			if cmd := m.handleToolbarClick(msg.X, msg.Y); cmd != nil {
 				return m, cmd
 			}
 
-			// Then check row clicks
 			idx, ok := m.rowIndexAt(msg.X, msg.Y)
 			if !ok {
 				return m, nil
@@ -233,15 +203,13 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Check if click is on the delete "x" icon for the currently selected row
+			// Check if click is on the delete icon
 			if idx == m.cursor {
 				rowType := m.rows[idx].Type
-				if rowType == RowProject || rowType == RowWorkspace || rowType == RowGroupHeader || rowType == RowGroupWorkspace {
-					// Convert screen X to content X
+				if rowType == RowWorkspace {
 					borderLeft := 1
 					paddingLeft := 0
 					contentX := msg.X - borderLeft - paddingLeft
-					// Check if click is on the delete slot (space + x + space)
 					if contentX >= m.deleteIconX && contentX < m.deleteIconX+3 {
 						m.toolbarFocused = false
 						return m, m.handleDelete()
@@ -277,7 +245,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				}
 				return m, m.previewCurrentRow()
 			case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
-				// Do nothing - already at bottom of dashboard
+				// Already at bottom
 			case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 				return m, m.toolbarCommand(toolbarItems[m.toolbarIndex].kind)
 			}
@@ -299,7 +267,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			m.moveCursor(-1)
 			return m, m.previewCurrentRow()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("pgdown", "ctrl+d"))):
-			// Half-page scroll to maintain context overlap
 			delta := m.visibleHeight() / 2
 			if delta < 1 {
 				delta = 1
@@ -307,7 +274,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			m.moveCursor(delta)
 			return m, m.previewCurrentRow()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("pgup", "ctrl+u"))):
-			// Half-page scroll to maintain context overlap
 			delta := m.visibleHeight() / 2
 			if delta < 1 {
 				delta = 1
@@ -320,25 +286,20 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			return m, m.handleDelete()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("P"))):
 			return m, m.handleSetProfile()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("e"))):
-			return m, m.handleEditGroupRepos()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 			if m.cursor >= 0 && m.cursor < len(m.rows) {
-				rt := m.rows[m.cursor].Type
-				if rt == RowWorkspace || rt == RowGroupWorkspace || rt == RowGroupHeader {
+				if m.rows[m.cursor].Type == RowWorkspace {
 					return m, m.handleRename()
 				}
 			}
 		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):
-			return m, m.refresh()
+			return m, func() tea.Msg { return messages.RefreshDashboard{} }
 		case key.Matches(msg, key.NewBinding(key.WithKeys("G"))):
-			// Jump to last selectable row
 			if idx := m.findSelectableRow(len(m.rows)-1, -1); idx != -1 {
 				m.cursor = idx
 				return m, m.previewCurrentRow()
 			}
 		case key.Matches(msg, key.NewBinding(key.WithKeys("g"))):
-			// Jump to first selectable row
 			if idx := m.findSelectableRow(0, 1); idx != -1 {
 				m.cursor = idx
 				return m, m.previewCurrentRow()
@@ -346,7 +307,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 		}
 
 	case SpinnerTickMsg:
-		// Advance spinner frame if we have loading items or running agents
 		if len(m.creatingWorkspaces) > 0 || len(m.deletingWorkspaces) > 0 || m.hasActiveAgents() || m.forceSpinner {
 			m.spinnerFrame++
 			cmds = append(cmds, m.tickSpinner())
@@ -354,8 +314,8 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			m.spinnerActive = false
 		}
 
-	case messages.ProjectsLoaded:
-		m.SetProjects(msg.Projects)
+	case messages.WorkspacesLoaded:
+		m.SetWorkspaces(msg.Workspaces)
 
 	case messages.GitStatusResult:
 		if msg.Err == nil {
@@ -364,13 +324,14 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 
 	case messages.WorkspaceActivated:
 		if msg.Workspace != nil {
-			m.activeRoot = msg.Workspace.Root
+			m.activeRoot = msg.Workspace.Root()
 			m.MarkRead(string(msg.Workspace.ID()))
+			m.moveCursorToRoot(msg.Workspace.Root())
 		}
 
 	case messages.WorkspacePreviewed:
 		if msg.Workspace != nil {
-			m.activeRoot = msg.Workspace.Root
+			m.activeRoot = msg.Workspace.Root()
 			m.MarkRead(string(msg.Workspace.ID()))
 		}
 
@@ -385,7 +346,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 func (m *Model) View() string {
 	var b strings.Builder
 
-	// Calculate visible area (inner height minus toolbar + help)
 	innerHeight := m.height - 2
 	if innerHeight < 0 {
 		innerHeight = 0
@@ -398,34 +358,38 @@ func (m *Model) View() string {
 		visibleHeight = 1
 	}
 
-	// Adjust scroll offset to keep cursor visible
-	if m.cursor < m.scrollOffset {
-		m.scrollOffset = m.cursor
+	// Adjust scroll offset for multi-line rows
+	cursorLine := m.cursorLineOffset()
+	if cursorLine < m.scrollOffset {
+		m.scrollOffset = cursorLine
 	}
-	if m.cursor >= m.scrollOffset+visibleHeight {
-		m.scrollOffset = m.cursor - visibleHeight + 1
+	cursorBottom := cursorLine + m.rowLineCount(m.cursor) - 1
+	if cursorBottom >= m.scrollOffset+visibleHeight {
+		m.scrollOffset = cursorBottom - visibleHeight + 1
 	}
 
-	// Rows
+	// Render rows accounting for multi-line
+	lineOffset := 0
 	for i, row := range m.rows {
-		if i < m.scrollOffset {
+		lines := m.rowLineCount(i)
+		if lineOffset+lines <= m.scrollOffset {
+			lineOffset += lines
 			continue
 		}
-		if i >= m.scrollOffset+visibleHeight {
+		if lineOffset >= m.scrollOffset+visibleHeight {
 			break
 		}
 		line := m.renderRow(row, i == m.cursor && !m.toolbarFocused)
 		b.WriteString(line)
 		b.WriteString("\n")
+		lineOffset += lines
 	}
 
-	// Pad to the inner pane height (border excluded), reserving toolbar and help lines.
 	contentHeight := strings.Count(b.String(), "\n") + 1
 	targetHeight := innerHeight - toolbarHeight - helpHeight
 	if targetHeight < 0 {
 		targetHeight = 0
 	}
-	// Add +1 to account for toolbar not having a trailing newline
 	padding := targetHeight - contentHeight + 1
 	if padding > 0 {
 		b.WriteString(strings.Repeat("\n", padding))
@@ -434,11 +398,9 @@ func (m *Model) View() string {
 		m.toolbarY = contentHeight - 1
 	}
 
-	// Render toolbar
 	toolbar := m.renderToolbar()
 	b.WriteString(toolbar)
 
-	// Help lines
 	if m.showKeymapHints {
 		contentWidth := m.width - 3
 		if contentWidth < 1 {
@@ -451,7 +413,6 @@ func (m *Model) View() string {
 		}
 	}
 
-	// Return raw content - buildBorderedPane in app.go handles truncation
 	return b.String()
 }
 
@@ -477,36 +438,32 @@ func (m *Model) Focused() bool {
 	return m.focused
 }
 
-// SetProjects sets the projects list
-func (m *Model) SetProjects(projects []data.Project) {
-	prevCursor := m.cursor
-	prevOffset := m.scrollOffset
-	m.projects = projects
+// SetWorkspaces sets the workspace list
+func (m *Model) SetWorkspaces(workspaces []*data.Workspace) {
+	m.workspaces = workspaces
 	m.rebuildRows()
-	if m.cursor == prevCursor {
-		m.scrollOffset = prevOffset
-		m.clampScrollOffset()
+	// Keep cursor on the active workspace after re-arrangement
+	if m.activeRoot != "" {
+		m.moveCursorToRoot(m.activeRoot)
 	}
+	m.clampScrollOffset()
 }
 
-// SetGroups sets the project groups list
-func (m *Model) SetGroups(groups []data.ProjectGroup) {
-	prevCursor := m.cursor
-	prevOffset := m.scrollOffset
-	m.groups = groups
-	m.rebuildRows()
-	if m.cursor == prevCursor {
-		m.scrollOffset = prevOffset
-		m.clampScrollOffset()
-	}
+// Workspaces returns the current workspaces
+func (m *Model) Workspaces() []*data.Workspace {
+	return m.workspaces
 }
 
 // ScrollInfo returns the scroll state needed to render a scrollbar overlay.
-func (m *Model) ScrollInfo() (scrollOffset, totalRows, visible int) {
-	return m.scrollOffset, len(m.rows), m.visibleHeight()
+func (m *Model) ScrollInfo() (scrollOffset, totalLines, visible int) {
+	total := 0
+	for i := range m.rows {
+		total += m.rowLineCount(i)
+	}
+	return m.scrollOffset, total, m.visibleHeight()
 }
 
-// visibleHeight returns the number of visible rows in the dashboard
+// visibleHeight returns the number of visible lines in the dashboard
 func (m *Model) visibleHeight() int {
 	innerHeight := m.height - 2
 	if innerHeight < 0 {
@@ -520,4 +477,36 @@ func (m *Model) visibleHeight() int {
 		visibleHeight = 1
 	}
 	return visibleHeight
+}
+
+// cursorLineOffset returns the line offset of the cursor position
+func (m *Model) cursorLineOffset() int {
+	offset := 0
+	for i := 0; i < m.cursor && i < len(m.rows); i++ {
+		offset += m.rowLineCount(i)
+	}
+	return offset
+}
+
+// SelectedRow returns the currently selected row
+func (m *Model) SelectedRow() *Row {
+	if m.cursor >= 0 && m.cursor < len(m.rows) {
+		return &m.rows[m.cursor]
+	}
+	return nil
+}
+
+// ClearActiveRoot resets the active workspace selection to "Home".
+func (m *Model) ClearActiveRoot() {
+	m.activeRoot = ""
+}
+
+// moveCursorToRoot moves the dashboard cursor to the row matching the given root.
+func (m *Model) moveCursorToRoot(root string) {
+	for i, row := range m.rows {
+		if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == root {
+			m.cursor = i
+			return
+		}
+	}
 }
