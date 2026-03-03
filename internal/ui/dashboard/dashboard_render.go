@@ -167,10 +167,23 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		deleteSlot = " " + common.Icons.Close + " "
 	}
 
+	// Profile indicator
+	profileLabel := "D"
+	if ws.Profile != "" {
+		r := []rune(ws.Profile)
+		profileLabel = strings.ToUpper(string(r[:1]))
+	}
+	profileTag := " (" + profileLabel + ")"
+	profileStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	if selected {
+		profileStyle = profileStyle.Background(common.ColorSelection)
+	}
+	profileTagWidth := lipgloss.Width(profileTag)
+
 	// Truncate name
 	name := ws.Name
 	prefixWidth := 2 + indicatorWidth // " " prefix + " " styled prefix + indicator
-	maxNameWidth := contentWidth - lipgloss.Width(statusText) - deleteSlotWidth - prefixWidth
+	maxNameWidth := contentWidth - lipgloss.Width(statusText) - deleteSlotWidth - prefixWidth - profileTagWidth
 	if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
 		runes := []rune(name)
 		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
@@ -180,10 +193,10 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	}
 
 	if selected {
-		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name))
+		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name)) + profileTagWidth
 	}
 
-	return style.Render(" ") + iconStyle.Render(indicator) + style.Render(name+deleteSlot) + statusText
+	return style.Render(" ") + iconStyle.Render(indicator) + style.Render(name) + profileStyle.Render(profileTag) + style.Render(deleteSlot) + statusText
 }
 
 // renderWorkspaceLine2: repo names + git changes
