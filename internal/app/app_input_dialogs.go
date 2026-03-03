@@ -166,6 +166,9 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				selectedProfile = "Default"
 			}
 			workspace.Profile = selectedProfile
+			// Track as most recently chosen profile
+			a.config.UI.LastProfile = selectedProfile
+			_ = a.config.SaveUISettings()
 			a.dialogWorkspace = workspace
 			a.dialogDefaultName = defaultName
 			a.dialog = common.NewSelectDialog(
