@@ -45,7 +45,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		logging.Info("Received DialogResult: id=%s confirmed=%v", result.ID, result.Confirmed)
 		switch result.ID {
 		case DialogAddRepos, DialogAddReposToWorkspace, DialogCreateWorkspace, DialogDeleteWorkspace, DialogCustomizeTab, DialogQuit, DialogCleanupTmux, DialogSetProfile, DialogRenameWorkspace, DialogRenameProfile, DialogCreateProfile, DialogDeleteProfile, DialogCommit,
-			DialogSelectBranchMode, DialogCustomBranch, DialogSelectRecentRepos, DialogCloseTab, DialogSetProfileForCreate:
+			DialogSelectBranchMode, DialogCustomBranch, DialogSelectRecentRepos, DialogCloseTab, DialogSetProfileForCreate, DialogQuickDuplicate:
 			return a, a.safeCmd(a.handleDialogResult(result))
 		}
 		// If not an App-level dialog, let it fall through to components
@@ -407,6 +407,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := a.handleGitStatusResult(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+
+	case messages.ShowQuickDuplicateDialog:
+		a.handleShowQuickDuplicateDialog(msg)
 
 	case messages.ShowCreateWorkspaceDialog:
 		a.handleShowCreateWorkspaceDialog()

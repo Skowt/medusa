@@ -24,17 +24,20 @@ type RowType int
 
 const (
 	RowHome RowType = iota
-	RowWorkspace     // 3-line entry
-	RowCreate        // "+ New Workspace"
+	RowWorkspace       // workspace entry
+	RowCreate          // "+ New Workspace"
 	RowSpacer
-	RowSectionHeader // status group header
+	RowSectionHeader   // status group header
+	RowQuickDuplicate  // "+ Quick Duplicate"
 )
 
 // Row represents a single row in the dashboard
 type Row struct {
-	Type      RowType
-	Workspace *data.Workspace
-	Label     string // for RowSectionHeader
+	Type         RowType
+	Workspace    *data.Workspace
+	Label        string         // for RowSectionHeader
+	GroupRepos   []data.RepoRef // for RowQuickDuplicate
+	GroupProfile string         // for RowQuickDuplicate
 }
 
 // toolbarButtonKind identifies toolbar buttons

@@ -320,6 +320,27 @@ func (a *App) handleWorkspacePreviewed(msg messages.WorkspacePreviewed) []tea.Cm
 	return cmds
 }
 
+// handleShowQuickDuplicateDialog shows a name input dialog for quick duplicate with pre-filled repos and profile.
+func (a *App) handleShowQuickDuplicateDialog(msg messages.ShowQuickDuplicateDialog) {
+	a.dialogWorkspace = &data.Workspace{Repos: msg.Repos, Profile: msg.Profile}
+	a.dialogDefaultName = generateWorkspaceName(msg.Repos)
+	a.dialog = common.NewInputDialog(DialogQuickDuplicate, "Quick Duplicate", a.dialogDefaultName)
+	a.dialog.SetMessage("Enter a name for the new workspace.")
+	a.dialog.SetInputValidate(func(s string) string {
+		s = validation.SanitizeInput(s)
+		if s == "" {
+			return ""
+		}
+		if err := validation.ValidateWorkspaceName(s); err != nil {
+			return err.Error()
+		}
+		return ""
+	})
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
+}
+
 // handleShowCreateWorkspaceDialog shows a recents picker or falls back to file picker.
 func (a *App) handleShowCreateWorkspaceDialog() {
 	// Check for recent repo combinations
