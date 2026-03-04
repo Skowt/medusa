@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -117,36 +118,41 @@ func (m *Model) rebuildRows() {
 		return all[i].Created.Before(all[j].Created)
 	})
 
-	// Group by repo name: single-repo workspaces grouped by their repo name,
-	// multi-repo workspaces grouped under "groups".
-	repoGroups := make(map[string][]*data.Workspace) // repo name -> workspaces
-	var multiRepo []*data.Workspace
-	var repoOrder []string // preserve first-seen order
+	// Group workspaces by repo name(s): single-repo by repo name,
+	// multi-repo by sorted comma-joined repo names (truncated to 15 chars).
+	repoGroups := make(map[string][]*data.Workspace) // group key -> workspaces
+	groupLabels := make(map[string]string)            // group key -> display label
+	var groupOrder []string                           // first-seen order of keys
 
 	for _, ws := range all {
-		if ws.IsMultiRepo() {
-			multiRepo = append(multiRepo, ws)
-		} else if len(ws.Repos) > 0 {
-			name := ws.Repos[0].Name
-			if _, seen := repoGroups[name]; !seen {
-				repoOrder = append(repoOrder, name)
-			}
-			repoGroups[name] = append(repoGroups[name], ws)
+		var key, label string
+		if len(ws.Repos) == 0 {
+			key = "other"
+			label = "other"
 		} else {
-			// Workspaces with no repos go under "other"
-			name := "other"
-			if _, seen := repoGroups[name]; !seen {
-				repoOrder = append(repoOrder, name)
+			names := make([]string, len(ws.Repos))
+			for i, r := range ws.Repos {
+				names[i] = r.Name
 			}
-			repoGroups[name] = append(repoGroups[name], ws)
+			sort.Strings(names)
+			label = strings.Join(names, ", ")
+			if len(label) > 15 {
+				label = label[:15] + "..."
+			}
+			key = strings.Join(names, ",") // stable key (no truncation)
 		}
+		if _, seen := repoGroups[key]; !seen {
+			groupOrder = append(groupOrder, key)
+			groupLabels[key] = label
+		}
+		repoGroups[key] = append(repoGroups[key], ws)
 	}
 
-	sort.Strings(repoOrder)
+	sort.Strings(groupOrder)
 
-	for _, name := range repoOrder {
-		groupWs := repoGroups[name]
-		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: name})
+	for _, key := range groupOrder {
+		groupWs := repoGroups[key]
+		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: groupLabels[key]})
 		for _, ws := range groupWs {
 			m.rows = append(m.rows, Row{
 				Type:      RowWorkspace,
@@ -159,17 +165,6 @@ func (m *Model) rebuildRows() {
 			GroupRepos:   lastWs.Repos,
 			GroupProfile: lastWs.Profile,
 		})
-		m.rows = append(m.rows, Row{Type: RowSpacer})
-	}
-
-	if len(multiRepo) > 0 {
-		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "groups"})
-		for _, ws := range multiRepo {
-			m.rows = append(m.rows, Row{
-				Type:      RowWorkspace,
-				Workspace: ws,
-			})
-		}
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
 
