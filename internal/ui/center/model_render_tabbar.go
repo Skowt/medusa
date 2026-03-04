@@ -104,14 +104,14 @@ func (m *Model) renderTabBar() string {
 				modeIconList = append(modeIconList, modeIcon{
 					char:    "✎",
 					fg:      common.ColorSuccess,
-					tooltip: "Allow edits: agent can write files without asking",
+					tooltip: "Immediately allow edits: agent can write files without asking",
 				})
 			}
 			if tabIsolated {
 				modeIconList = append(modeIconList, modeIcon{
 					char:    "⛶",
 					fg:      common.ColorError,
-					tooltip: "Sandbox: agent runs in an isolated environment",
+					tooltip: "Sandboxed: agent runs in an isolated environment",
 				})
 			}
 			if tabSkipPerms {
