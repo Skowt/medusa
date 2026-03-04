@@ -538,11 +538,12 @@ func (m *Model) Focused() bool {
 	return m.focused
 }
 
-// SetWorkspace sets the active workspace
+// SetWorkspace sets the active workspace.
+// If the workspace has a note, stay on the Info tab so the user sees it first.
 func (m *Model) SetWorkspace(ws *data.Workspace) {
 	m.workspace = ws
 	m.infoCursor = 0
-	m.infoTabActive = false
+	m.infoTabActive = ws != nil && ws.Note != ""
 }
 
 // InfoCursor returns the current cursor position on the Info tab.
