@@ -13,6 +13,7 @@ import (
 	"github.com/andyrewlee/medusa/internal/config"
 	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/git"
+	"github.com/andyrewlee/medusa/internal/hooks"
 	"github.com/andyrewlee/medusa/internal/logging"
 	"github.com/andyrewlee/medusa/internal/messages"
 	"github.com/andyrewlee/medusa/internal/permissions"
@@ -150,14 +151,15 @@ type App struct {
 	prefixActive bool
 	prefixToken  int
 
-	tmuxSyncToken          int
-	tmuxActivityToken      int
-	tmuxOptions            tmux.Options
-	tmuxAvailable          bool
-	tmuxCheckDone          bool
-	tmuxInstallHint        string
-	tmuxActiveWorkspaceIDs map[string]bool
-	sessionActivityStates  map[string]*sessionActivityState // Per-session hysteresis state
+	tmuxSyncToken   int
+	tmuxOptions     tmux.Options
+	tmuxAvailable   bool
+	tmuxCheckDone   bool
+	tmuxInstallHint string
+
+	// Hooks watcher (Claude Code lifecycle events)
+	hooksWatcher        *hooks.Watcher
+	hookWorkspaceStates map[string]hooks.EventType
 
 	// Auto-start agent
 	pendingAutoLaunch  string // workspace root for post-creation auto-launch
@@ -334,8 +336,7 @@ func New(version, commit, date string) (*App, error) {
 		externalCritical:       make(chan tea.Msg, 512),
 		ctx:                    ctx,
 		tmuxOptions:            tmuxOpts,
-		tmuxActiveWorkspaceIDs: make(map[string]bool),
-		sessionActivityStates:  make(map[string]*sessionActivityState),
+		hookWorkspaceStates:    make(map[string]hooks.EventType),
 		dirtyWorkspaces:        make(map[string]bool),
 	}
 	app.supervisor = supervisor.New(ctx)
@@ -371,6 +372,10 @@ func New(version, commit, date string) (*App, error) {
 		app.initPermissionWatcher()
 	}
 
+	// Inject hooks into all profiles and start watcher
+	_ = config.InjectHooksIntoAllProfiles(cfg.Paths.ProfilesRoot, cfg.Paths.HooksDir)
+	app.initHooksWatcher()
+
 	// Initialize focus state on all components (dashboard is the default focus)
 	app.focusPane(messages.PaneDashboard)
 
@@ -387,8 +392,6 @@ func (a *App) Init() tea.Cmd {
 		a.sidebarTerminal.Init(),
 		a.startGitStatusTicker(),
 		a.startPTYWatchdog(),
-		a.startTmuxActivityTicker(),
-		a.triggerTmuxActivityScan(),
 		a.startTmuxSyncTicker(),
 		a.checkTmuxAvailable(),
 		a.startFileWatcher(),
@@ -412,6 +415,9 @@ func (a *App) Shutdown() {
 		}
 		if a.permissionWatcher != nil {
 			_ = a.permissionWatcher.Close()
+		}
+		if a.hooksWatcher != nil {
+			_ = a.hooksWatcher.Close()
 		}
 		if a.center != nil {
 			a.center.Close()

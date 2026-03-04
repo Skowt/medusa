@@ -137,31 +137,12 @@ func padWithBg(line string, width int, bg lipgloss.Style) string {
 	return line
 }
 
-// renderWorkspaceLine1: indicator + name + delete icon
+// renderWorkspaceLine1: hook indicator + name + delete icon
 func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentWidth int) string {
-	// Agent state indicator
 	indicatorWidth := 2
 	agentState := 0
 
-	// Status-specific icon
-	statusIcon := "●" // In Progress (default)
-	switch ws.Status {
-	case data.StatusBlocked:
-		statusIcon = "⏸"
-	case data.StatusMerged:
-		statusIcon = "✓"
-	case data.StatusArchived:
-		statusIcon = "◇"
-	}
-	indicator := statusIcon + " "
-
 	wsID := string(ws.ID())
-	if state, hasAgents := m.workspaceAgentStates[wsID]; hasAgents {
-		agentState = state
-		if m.tmuxConfirmedActive[wsID] {
-			indicator = common.SpinnerFrame(m.spinnerFrame) + " "
-		}
-	}
 
 	// Status text for creating/deleting
 	statusText := ""
@@ -185,32 +166,36 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		statusText = spaceStyle.Render(" ") + pendingStyle.Render(frame+" creating")
 	}
 
+	// Hook-based indicator: default green dot, spinner on PreToolUse, warning symbols for notifications
+	indicator := "●" // default: green dot (idle / no data / Stop)
+	indicatorFg := common.ColorSuccess
+	if hookState, ok := m.hookStates[wsID]; ok {
+		switch hookState {
+		case "PreToolUse", "UserPromptSubmit":
+			indicator = common.SpinnerFrame(m.spinnerFrame)
+		case "NotificationIdle", "NotificationPermission":
+			indicator = "!"
+			indicatorFg = common.ColorWarning
+		}
+	}
+
+	// Override for unread notifications from another workspace
+	isCurrentWorkspace := ws.Root() == m.activeRoot
+	hasUnread := m.unreadWorkspaces[wsID]
+	if agentState >= 1 && hasUnread && !isCurrentWorkspace {
+		indicatorFg = common.ColorWarning
+	}
+
+	iconStyle := lipgloss.NewStyle().Foreground(indicatorFg)
+	if selected {
+		iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
+	}
+	renderedIndicator := iconStyle.Render(indicator + " ")
+
 	// Styles
 	style := m.styles.WorkspaceRow
 	if selected {
 		style = lipgloss.NewStyle().Bold(true).Foreground(common.ColorForeground).Background(common.ColorSelection)
-	}
-
-	isCurrentWorkspace := ws.Root() == m.activeRoot
-	hasUnread := m.unreadWorkspaces[wsID]
-
-	// Icon color reflects workspace status
-	iconFg := common.ColorSuccess // In Progress / None → green
-	switch ws.Status {
-	case data.StatusBlocked:
-		iconFg = common.ColorError // Red
-	case data.StatusMerged:
-		iconFg = common.ColorPrimary // Blue
-	case data.StatusArchived:
-		iconFg = common.ColorMuted // Grey
-	}
-	// Override for unread notifications from another workspace
-	if agentState >= 1 && hasUnread && !isCurrentWorkspace {
-		iconFg = common.ColorWarning
-	}
-	iconStyle := lipgloss.NewStyle().Foreground(iconFg)
-	if selected {
-		iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
 	}
 
 	// Delete icon
@@ -236,7 +221,7 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name))
 	}
 
-	return style.Render(" ") + iconStyle.Render(indicator) + style.Render(name) + style.Render(deleteSlot) + statusText
+	return style.Render(" ") + renderedIndicator + style.Render(name) + style.Render(deleteSlot) + statusText
 }
 
 // renderWorkspaceLine2: profile · git changes · created day

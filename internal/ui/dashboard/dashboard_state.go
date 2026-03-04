@@ -30,10 +30,11 @@ func (m *Model) startSpinnerIfNeeded() tea.Cmd {
 	return m.tickSpinner()
 }
 
-// hasActiveAgents returns true if any workspace has an actively processing agent.
+// hasActiveAgents returns true if any workspace has an actively processing agent
+// (detected via hook lifecycle events).
 func (m *Model) hasActiveAgents() bool {
-	for _, active := range m.tmuxConfirmedActive {
-		if active {
+	for _, state := range m.hookStates {
+		if state == "PreToolUse" || state == "UserPromptSubmit" {
 			return true
 		}
 	}

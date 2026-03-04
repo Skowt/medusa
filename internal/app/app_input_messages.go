@@ -53,8 +53,6 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	a.allWorkspaces = msg.Workspaces
 	a.dashboard.SetWorkspaces(a.allWorkspaces)
 	var cmds []tea.Cmd
-	cmds = append(cmds, a.scanTmuxActivityNow())
-
 	// Request git status for all workspaces (skip when sidebar is hidden, skip orphans)
 	if !a.layout.SidebarHidden() {
 		for _, ws := range a.allWorkspaces {
@@ -749,6 +747,7 @@ func (a *App) handleCreateProfile(msg messages.CreateProfile) tea.Cmd {
 		logging.Error("Failed to create profile directory: %v", err)
 		return a.toast.ShowError("Failed to create profile: " + err.Error())
 	}
+	_ = config.InjectHooks(profileDir, a.config.Paths.HooksDir)
 
 	var cmds []tea.Cmd
 	cmds = append(cmds, a.toast.ShowSuccess(fmt.Sprintf("Profile '%s' created", name)))

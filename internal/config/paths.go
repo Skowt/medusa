@@ -17,6 +17,7 @@ type Paths struct {
 	SharedProfileRoot     string // ~/.medusa/profiles/shared
 	GlobalPermissionsPath string // ~/.medusa/global_permissions.json
 	SandboxRulesPath      string // ~/.medusa/sandbox_rules.json
+	HooksDir              string // ~/.medusa/hooks
 }
 
 // MedusaHome returns the base medusa directory. It respects the MEDUSA_HOME
@@ -52,6 +53,7 @@ func DefaultPaths() (*Paths, error) {
 		SharedProfileRoot:     filepath.Join(profilesRoot, "shared"),
 		GlobalPermissionsPath: filepath.Join(medusaHome, "global_permissions.json"),
 		SandboxRulesPath:      filepath.Join(medusaHome, "sandbox_rules.json"),
+		HooksDir:              filepath.Join(medusaHome, "hooks"),
 	}, nil
 }
 
@@ -64,6 +66,7 @@ func (p *Paths) EnsureDirectories() error {
 		p.ProfilesRoot,
 		filepath.Join(p.SharedProfileRoot, "skills"),
 		filepath.Join(p.SharedProfileRoot, "plugins"),
+		p.HooksDir,
 	}
 
 	for _, dir := range dirs {

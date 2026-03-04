@@ -49,15 +49,23 @@ func (a *App) safeBatch(cmds ...tea.Cmd) tea.Cmd {
 // Returns a command to start the spinner if any agent is running, and rings
 // the terminal bell if any workspace just became ready for review.
 func (a *App) syncActiveWorkspacesToDashboard() tea.Cmd {
+	hookActive := a.hookActiveIDs()
 	activeWorkspaces := make(map[string]bool)
 	for _, wsID := range a.center.GetActiveWorkspaceIDs() {
 		activeWorkspaces[wsID] = true
 	}
-	for wsID := range a.tmuxActiveWorkspaceIDs {
+	for wsID := range hookActive {
 		activeWorkspaces[wsID] = true
 	}
 	a.dashboard.SetActiveWorkspaces(activeWorkspaces)
-	newUnread := a.dashboard.SetTmuxConfirmedActive(a.tmuxActiveWorkspaceIDs)
+	// Pass raw hook states to dashboard for per-event-type indicator rendering.
+	hookStateStrings := make(map[string]string, len(a.hookWorkspaceStates))
+	for wsID, evt := range a.hookWorkspaceStates {
+		hookStateStrings[wsID] = string(evt)
+	}
+	a.dashboard.SetHookStates(hookStateStrings)
+	// Detect unread transitions when a hook-active workspace becomes inactive.
+	newUnread := a.dashboard.SetConfirmedActive(hookActive)
 	spinnerCmd := a.dashboard.SetWorkspaceAgentStates(a.center.GetWorkspaceAgentStates())
 	if newUnread && a.config.UI.NotificationSound != "" {
 		return tea.Batch(spinnerCmd, playNotificationSound(a.config.UI.NotificationSound))

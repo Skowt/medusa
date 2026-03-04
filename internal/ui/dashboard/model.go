@@ -84,10 +84,11 @@ type Model struct {
 	spinnerActive      bool                       // Whether spinner ticks are active
 
 	// Agent activity state
-	activeWorkspaceIDs   map[string]bool // Workspace IDs with active agents
-	workspaceAgentStates map[string]int  // Workspace ID -> agent state (0=idle, 1=running, 2=active)
-	unreadWorkspaces     map[string]bool // Workspace IDs with unread changes
-	tmuxConfirmedActive  map[string]bool // Workspace IDs confirmed active by tmux
+	activeWorkspaceIDs   map[string]bool   // Workspace IDs with active agents
+	workspaceAgentStates map[string]int    // Workspace ID -> agent state (0=idle, 1=running, 2=active)
+	unreadWorkspaces     map[string]bool   // Workspace IDs with unread changes
+	confirmedActive      map[string]bool   // Workspace IDs confirmed active by hooks
+	hookStates           map[string]string // Workspace ID -> last hook event type
 
 	// Styles
 	styles common.Styles
@@ -104,7 +105,8 @@ func New() *Model {
 		activeWorkspaceIDs:   make(map[string]bool),
 		workspaceAgentStates: make(map[string]int),
 		unreadWorkspaces:     make(map[string]bool),
-		tmuxConfirmedActive:  make(map[string]bool),
+		confirmedActive:      make(map[string]bool),
+		hookStates:           make(map[string]string),
 		cursor:             0,
 		focused:            true,
 		styles:             common.DefaultStyles(),
@@ -116,19 +118,25 @@ func (m *Model) SetActiveWorkspaces(active map[string]bool) {
 	m.activeWorkspaceIDs = active
 }
 
-// SetTmuxConfirmedActive updates the set of workspace IDs confirmed as genuinely
-// active by the tmux "esc to interrupt" detection.
-func (m *Model) SetTmuxConfirmedActive(active map[string]bool) bool {
+// SetHookStates updates the per-workspace hook event type for indicator rendering.
+func (m *Model) SetHookStates(states map[string]string) {
+	m.hookStates = states
+}
+
+// SetConfirmedActive updates the set of workspace IDs confirmed as genuinely
+// active by hook lifecycle events. When a workspace transitions from active
+// to inactive it is marked unread (triggering notification sound).
+func (m *Model) SetConfirmedActive(active map[string]bool) bool {
 	viewedWSID := m.selectedWorkspaceID()
 
 	newUnread := false
-	for wsID := range m.tmuxConfirmedActive {
+	for wsID := range m.confirmedActive {
 		if !active[wsID] && !m.unreadWorkspaces[wsID] && wsID != viewedWSID {
 			m.unreadWorkspaces[wsID] = true
 			newUnread = true
 		}
 	}
-	m.tmuxConfirmedActive = active
+	m.confirmedActive = active
 	return newUnread
 }
 
