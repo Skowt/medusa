@@ -117,32 +117,43 @@ func (m *Model) rebuildRows() {
 		return all[i].Created.Before(all[j].Created)
 	})
 
-	// Group by status: In Progress, Blocked, Merged
-	type statusGroup struct {
-		label string
-		match func(data.WorkspaceStatus) bool
-	}
-	groups := []statusGroup{
-		{"In Progress", func(s data.WorkspaceStatus) bool {
-			return s == data.StatusNone || s == data.StatusStarted
-		}},
-		{"Blocked", func(s data.WorkspaceStatus) bool { return s == data.StatusBlocked }},
-		{"Merged", func(s data.WorkspaceStatus) bool { return s == data.StatusMerged }},
+	// Group by repo name: single-repo workspaces grouped by their repo name,
+	// multi-repo workspaces grouped under "groups".
+	repoGroups := make(map[string][]*data.Workspace) // repo name -> workspaces
+	var multiRepo []*data.Workspace
+	var repoOrder []string // preserve first-seen order
+
+	for _, ws := range all {
+		if ws.IsMultiRepo() {
+			multiRepo = append(multiRepo, ws)
+		} else if len(ws.Repos) > 0 {
+			name := ws.Repos[0].Name
+			if _, seen := repoGroups[name]; !seen {
+				repoOrder = append(repoOrder, name)
+			}
+			repoGroups[name] = append(repoGroups[name], ws)
+		}
 	}
 
-	for _, g := range groups {
-		var groupWs []*data.Workspace
-		for _, ws := range all {
-			if g.match(ws.Status) {
-				groupWs = append(groupWs, ws)
-			}
-		}
-		if len(groupWs) == 0 {
-			continue
-		}
-		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: g.label})
+	sort.Strings(repoOrder)
+
+	for _, name := range repoOrder {
+		groupWs := repoGroups[name]
+		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: name})
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 		for _, ws := range groupWs {
+			m.rows = append(m.rows, Row{
+				Type:      RowWorkspace,
+				Workspace: ws,
+			})
+		}
+		m.rows = append(m.rows, Row{Type: RowSpacer})
+	}
+
+	if len(multiRepo) > 0 {
+		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "groups"})
+		m.rows = append(m.rows, Row{Type: RowSpacer})
+		for _, ws := range multiRepo {
 			m.rows = append(m.rows, Row{
 				Type:      RowWorkspace,
 				Workspace: ws,
