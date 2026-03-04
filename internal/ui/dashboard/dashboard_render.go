@@ -317,7 +317,7 @@ func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentW
 	if status, ok := m.statusCache[root]; ok && status != nil && !status.Clean {
 		gitSummary := formatGitSummary(status)
 		if gitSummary != "" {
-			gitStyle := lipgloss.NewStyle().Foreground(common.ColorWarning)
+			gitStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
 			if selected {
 				gitStyle = gitStyle.Background(common.ColorSelection)
 			}
