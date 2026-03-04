@@ -33,6 +33,38 @@ func TestCreateAndRemoveWorkspace(t *testing.T) {
 	}
 }
 
+func TestPruneWorktrees(t *testing.T) {
+	skipIfNoGit(t)
+	repo := initRepo(t)
+
+	workspacePath := filepath.Join(t.TempDir(), "prune-wt")
+
+	if err := CreateWorkspace(repo, workspacePath, "prune-wt", "HEAD"); err != nil {
+		t.Fatalf("CreateWorkspace() error = %v", err)
+	}
+
+	// Simulate a stale worktree entry by removing the directory without git
+	if err := os.RemoveAll(workspacePath); err != nil {
+		t.Fatalf("failed to remove workspace dir: %v", err)
+	}
+
+	// The worktree entry should still exist in .git/worktrees/
+	worktreeEntry := filepath.Join(repo, ".git", "worktrees", "prune-wt")
+	if _, err := os.Stat(worktreeEntry); err != nil {
+		t.Fatalf("expected stale worktree entry to exist: %v", err)
+	}
+
+	// Prune should clean up the stale entry
+	if err := PruneWorktrees(repo); err != nil {
+		t.Fatalf("PruneWorktrees() error = %v", err)
+	}
+
+	// The stale entry should be gone
+	if _, err := os.Stat(worktreeEntry); !os.IsNotExist(err) {
+		t.Fatalf("expected stale worktree entry to be pruned, err=%v", err)
+	}
+}
+
 func TestRemoveWorkspaceWithUntrackedFiles(t *testing.T) {
 	skipIfNoGit(t)
 	repo := initRepo(t)

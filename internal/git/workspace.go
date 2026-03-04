@@ -37,6 +37,12 @@ func RemoveWorkspace(repoPath, workspacePath string) error {
 	return nil
 }
 
+// PruneWorktrees runs "git worktree prune" to clean up stale worktree entries.
+func PruneWorktrees(repoPath string) error {
+	_, err := RunGit(repoPath, "worktree", "prune")
+	return err
+}
+
 // DeleteBranch deletes a git branch
 func DeleteBranch(repoPath, branch string) error {
 	_, err := RunGit(repoPath, "branch", "-D", branch)

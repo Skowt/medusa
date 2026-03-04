@@ -116,7 +116,9 @@ func CreateGroupWorkspace(specs []RepoSpec) error {
 // Tolerates individual failures (logs warnings, continues).
 // Returns worktree removal errors and branch deletion errors separately.
 func RemoveGroupWorkspace(specs []RepoSpec) (wtErrs []error, branchErrs []error) {
+	repoPaths := make(map[string]struct{})
 	for _, spec := range specs {
+		repoPaths[spec.RepoPath] = struct{}{}
 		if err := RemoveWorkspace(spec.RepoPath, spec.WorkspacePath); err != nil {
 			logging.Warn("Failed to remove worktree %s: %v", spec.WorkspacePath, err)
 			wtErrs = append(wtErrs, err)
@@ -126,6 +128,14 @@ func RemoveGroupWorkspace(specs []RepoSpec) (wtErrs []error, branchErrs []error)
 			branchErrs = append(branchErrs, fmt.Errorf("branch %s in %s: %w", spec.Branch, spec.RepoName, err))
 		}
 	}
+
+	// Best-effort prune to clean up any stale worktree entries.
+	for repoPath := range repoPaths {
+		if err := PruneWorktrees(repoPath); err != nil {
+			logging.Warn("Failed to prune worktrees in %s: %v", repoPath, err)
+		}
+	}
+
 	return wtErrs, branchErrs
 }
 
