@@ -70,14 +70,19 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	if a.pendingAutoLaunch != "" {
 		autoActivateRoot = a.pendingAutoLaunch
 	} else if a.showWelcome && a.activeWorkspace == nil && len(a.allWorkspaces) > 0 {
-		autoActivateRoot = a.allWorkspaces[0].Root()
+		for _, ws := range a.allWorkspaces {
+			if !ws.IsOrphaned() && !ws.Archived() {
+				autoActivateRoot = ws.Root()
+				break
+			}
+		}
 	}
 
 	// Eagerly restore agent tabs for all workspaces on startup.
 	// Skip the workspace that will be auto-activated (activation handles its own restore).
 	// Skip orphaned workspaces — they have no live sessions.
 	for _, ws := range a.allWorkspaces {
-		if ws.IsOrphaned() {
+		if ws.IsOrphaned() || ws.Archived() {
 			continue
 		}
 		if autoActivateRoot != "" && ws.Root() == autoActivateRoot {
@@ -116,13 +121,18 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 			}
 		}
 	} else if autoActivateRoot != "" {
-		// Auto-activate the first workspace on initial startup
-		w := a.allWorkspaces[0]
-		cmds = append(cmds, func() tea.Msg {
-			return messages.WorkspaceActivated{
-				Workspace: w,
+		// Auto-activate the first eligible workspace on initial startup
+		for _, ws := range a.allWorkspaces {
+			if ws.Root() == autoActivateRoot {
+				w := ws
+				cmds = append(cmds, func() tea.Msg {
+					return messages.WorkspaceActivated{
+						Workspace: w,
+					}
+				})
+				break
 			}
-		})
+		}
 	}
 
 	return cmds
@@ -850,6 +860,32 @@ func (a *App) handleShowRenameWorkspaceDialog(msg messages.ShowRenameWorkspaceDi
 	a.dialog.Show()
 	a.dialog.SetValue(msg.Workspace.Name)
 	return nil
+}
+
+// handleShowArchiveWorkspaceDialog shows the archive workspace dialog.
+func (a *App) handleShowArchiveWorkspaceDialog(msg messages.ShowArchiveWorkspaceDialog) {
+	a.dialogWorkspace = msg.Workspace
+	a.dialog = common.NewConfirmDialog(
+		DialogArchiveWorkspace,
+		"Archive Workspace",
+		fmt.Sprintf("Archive '%s'? Agent sessions will be stopped.", msg.Workspace.Name),
+	)
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
+}
+
+// handleShowUnarchiveWorkspaceDialog shows the unarchive workspace dialog.
+func (a *App) handleShowUnarchiveWorkspaceDialog(msg messages.ShowUnarchiveWorkspaceDialog) {
+	a.dialogWorkspace = msg.Workspace
+	a.dialog = common.NewConfirmDialog(
+		DialogUnarchiveWorkspace,
+		"Unarchive Workspace",
+		fmt.Sprintf("Unarchive '%s'? Agent sessions will be restarted.", msg.Workspace.Name),
+	)
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
 }
 
 // handleShowDeleteWorkspaceDialog shows the delete workspace dialog.

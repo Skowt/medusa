@@ -60,6 +60,9 @@ func (m *Model) rowLineCount(idx int) int {
 	}
 	switch m.rows[idx].Type {
 	case RowWorkspace:
+		if m.rows[idx].Workspace != nil && m.rows[idx].Workspace.Archived() {
+			return 1
+		}
 		return 2
 	case RowHome:
 		return 2 // title + separator line
@@ -173,6 +176,12 @@ func (m *Model) handleEnter() tea.Cmd {
 				return messages.ShowDeleteWorkspaceDialog{Workspace: ws}
 			}
 		}
+		if row.Workspace != nil && row.Workspace.Archived() {
+			ws := row.Workspace
+			return func() tea.Msg {
+				return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+			}
+		}
 		return func() tea.Msg {
 			return messages.WorkspaceActivated{
 				Workspace: row.Workspace,
@@ -204,10 +213,16 @@ func (m *Model) handleDelete() tea.Cmd {
 
 	row := m.rows[m.cursor]
 	if row.Type == RowWorkspace && row.Workspace != nil {
-		return func() tea.Msg {
-			return messages.ShowDeleteWorkspaceDialog{
-				Workspace: row.Workspace,
+		ws := row.Workspace
+		// Archived or orphaned workspaces get permanently deleted
+		if ws.Archived() || ws.IsOrphaned() {
+			return func() tea.Msg {
+				return messages.ShowDeleteWorkspaceDialog{Workspace: ws}
 			}
+		}
+		// Active workspaces get archived first
+		return func() tea.Msg {
+			return messages.ShowArchiveWorkspaceDialog{Workspace: ws}
 		}
 	}
 

@@ -69,6 +69,11 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 		return m.renderOrphanRow(ws, selected, contentWidth)
 	}
 
+	// Archived workspaces get single-line rendering
+	if ws.Archived() {
+		return m.renderArchivedRow(ws, selected, contentWidth)
+	}
+
 	line1 := m.renderWorkspaceLine1(ws, selected, contentWidth)
 	line2 := m.renderWorkspaceLine2(ws, selected, contentWidth)
 
@@ -126,6 +131,35 @@ func (m *Model) renderOrphanRow(ws *data.Workspace, selected bool, contentWidth 
 	}
 
 	return line1 + "\n" + line2
+}
+
+// renderArchivedRow renders a single-line archived workspace entry.
+func (m *Model) renderArchivedRow(ws *data.Workspace, selected bool, contentWidth int) string {
+	bg := lipgloss.NewStyle()
+	if selected {
+		bg = bg.Background(common.ColorSelection)
+	}
+
+	iconStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	nameStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	if selected {
+		iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
+		nameStyle = nameStyle.Bold(true).Background(common.ColorSelection)
+	}
+
+	deleteSlot := "   "
+	if selected {
+		deleteSlot = " " + common.Icons.Close + " "
+	}
+
+	line := bg.Render(" ") + iconStyle.Render("◇ ") + nameStyle.Render(ws.Name) + nameStyle.Render(deleteSlot)
+
+	if selected {
+		bgStyle := lipgloss.NewStyle().Background(common.ColorSelection)
+		line = padWithBg(line, contentWidth, bgStyle)
+	}
+
+	return line
 }
 
 // padWithBg right-pads a line to width using background-styled spaces.
@@ -317,7 +351,12 @@ func (m *Model) helpLines(contentWidth int) []string {
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
 		if m.rows[m.cursor].Type == RowWorkspace {
 			items = append(items, m.helpItem("r", "rename"))
-			items = append(items, m.helpItem("D", "delete"))
+			ws := m.rows[m.cursor].Workspace
+			if ws != nil && (ws.Archived() || ws.IsOrphaned()) {
+				items = append(items, m.helpItem("D", "delete"))
+			} else {
+				items = append(items, m.helpItem("D", "archive"))
+			}
 			items = append(items, m.helpItem("P", "profile"))
 		}
 	}
