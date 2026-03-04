@@ -48,6 +48,7 @@ const (
 	DialogSelectRecentRepos     = "select_recent_repos"
 	DialogCloseTab              = "close_tab"
 	DialogSetProfileForCreate   = "set_profile_for_create"
+	DialogQuickDuplicate        = "quick_duplicate"
 )
 
 // Prefix mode constants

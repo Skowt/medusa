@@ -132,6 +132,13 @@ func (m *Model) rebuildRows() {
 				repoOrder = append(repoOrder, name)
 			}
 			repoGroups[name] = append(repoGroups[name], ws)
+		} else {
+			// Workspaces with no repos go under "other"
+			name := "other"
+			if _, seen := repoGroups[name]; !seen {
+				repoOrder = append(repoOrder, name)
+			}
+			repoGroups[name] = append(repoGroups[name], ws)
 		}
 	}
 
@@ -140,19 +147,23 @@ func (m *Model) rebuildRows() {
 	for _, name := range repoOrder {
 		groupWs := repoGroups[name]
 		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: name})
-		m.rows = append(m.rows, Row{Type: RowSpacer})
 		for _, ws := range groupWs {
 			m.rows = append(m.rows, Row{
 				Type:      RowWorkspace,
 				Workspace: ws,
 			})
 		}
+		lastWs := groupWs[len(groupWs)-1]
+		m.rows = append(m.rows, Row{
+			Type:         RowQuickDuplicate,
+			GroupRepos:   lastWs.Repos,
+			GroupProfile: lastWs.Profile,
+		})
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
 
 	if len(multiRepo) > 0 {
 		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "groups"})
-		m.rows = append(m.rows, Row{Type: RowSpacer})
 		for _, ws := range multiRepo {
 			m.rows = append(m.rows, Row{
 				Type:      RowWorkspace,

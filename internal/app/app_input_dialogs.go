@@ -81,6 +81,32 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			}
 		}
 
+	case DialogQuickDuplicate:
+		if workspace != nil && len(workspace.Repos) > 0 {
+			name := validation.SanitizeInput(result.Value)
+			if name == "" {
+				name = defaultName
+			}
+			if err := validation.ValidateWorkspaceName(name); err != nil {
+				return func() tea.Msg {
+					return messages.Error{Err: err, Context: "validating workspace name"}
+				}
+			}
+			// Profile is already set on workspace from the dialog message — skip profile picker
+			a.dialogWorkspace = workspace
+			a.dialogDefaultName = name
+			a.dialog = common.NewSelectDialog(
+				DialogSelectBranchMode,
+				"Base Branch",
+				"Which branch should this worktree be based on?",
+				[]string{"Latest remote main", "Checked out branch", "Custom branch"},
+			)
+			a.dialog.SetSize(a.width, a.height)
+			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+			a.dialog.Show()
+			return nil
+		}
+
 	case DialogCreateWorkspace:
 		if workspace != nil && len(workspace.Repos) > 0 {
 			name := validation.SanitizeInput(result.Value)

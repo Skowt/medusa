@@ -60,9 +60,11 @@ func (m *Model) rowLineCount(idx int) int {
 	}
 	switch m.rows[idx].Type {
 	case RowWorkspace:
-		return 4
+		return 2
 	case RowHome:
 		return 2 // title + separator line
+	case RowQuickDuplicate:
+		return 2 // blank line + button
 	default:
 		return 1
 	}
@@ -144,6 +146,8 @@ func (m *Model) previewCurrentRow() tea.Cmd {
 		}
 	case RowCreate:
 		return func() tea.Msg { return messages.ShowWelcome{} }
+	case RowQuickDuplicate:
+		return func() tea.Msg { return messages.ShowWelcome{} }
 	}
 
 	return nil
@@ -168,6 +172,15 @@ func (m *Model) handleEnter() tea.Cmd {
 	case RowCreate:
 		return func() tea.Msg {
 			return messages.ShowCreateWorkspaceDialog{}
+		}
+	case RowQuickDuplicate:
+		repos := row.GroupRepos
+		profile := row.GroupProfile
+		return func() tea.Msg {
+			return messages.ShowQuickDuplicateDialog{
+				Repos:   repos,
+				Profile: profile,
+			}
 		}
 	}
 

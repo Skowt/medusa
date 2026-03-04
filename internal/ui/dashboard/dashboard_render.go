@@ -2,8 +2,6 @@ package dashboard
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -36,8 +34,15 @@ func (m *Model) renderRow(row Row, selected bool) string {
 		}
 		return style.Render(" " + common.Icons.Add + " New Workspace ")
 
+	case RowQuickDuplicate:
+		style := m.styles.CreateButton
+		if selected {
+			style = m.styles.SelectedRow
+		}
+		return "\n" + style.Render(" " + common.Icons.Add + " Quick Duplicate ")
+
 	case RowSectionHeader:
-		style := lipgloss.NewStyle().Foreground(common.ColorMuted)
+		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
 		return style.Render(" " + row.Label)
 
 	case RowSpacer:
@@ -47,7 +52,7 @@ func (m *Model) renderRow(row Row, selected bool) string {
 	return ""
 }
 
-// renderWorkspaceRow renders a 3-line workspace entry
+// renderWorkspaceRow renders a 2-line workspace entry
 func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 	ws := row.Workspace
 	if ws == nil {
@@ -61,18 +66,14 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 
 	line1 := m.renderWorkspaceLine1(ws, selected, contentWidth)
 	line2 := m.renderWorkspaceLine2(ws, selected, contentWidth)
-	line3 := m.renderWorkspaceLine3(ws, selected, contentWidth)
 
-	blankLine := ""
 	if selected {
 		bg := lipgloss.NewStyle().Background(common.ColorSelection)
 		line1 = padWithBg(line1, contentWidth, bg)
 		line2 = padWithBg(line2, contentWidth, bg)
-		line3 = padWithBg(line3, contentWidth, bg)
-		blankLine = padWithBg("", contentWidth, bg)
 	}
 
-	return line1 + "\n" + line2 + "\n" + line3 + "\n" + blankLine
+	return line1 + "\n" + line2
 }
 
 // padWithBg right-pads a line to width using background-styled spaces.
@@ -167,23 +168,10 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		deleteSlot = " " + common.Icons.Close + " "
 	}
 
-	// Profile indicator
-	profileLabel := "D"
-	if ws.Profile != "" {
-		r := []rune(ws.Profile)
-		profileLabel = strings.ToUpper(string(r[:1]))
-	}
-	profileTag := " (" + profileLabel + ")"
-	profileStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-	if selected {
-		profileStyle = profileStyle.Background(common.ColorSelection)
-	}
-	profileTagWidth := lipgloss.Width(profileTag)
-
 	// Truncate name
 	name := ws.Name
 	prefixWidth := 2 + indicatorWidth // " " prefix + " " styled prefix + indicator
-	maxNameWidth := contentWidth - lipgloss.Width(statusText) - deleteSlotWidth - prefixWidth - profileTagWidth
+	maxNameWidth := contentWidth - lipgloss.Width(statusText) - deleteSlotWidth - prefixWidth
 	if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
 		runes := []rune(name)
 		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
@@ -193,44 +181,39 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	}
 
 	if selected {
-		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name)) + profileTagWidth
+		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name))
 	}
 
-	return style.Render(" ") + iconStyle.Render(indicator) + style.Render(name) + profileStyle.Render(profileTag) + style.Render(deleteSlot) + statusText
+	return style.Render(" ") + iconStyle.Render(indicator) + style.Render(name) + style.Render(deleteSlot) + statusText
 }
 
-// renderWorkspaceLine2: repo names + git changes
+// renderWorkspaceLine2: profile · git changes · created day
 func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentWidth int) string {
 	bg := lipgloss.NewStyle()
 	if selected {
 		bg = bg.Background(common.ColorSelection)
 	}
 
-	indent := bg.Render("  ")
+	mutedStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	if selected {
+		mutedStyle = mutedStyle.Background(common.ColorSelection)
+	}
+
+	arrowStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
+	if selected {
+		arrowStyle = arrowStyle.Background(common.ColorSelection)
+	}
+
+	indent := bg.Render(" ") + arrowStyle.Render("└ ")
 
 	var parts []string
 
-	// Repo names
-	if len(ws.Repos) > 0 {
-		const maxRepos = 4
-		repoStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-		if selected {
-			repoStyle = repoStyle.Background(common.ColorSelection)
-		}
-		var names []string
-		limit := len(ws.Repos)
-		if limit > maxRepos {
-			limit = maxRepos
-		}
-		for _, repo := range ws.Repos[:limit] {
-			names = append(names, repo.Name)
-		}
-		repoStr := strings.Join(names, ", ")
-		if len(ws.Repos) > maxRepos {
-			repoStr += fmt.Sprintf(" (+%d)", len(ws.Repos)-maxRepos)
-		}
-		parts = append(parts, repoStyle.Render(repoStr))
+	// Profile name
+	profileName := "Default"
+	if ws.Profile != "" {
+		profileName = ws.Profile
 	}
+	parts = append(parts, mutedStyle.Render(profileName))
 
 	// Git changes summary
 	root := ws.PrimaryWorktreeRoot()
@@ -243,48 +226,19 @@ func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentW
 			}
 			parts = append(parts, gitStyle.Render(gitSummary))
 		}
+	} else {
+		parts = append(parts, mutedStyle.Render("Clean"))
 	}
 
-	sep := bg.Render(" ")
+	// Created day (e.g. "Mon")
+	if !ws.Created.IsZero() {
+		parts = append(parts, mutedStyle.Render(ws.Created.Format("Mon")))
+	}
+
+	sep := mutedStyle.Render(" · ")
 	return indent + strings.Join(parts, sep)
 }
 
-// renderWorkspaceLine3: directory path
-func (m *Model) renderWorkspaceLine3(ws *data.Workspace, selected bool, contentWidth int) string {
-	indent := "  "
-	dir := shortenPath(ws.Root())
-
-	style := lipgloss.NewStyle().Foreground(common.ColorMuted)
-	if selected {
-		style = style.Background(common.ColorSelection)
-	}
-
-	maxDirWidth := contentWidth - lipgloss.Width(indent)
-	if maxDirWidth > 0 && lipgloss.Width(dir) > maxDirWidth {
-		runes := []rune(dir)
-		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxDirWidth-1 {
-			runes = runes[:len(runes)-1]
-		}
-		dir = string(runes) + "…"
-	}
-
-	return style.Render(indent) + style.Render(dir)
-}
-
-// shortenPath shortens a path for display, using ~ for home dir
-func shortenPath(path string) string {
-	if path == "" {
-		return ""
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home) {
-		return "~" + path[len(home):]
-	}
-	parts := strings.Split(path, string(filepath.Separator))
-	if len(parts) > 3 {
-		return ".../" + strings.Join(parts[len(parts)-3:], string(filepath.Separator))
-	}
-	return path
-}
 
 func (m *Model) helpItem(key, desc string) string {
 	return common.RenderHelpItem(m.styles, key, desc)
