@@ -367,45 +367,100 @@ func (m *Model) View() string {
 		visibleHeight = 1
 	}
 
-	// Adjust scroll offset for multi-line rows
-	cursorLine := m.cursorLineOffset()
-	if cursorLine < m.scrollOffset {
-		m.scrollOffset = cursorLine
-	}
-	cursorBottom := cursorLine + m.rowLineCount(m.cursor) - 1
-	if cursorBottom >= m.scrollOffset+visibleHeight {
-		m.scrollOffset = cursorBottom - visibleHeight + 1
+	// Determine archived section boundaries
+	archivedStart := m.archivedSectionStart()
+
+	mainRowEnd := len(m.rows)
+	if archivedStart >= 0 {
+		mainRowEnd = archivedStart
 	}
 
-	// Render rows accounting for multi-line
+	// Pre-render archived section to measure its true height
+	var archivedBuf strings.Builder
+	if archivedStart >= 0 {
+		for i := archivedStart; i < len(m.rows); i++ {
+			line := m.renderRow(m.rows[i], i == m.cursor && !m.toolbarFocused)
+			archivedBuf.WriteString(line)
+			archivedBuf.WriteString("\n")
+		}
+	}
+	archivedRendered := archivedBuf.String()
+	archivedHeight := strings.Count(archivedRendered, "\n")
+
+	// The main (non-archived) rows get a scrollable region;
+	// the archived section is always pinned to the bottom.
+	mainVisibleHeight := visibleHeight - archivedHeight
+	if mainVisibleHeight < 1 {
+		mainVisibleHeight = 1
+	}
+
+	// Adjust scroll offset for cursor within main rows
+	cursorLine := m.cursorLineOffset()
+	if m.cursor < mainRowEnd {
+		if cursorLine < m.scrollOffset {
+			m.scrollOffset = cursorLine
+		}
+		cursorBottom := cursorLine + m.rowLineCount(m.cursor) - 1
+		if cursorBottom >= m.scrollOffset+mainVisibleHeight {
+			m.scrollOffset = cursorBottom - mainVisibleHeight + 1
+		}
+	} else {
+		// Cursor is in archived section; keep main scroll at bottom
+		mainTotalLines := 0
+		for i := 0; i < mainRowEnd; i++ {
+			mainTotalLines += m.rowLineCount(i)
+		}
+		maxOffset := mainTotalLines - mainVisibleHeight
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if m.scrollOffset > maxOffset {
+			m.scrollOffset = maxOffset
+		}
+	}
+
+	// Render main (non-archived) rows with scrolling
 	lineOffset := 0
-	for i, row := range m.rows {
+	for i := 0; i < mainRowEnd; i++ {
 		lines := m.rowLineCount(i)
 		if lineOffset+lines <= m.scrollOffset {
 			lineOffset += lines
 			continue
 		}
-		if lineOffset >= m.scrollOffset+visibleHeight {
+		if lineOffset >= m.scrollOffset+mainVisibleHeight {
 			break
 		}
-		line := m.renderRow(row, i == m.cursor && !m.toolbarFocused)
+		line := m.renderRow(m.rows[i], i == m.cursor && !m.toolbarFocused)
 		b.WriteString(line)
 		b.WriteString("\n")
 		lineOffset += lines
 	}
 
-	contentHeight := strings.Count(b.String(), "\n") + 1
-	targetHeight := innerHeight - toolbarHeight - helpHeight
-	if targetHeight < 0 {
-		targetHeight = 0
+	// Clip main content to mainVisibleHeight so it never overflows into
+	// the archived section. A multi-line row that starts within bounds but
+	// extends past mainVisibleHeight can cause the buffer to be too tall.
+	mainContentHeight := strings.Count(b.String(), "\n")
+	if mainContentHeight > mainVisibleHeight {
+		mainLines := strings.SplitN(b.String(), "\n", mainVisibleHeight+1)
+		if len(mainLines) > mainVisibleHeight {
+			mainLines = mainLines[:mainVisibleHeight]
+		}
+		b.Reset()
+		b.WriteString(strings.Join(mainLines, "\n"))
+		b.WriteString("\n")
+		mainContentHeight = mainVisibleHeight
 	}
-	padding := targetHeight - contentHeight + 1
+
+	// Pad between main content and archived section
+	padding := visibleHeight - mainContentHeight - archivedHeight
 	if padding > 0 {
 		b.WriteString(strings.Repeat("\n", padding))
-		m.toolbarY = targetHeight
-	} else {
-		m.toolbarY = contentHeight - 1
 	}
+
+	// Append pre-rendered archived section
+	b.WriteString(archivedRendered)
+
+	m.toolbarY = innerHeight - toolbarHeight - helpHeight
 
 	toolbar := m.renderToolbar()
 	b.WriteString(toolbar)

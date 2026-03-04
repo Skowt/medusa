@@ -64,6 +64,11 @@ func (m *Model) rowLineCount(idx int) int {
 			return 1
 		}
 		return 2
+	case RowSectionHeader:
+		if m.rows[idx].Label == "archived" || m.rows[idx].Label == "archived-footer" {
+			return 2
+		}
+		return 1
 	case RowHome:
 		return 2 // title + separator line
 	case RowQuickDuplicate:
@@ -107,21 +112,47 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 	}
 
 	rowY := contentY
+
+	archivedStart := m.archivedSectionStart()
+	archivedLines := m.archivedSectionLineCount()
+	mainRowEnd := len(m.rows)
+	if archivedStart >= 0 {
+		mainRowEnd = archivedStart
+	}
+
+	// Check main (scrollable) rows
 	line := 0
-	for i := 0; i < len(m.rows); i++ {
+	mainVisibleHeight := rowAreaHeight - archivedLines
+	if mainVisibleHeight < 1 {
+		mainVisibleHeight = 1
+	}
+	for i := 0; i < mainRowEnd; i++ {
 		rowLines := m.rowLineCount(i)
 		if line+rowLines <= m.scrollOffset {
 			line += rowLines
 			continue
 		}
 		visLine := line - m.scrollOffset
-		if visLine >= rowAreaHeight {
+		if visLine >= mainVisibleHeight {
 			break
 		}
 		if rowY >= visLine && rowY < visLine+rowLines {
 			return i, true
 		}
 		line += rowLines
+	}
+
+	// Check archived rows (pinned to bottom)
+	if archivedStart >= 0 {
+		archivedY := rowAreaHeight - archivedLines
+		aLine := archivedY
+		for i := archivedStart; i < len(m.rows); i++ {
+			rowLines := m.rowLineCount(i)
+			if rowY >= aLine && rowY < aLine+rowLines {
+				return i, true
+			}
+			aLine += rowLines
+		}
 	}
 
 	return -1, false

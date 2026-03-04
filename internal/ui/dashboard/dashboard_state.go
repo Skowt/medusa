@@ -81,7 +81,6 @@ func (m *Model) SetWorkspaceDeleting(root string, deleting bool) tea.Cmd {
 func (m *Model) rebuildRows() {
 	m.rows = []Row{
 		{Type: RowHome},
-		{Type: RowSpacer},
 	}
 
 	// Separate orphaned and archived workspaces from normal ones
@@ -188,7 +187,9 @@ func (m *Model) rebuildRows() {
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
 
-	// Archived section
+	m.rows = append(m.rows, Row{Type: RowCreate})
+
+	// Archived section (below "+ New Workspace" with a divider)
 	if len(archived) > 0 {
 		// Sort by ArchivedAt descending (newest first)
 		sort.Slice(archived, func(i, j int) bool {
@@ -201,10 +202,8 @@ func (m *Model) rebuildRows() {
 				Workspace: ws,
 			})
 		}
-		m.rows = append(m.rows, Row{Type: RowSpacer})
+		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "archived-footer"})
 	}
-
-	m.rows = append(m.rows, Row{Type: RowCreate})
 
 	// Clamp cursor
 	if m.cursor >= len(m.rows) {
@@ -225,12 +224,46 @@ func (m *Model) rebuildRows() {
 }
 
 // clampScrollOffset ensures scrollOffset stays within valid bounds.
-func (m *Model) clampScrollOffset() {
-	totalLines := 0
-	for i := range m.rows {
-		totalLines += m.rowLineCount(i)
+// archivedSectionStart returns the row index where the archived section begins,
+// or -1 if there is no archived section.
+func (m *Model) archivedSectionStart() int {
+	for i, row := range m.rows {
+		if row.Type == RowSectionHeader && row.Label == "archived" {
+			return i
+		}
 	}
-	maxOffset := totalLines - m.visibleHeight()
+	return -1
+}
+
+// archivedSectionLineCount returns total display lines for the archived section.
+func (m *Model) archivedSectionLineCount() int {
+	start := m.archivedSectionStart()
+	if start < 0 {
+		return 0
+	}
+	total := 0
+	for i := start; i < len(m.rows); i++ {
+		total += m.rowLineCount(i)
+	}
+	return total
+}
+
+func (m *Model) clampScrollOffset() {
+	archivedStart := m.archivedSectionStart()
+	mainRowEnd := len(m.rows)
+	if archivedStart >= 0 {
+		mainRowEnd = archivedStart
+	}
+	mainLines := 0
+	for i := 0; i < mainRowEnd; i++ {
+		mainLines += m.rowLineCount(i)
+	}
+	archivedLines := m.archivedSectionLineCount()
+	scrollableHeight := m.visibleHeight() - archivedLines
+	if scrollableHeight < 1 {
+		scrollableHeight = 1
+	}
+	maxOffset := mainLines - scrollableHeight
 	if maxOffset < 0 {
 		maxOffset = 0
 	}

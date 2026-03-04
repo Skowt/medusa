@@ -43,6 +43,18 @@ func (m *Model) renderRow(row Row, selected bool) string {
 
 	case RowSectionHeader:
 		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
+		contentWidth := m.width - 3
+		if contentWidth < 1 {
+			contentWidth = 1
+		}
+		if row.Label == "archived" {
+			sep := lipgloss.NewStyle().Foreground(common.ColorSurface2).Render(strings.Repeat("─", contentWidth))
+			return sep + "\n" + style.Render(" "+row.Label)
+		}
+		if row.Label == "archived-footer" {
+			sep := lipgloss.NewStyle().Foreground(common.ColorSurface2).Render(strings.Repeat("─", contentWidth))
+			return "\n" + sep
+		}
 		return style.Render(" " + row.Label)
 
 	case RowSpacer:
