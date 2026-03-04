@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/andyrewlee/medusa/internal/git"
 	"github.com/andyrewlee/medusa/internal/messages"
 	"github.com/andyrewlee/medusa/internal/ui/common"
 )
@@ -146,6 +147,29 @@ func (a *App) renderWorkspaceInfo() string {
 	// Edit Repos (only for multi-repo workspaces)
 	if ws.IsMultiRepo() {
 		b.WriteString(prefix(2) + label.Render(fmt.Sprintf("Edit Repos: (%d repos)", len(ws.Repos))) + "\n")
+	}
+
+	// Git Changes section
+	b.WriteString("\n" + label.Render("Git Changes") + "\n")
+	var gitStatus *git.StatusResult
+	if a.statusManager != nil {
+		gitStatus = a.statusManager.GetLastKnown(ws.PrimaryWorktreeRoot())
+	}
+	if gitStatus == nil || gitStatus.Clean {
+		b.WriteString("  " + on.Render("Working tree clean") + "\n")
+	} else {
+		renderChanges := func(header string, changes []git.Change) {
+			if len(changes) == 0 {
+				return
+			}
+			b.WriteString("  " + label.Render(fmt.Sprintf("%s (%d)", header, len(changes))) + "\n")
+			for _, c := range changes {
+				b.WriteString("    " + label.Render(c.KindString()) + " " + value.Render(c.Path) + "\n")
+			}
+		}
+		renderChanges("Staged", gitStatus.Staged)
+		renderChanges("Unstaged", gitStatus.Unstaged)
+		renderChanges("Untracked", gitStatus.Untracked)
 	}
 
 	return b.String()
