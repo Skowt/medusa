@@ -229,7 +229,7 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		case "PreToolUse", "UserPromptSubmit":
 			indicator = common.SpinnerFrame(m.spinnerFrame)
 			indicatorFg = common.ColorSuccess
-		case "NotificationIdle", "NotificationPermission":
+		case "NotificationPermission", "NotificationElicitation":
 			indicator = "!"
 			indicatorFg = common.ColorWarning
 		}

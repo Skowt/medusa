@@ -227,6 +227,7 @@ func InjectHooks(profileDir, hooksDir string) error {
 		notificationDefs := []hookDef{
 			{event: "NotificationIdle", matcher: "idle_prompt"},
 			{event: "NotificationPermission", matcher: "permission_prompt"},
+			{event: "NotificationElicitation", matcher: "elicitation_dialog"},
 		}
 		var notificationRules []any
 		for _, def := range notificationDefs {

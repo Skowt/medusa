@@ -54,7 +54,15 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 		return nil
 	}
 
-	a.hookWorkspaceStates[wsID] = msg.Event
+	// NotificationIdle and Stop are "clear" signals: the agent finished
+	// responding and went idle, so any prior notification (permission/question)
+	// has been resolved. Delete the state so the '!' indicator disappears.
+	switch msg.Event {
+	case hooks.EventStop, hooks.EventNotificationIdle:
+		delete(a.hookWorkspaceStates, wsID)
+	default:
+		a.hookWorkspaceStates[wsID] = msg.Event
+	}
 
 	var cmds []tea.Cmd
 	if cmd := a.syncActiveWorkspacesToDashboard(); cmd != nil {
