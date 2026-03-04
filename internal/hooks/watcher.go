@@ -20,6 +20,7 @@ const (
 	EventNotificationIdle           EventType = "NotificationIdle"
 	EventNotificationPermission     EventType = "NotificationPermission"
 	EventNotificationElicitation    EventType = "NotificationElicitation"
+	EventPermissionRequest          EventType = "PermissionRequest"
 	EventPreToolUse                 EventType = "PreToolUse"
 	EventUserPromptSubmit           EventType = "UserPromptSubmit"
 )
