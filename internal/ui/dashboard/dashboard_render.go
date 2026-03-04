@@ -166,13 +166,24 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		statusText = spaceStyle.Render(" ") + pendingStyle.Render(frame+" creating")
 	}
 
-	// Hook-based indicator: default green dot, spinner on PreToolUse, warning symbols for notifications
-	indicator := "●" // default: green dot (idle / no data / Stop)
+	// Default indicator based on workspace status
+	indicator := "●"
 	indicatorFg := common.ColorSuccess
+	switch ws.Status {
+	case data.StatusBlocked:
+		indicator = common.Icons.Blocked
+		indicatorFg = common.ColorError
+	case data.StatusMerged:
+		indicator = common.Icons.Completed
+		indicatorFg = common.ColorPrimary
+	}
+
+	// Hook-based activity overrides: spinner on PreToolUse, warning symbols for notifications
 	if hookState, ok := m.hookStates[wsID]; ok {
 		switch hookState {
 		case "PreToolUse", "UserPromptSubmit":
 			indicator = common.SpinnerFrame(m.spinnerFrame)
+			indicatorFg = common.ColorSuccess
 		case "NotificationIdle", "NotificationPermission":
 			indicator = "!"
 			indicatorFg = common.ColorWarning
