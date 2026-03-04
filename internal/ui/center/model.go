@@ -88,6 +88,10 @@ type Tab struct {
 	Isolated        bool
 	SkipPermissions bool
 
+	// WorkspaceRenamed is set when the workspace is renamed while this tab is active.
+	// The agent's shell still references the old directory, so it may not work correctly.
+	WorkspaceRenamed bool
+
 	// Snapshot cache for VTermLayer - avoid recreating snapshot when terminal unchanged
 	cachedSnap       *compositor.VTermSnapshot
 	cachedVersion    uint64
@@ -597,6 +601,8 @@ func (m *Model) MigrateWorkspaceTabs(oldID, newID string, ws *data.Workspace, ol
 		for _, tab := range tabs {
 			if tab != nil {
 				tab.Workspace = ws
+				// Mark tab as needing restart — the agent's shell still uses the old directory.
+				tab.WorkspaceRenamed = true
 				// Update tmux session name to match the renamed session.
 				if strings.HasPrefix(tab.SessionName, oldPrefix) {
 					tab.SessionName = newPrefix + strings.TrimPrefix(tab.SessionName, oldPrefix)
