@@ -346,6 +346,11 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.exitPrefix()
 		}
 
+	case markReadMsg:
+		if msg.token == a.markReadToken {
+			a.dashboard.MarkRead(msg.wsID)
+		}
+
 	case tea.KeyPressMsg:
 		if cmd := a.handleKeyPress(msg); cmd != nil {
 			cmds = append(cmds, cmd)

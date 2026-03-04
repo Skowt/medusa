@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -145,6 +146,8 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 	a.centerBtnIndex = 0
 	a.center.SetWorkspace(msg.Workspace)
 	a.sidebar.SetWorkspace(msg.Workspace)
+	// Invalidate any pending delayed mark-read from preview scrolling.
+	a.markReadToken++
 	if msg.Workspace != nil {
 		a.dashboard.MarkRead(string(msg.Workspace.ID()))
 	}
@@ -306,8 +309,15 @@ func (a *App) handleWorkspacePreviewed(msg messages.WorkspacePreviewed) []tea.Cm
 	a.center.SetWorkspace(msg.Workspace)
 	a.sidebar.SetWorkspace(msg.Workspace)
 	a.sidebarTerminal.SetWorkspacePreview(msg.Workspace)
+	// Delay marking as read so quickly scrolling through workspaces
+	// does not clear the unread indicator. Only mark read after 1s.
+	a.markReadToken++
 	if msg.Workspace != nil {
-		a.dashboard.MarkRead(string(msg.Workspace.ID()))
+		token := a.markReadToken
+		wsID := string(msg.Workspace.ID())
+		cmds = append(cmds, tea.Tick(time.Second, func(time.Time) tea.Msg {
+			return markReadMsg{token: token, wsID: wsID}
+		}))
 	}
 	// Sync active workspaces to dashboard
 	if startCmd := a.syncActiveWorkspacesToDashboard(); startCmd != nil {

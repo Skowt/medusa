@@ -344,7 +344,8 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	case messages.WorkspacePreviewed:
 		if msg.Workspace != nil {
 			m.activeRoot = msg.Workspace.Root()
-			m.MarkRead(string(msg.Workspace.ID()))
+			// MarkRead is handled by app with a delay to avoid
+			// clearing unread when quickly scrolling through workspaces.
 		}
 
 	case messages.ShowWelcome:

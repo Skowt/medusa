@@ -65,6 +65,13 @@ type prefixTimeoutMsg struct {
 	token int
 }
 
+// markReadMsg is sent after a delay to mark a previewed workspace as read.
+// The token is compared to the current markReadToken to avoid stale marks.
+type markReadMsg struct {
+	token int
+	wsID  string
+}
+
 // App is the root Bubbletea model
 type App struct {
 	// Configuration
@@ -171,6 +178,9 @@ type App struct {
 	// Profile gate
 	pendingProfileLaunch     string
 	pendingProfileLaunchRoot string
+
+	// Delayed mark-read for previewed workspaces
+	markReadToken int
 
 	// Workspace persistence debounce
 	dirtyWorkspaces map[string]bool
