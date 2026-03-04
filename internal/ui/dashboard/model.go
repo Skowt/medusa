@@ -302,6 +302,8 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 					return m, m.handleRename()
 				}
 			}
+		case key.Matches(msg, key.NewBinding(key.WithKeys("S"))):
+			return m, m.handleToggleStatus()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):
 			return m, func() tea.Msg { return messages.RefreshDashboard{} }
 		case key.Matches(msg, key.NewBinding(key.WithKeys("G"))):

@@ -98,6 +98,7 @@ func defaultHelpSections() []HelpSection {
 				{"q", "Quit"},
 				{"j/k", "Navigate up/down"},
 				{"Enter", "Activate worktree"},
+				{"S", "Toggle status"},
 				{"D", "Delete worktree / remove workspace"},
 				{"f", "Toggle dirty filter"},
 				{"r", "Refresh worktrees"},

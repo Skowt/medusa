@@ -3,6 +3,7 @@ package dashboard
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/messages"
 )
 
@@ -281,6 +282,34 @@ func (m *Model) handleSetProfile() tea.Cmd {
 		ws := row.Workspace
 		return func() tea.Msg {
 			return messages.ShowSetWorkspaceProfileDialog{Workspace: ws}
+		}
+	}
+	return nil
+}
+
+// handleToggleStatus cycles the status of the currently selected workspace.
+func (m *Model) handleToggleStatus() tea.Cmd {
+	if m.cursor >= len(m.rows) {
+		return nil
+	}
+	row := m.rows[m.cursor]
+	if row.Type == RowWorkspace && row.Workspace != nil {
+		ws := row.Workspace
+		var next data.WorkspaceStatus
+		switch ws.Status {
+		case data.StatusNone, data.StatusStarted:
+			next = data.StatusBlocked
+		case data.StatusBlocked:
+			next = data.StatusMerged
+		case data.StatusMerged:
+			next = data.StatusNone
+		case data.StatusArchived:
+			next = data.StatusNone
+		default:
+			next = data.StatusStarted
+		}
+		return func() tea.Msg {
+			return messages.SetWorkspaceStatus{Workspace: ws, Status: next}
 		}
 	}
 	return nil
