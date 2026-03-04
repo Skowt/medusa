@@ -64,6 +64,7 @@ func (m *Model) renderTabBar() string {
 		tabAllowEdits := tab.AllowEdits
 		tabIsolated := tab.Isolated
 		tabSkipPerms := tab.SkipPermissions
+		tabRenamed := tab.WorkspaceRenamed
 		tab.mu.Unlock()
 
 		// Add brand color indicator for agent tabs (not file viewers)
@@ -92,6 +93,13 @@ func (m *Model) renderTabBar() string {
 		}
 		var modeIconList []modeIcon
 		if isChat {
+			if tabRenamed {
+				modeIconList = append(modeIconList, modeIcon{
+					char:    "⚠",
+					fg:      common.ColorWarning,
+					tooltip: "Workspace renamed: restart agent to use new directory",
+				})
+			}
 			if tabAllowEdits {
 				modeIconList = append(modeIconList, modeIcon{
 					char:    "✎",

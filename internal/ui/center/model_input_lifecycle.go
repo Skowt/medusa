@@ -65,6 +65,7 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 	tab.Running = true
 	tab.monitorDirty = true
 	tab.autoRestartAttempt = 0
+	tab.WorkspaceRenamed = false
 	tab.mu.Unlock()
 
 	if tab.Terminal != nil && msg.Agent.Terminal != nil {
