@@ -19,6 +19,7 @@ const (
 	EventStop                    EventType = "Stop"
 	EventNotificationIdle        EventType = "NotificationIdle"
 	EventNotificationPermission  EventType = "NotificationPermission"
+	EventPermissionRequest       EventType = "PermissionRequest"
 	EventPreToolUse              EventType = "PreToolUse"
 	EventUserPromptSubmit        EventType = "UserPromptSubmit"
 )
