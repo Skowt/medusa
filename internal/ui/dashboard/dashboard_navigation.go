@@ -139,6 +139,9 @@ func (m *Model) previewCurrentRow() tea.Cmd {
 	case RowHome:
 		return func() tea.Msg { return messages.ShowWelcome{} }
 	case RowWorkspace:
+		if row.Workspace != nil && row.Workspace.IsOrphaned() {
+			return func() tea.Msg { return messages.ShowWelcome{} }
+		}
 		return func() tea.Msg {
 			return messages.WorkspacePreviewed{
 				Workspace: row.Workspace,
@@ -164,6 +167,12 @@ func (m *Model) handleEnter() tea.Cmd {
 	case RowHome:
 		return func() tea.Msg { return messages.ShowWelcome{} }
 	case RowWorkspace:
+		if row.Workspace != nil && row.Workspace.IsOrphaned() {
+			ws := row.Workspace
+			return func() tea.Msg {
+				return messages.ShowDeleteWorkspaceDialog{Workspace: ws}
+			}
+		}
 		return func() tea.Msg {
 			return messages.WorkspaceActivated{
 				Workspace: row.Workspace,

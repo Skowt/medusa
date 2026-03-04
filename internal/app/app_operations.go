@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -77,10 +78,82 @@ func (a *App) loadWorkspaces() tea.Cmd {
 			workspaces = append(workspaces, ws)
 		}
 
+		// Phase A: detect metadata orphans (worktree directory missing on disk)
+		for _, ws := range workspaces {
+			root := ws.PrimaryWorktreeRoot()
+			if root == "" {
+				continue
+			}
+			if _, err := os.Stat(root); os.IsNotExist(err) {
+				ws.Orphan = data.OrphanMetadata
+			}
+		}
+
+		// Phase B: detect directory orphans (directory exists but no metadata)
+		if a.config != nil && a.config.Paths.WorkspacesRoot != "" {
+			knownRoots := make(map[string]bool)
+			for _, ws := range workspaces {
+				for _, root := range ws.AllRoots() {
+					knownRoots[root] = true
+				}
+				if ws.Root() != "" {
+					knownRoots[ws.Root()] = true
+				}
+			}
+
+			dirEntries, err := os.ReadDir(a.config.Paths.WorkspacesRoot)
+			if err == nil {
+				for _, de := range dirEntries {
+					if !de.IsDir() {
+						continue
+					}
+					// Skip hidden directories (e.g. .claude)
+					if strings.HasPrefix(de.Name(), ".") {
+						continue
+					}
+					dirPath := filepath.Join(a.config.Paths.WorkspacesRoot, de.Name())
+					if knownRoots[dirPath] {
+						continue
+					}
+					orphan := &data.Workspace{
+						Name: de.Name(),
+						Worktrees: []data.WorktreeRef{
+							{Root: dirPath},
+						},
+						Orphan:     data.OrphanDirectory,
+						OrphanPath: dirPath,
+					}
+					workspaces = append(workspaces, orphan)
+				}
+			}
+		}
+
 		return messages.WorkspacesLoaded{Workspaces: workspaces}
 	}
 }
 
+// deleteOrphanWorkspace removes an orphaned workspace.
+// Metadata orphans: remove store + registry entries.
+// Directory orphans: remove the directory from disk.
+func (a *App) deleteOrphanWorkspace(ws *data.Workspace) tea.Cmd {
+	if ws == nil {
+		return func() tea.Msg {
+			return messages.OrphanWorkspaceDeleted{Workspace: ws}
+		}
+	}
+	return func() tea.Msg {
+		switch ws.Orphan {
+		case data.OrphanMetadata:
+			_ = a.workspaces.Delete(ws.ID())
+			_ = a.registry.RemoveWorkspace(string(ws.ID()))
+		case data.OrphanDirectory:
+			if ws.OrphanPath != "" {
+				_ = os.RemoveAll(ws.OrphanPath)
+			}
+		}
+		return messages.OrphanWorkspaceDeleted{Workspace: ws}
+	}
+}
 
 // fetchRemoteBase fetches the remote base branch asynchronously.
 func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string) tea.Cmd {

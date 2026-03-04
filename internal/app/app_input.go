@@ -531,6 +531,14 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.DeleteWorkspace:
 		cmds = append(cmds, a.handleDeleteWorkspace(msg)...)
 
+	case messages.DeleteOrphanWorkspace:
+		if msg.Workspace != nil {
+			if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), true); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			cmds = append(cmds, a.deleteOrphanWorkspace(msg.Workspace))
+		}
+
 	case messages.CleanupTmuxSessions:
 		if cmd := a.cleanupAllTmuxSessions(); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -736,6 +744,15 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case messages.WorkspaceDeleted:
 		cmds = append(cmds, a.handleWorkspaceDeleted(msg)...)
+
+	case messages.OrphanWorkspaceDeleted:
+		if msg.Workspace != nil {
+			if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), false); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		cmds = append(cmds, a.loadWorkspaces())
+		cmds = append(cmds, a.toast.ShowSuccess("Orphan cleaned up"))
 
 	case messages.WorkspaceDeleteFailed:
 		if cmd := a.handleWorkspaceDeleteFailed(msg); cmd != nil {

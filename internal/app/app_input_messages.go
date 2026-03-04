@@ -55,9 +55,12 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	var cmds []tea.Cmd
 	cmds = append(cmds, a.scanTmuxActivityNow())
 
-	// Request git status for all workspaces (skip when sidebar is hidden)
+	// Request git status for all workspaces (skip when sidebar is hidden, skip orphans)
 	if !a.layout.SidebarHidden() {
 		for _, ws := range a.allWorkspaces {
+			if ws.IsOrphaned() {
+				continue
+			}
 			cmds = append(cmds, a.requestGitStatus(ws.PrimaryWorktreeRoot()))
 		}
 	}
@@ -72,7 +75,11 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 
 	// Eagerly restore agent tabs for all workspaces on startup.
 	// Skip the workspace that will be auto-activated (activation handles its own restore).
+	// Skip orphaned workspaces — they have no live sessions.
 	for _, ws := range a.allWorkspaces {
+		if ws.IsOrphaned() {
+			continue
+		}
 		if autoActivateRoot != "" && ws.Root() == autoActivateRoot {
 			continue
 		}
@@ -86,6 +93,9 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	// Start watching workspace permissions if enabled
 	if a.config.UI.GlobalPermissions && a.permissionWatcher != nil {
 		for _, ws := range a.allWorkspaces {
+			if ws.IsOrphaned() {
+				continue
+			}
 			_ = a.permissionWatcher.Watch(ws.Root())
 		}
 	}
@@ -845,10 +855,25 @@ func (a *App) handleShowRenameWorkspaceDialog(msg messages.ShowRenameWorkspaceDi
 // handleShowDeleteWorkspaceDialog shows the delete workspace dialog.
 func (a *App) handleShowDeleteWorkspaceDialog(msg messages.ShowDeleteWorkspaceDialog) {
 	a.dialogWorkspace = msg.Workspace
+
+	title := "Delete Worktree"
+	body := fmt.Sprintf("Delete worktree '%s' and its branch?", msg.Workspace.Name)
+
+	if msg.Workspace.IsOrphaned() {
+		switch msg.Workspace.Orphan {
+		case data.OrphanMetadata:
+			title = "Clean Up Orphan"
+			body = fmt.Sprintf("Remove metadata for '%s'? (worktree directory is already missing)", msg.Workspace.Name)
+		case data.OrphanDirectory:
+			title = "Clean Up Orphan"
+			body = fmt.Sprintf("Delete orphaned directory '%s'? (no workspace metadata references it)", msg.Workspace.Name)
+		}
+	}
+
 	a.dialog = common.NewConfirmDialog(
 		DialogDeleteWorkspace,
-		"Delete Worktree",
-		fmt.Sprintf("Delete worktree '%s' and its branch?", msg.Workspace.Name),
+		title,
+		body,
 	)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)

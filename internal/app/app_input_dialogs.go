@@ -128,6 +128,11 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 	case DialogDeleteWorkspace:
 		if workspace != nil {
 			ws := workspace
+			if ws.IsOrphaned() {
+				return func() tea.Msg {
+					return messages.DeleteOrphanWorkspace{Workspace: ws}
+				}
+			}
 			return func() tea.Msg {
 				return messages.DeleteWorkspace{
 					Workspace: ws,
