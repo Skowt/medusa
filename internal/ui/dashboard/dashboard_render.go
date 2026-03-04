@@ -174,7 +174,6 @@ func padWithBg(line string, width int, bg lipgloss.Style) string {
 // renderWorkspaceLine1: hook indicator + name + delete icon
 func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentWidth int) string {
 	indicatorWidth := 2
-	agentState := 0
 
 	wsID := string(ws.ID())
 
@@ -224,10 +223,11 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		}
 	}
 
-	// Override for unread notifications from another workspace
+	// Override for unread workspaces: make indicator and name orange
 	isCurrentWorkspace := ws.Root() == m.activeRoot
-	hasUnread := m.unreadWorkspaces[wsID]
-	if agentState >= 1 && hasUnread && !isCurrentWorkspace {
+	hasUnread := m.unreadWorkspaces[wsID] && !isCurrentWorkspace
+
+	if hasUnread {
 		indicatorFg = common.ColorWarning
 	}
 
@@ -239,6 +239,9 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 
 	// Styles
 	style := m.styles.WorkspaceRow
+	if hasUnread {
+		style = lipgloss.NewStyle().Foreground(common.ColorWarning)
+	}
 	if selected {
 		style = lipgloss.NewStyle().Bold(true).Foreground(common.ColorForeground).Background(common.ColorSelection)
 	}
