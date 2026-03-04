@@ -127,8 +127,8 @@ func NewConfirmDialog(id, title, message string) *Dialog {
 		title:         title,
 		message:       message,
 		options:       []string{"Yes", "No"},
-		cursor:        1, // Default to "No"
-		defaultCursor: 1,
+		cursor:        0, // Default to "Yes"
+		defaultCursor: 0,
 	}
 }
 
