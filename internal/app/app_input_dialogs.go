@@ -125,6 +125,22 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			return nil
 		}
 
+	case DialogArchiveWorkspace:
+		if workspace != nil {
+			ws := workspace
+			return func() tea.Msg {
+				return messages.ArchiveWorkspace{Workspace: ws}
+			}
+		}
+
+	case DialogUnarchiveWorkspace:
+		if workspace != nil {
+			ws := workspace
+			return func() tea.Msg {
+				return messages.UnarchiveWorkspace{Workspace: ws}
+			}
+		}
+
 	case DialogDeleteWorkspace:
 		if workspace != nil {
 			ws := workspace

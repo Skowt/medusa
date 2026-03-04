@@ -216,6 +216,26 @@ type ShowQuickDuplicateDialog struct {
 // ShowCreateWorkspaceDialog requests showing the create workspace dialog
 type ShowCreateWorkspaceDialog struct{}
 
+// ShowArchiveWorkspaceDialog requests showing the archive workspace confirmation
+type ShowArchiveWorkspaceDialog struct {
+	Workspace *data.Workspace
+}
+
+// ArchiveWorkspace requests archiving a workspace
+type ArchiveWorkspace struct {
+	Workspace *data.Workspace
+}
+
+// ShowUnarchiveWorkspaceDialog requests showing the unarchive workspace confirmation
+type ShowUnarchiveWorkspaceDialog struct {
+	Workspace *data.Workspace
+}
+
+// UnarchiveWorkspace requests unarchiving a workspace
+type UnarchiveWorkspace struct {
+	Workspace *data.Workspace
+}
+
 // ShowDeleteWorkspaceDialog requests showing the delete workspace confirmation
 type ShowDeleteWorkspaceDialog struct {
 	Workspace *data.Workspace

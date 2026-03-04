@@ -84,12 +84,14 @@ func (m *Model) rebuildRows() {
 		{Type: RowSpacer},
 	}
 
-	// Separate orphaned workspaces from normal ones
+	// Separate orphaned and archived workspaces from normal ones
 	var orphans []*data.Workspace
+	var archived []*data.Workspace
 	all := make([]*data.Workspace, 0, len(m.workspaces)+len(m.creatingWorkspaces))
 	existingRoots := make(map[string]bool)
 	for _, ws := range m.workspaces {
 		if ws.Archived() {
+			archived = append(archived, ws)
 			continue
 		}
 		if ws.IsOrphaned() {
@@ -178,6 +180,22 @@ func (m *Model) rebuildRows() {
 	if len(orphans) > 0 {
 		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "orphans"})
 		for _, ws := range orphans {
+			m.rows = append(m.rows, Row{
+				Type:      RowWorkspace,
+				Workspace: ws,
+			})
+		}
+		m.rows = append(m.rows, Row{Type: RowSpacer})
+	}
+
+	// Archived section
+	if len(archived) > 0 {
+		// Sort by ArchivedAt descending (newest first)
+		sort.Slice(archived, func(i, j int) bool {
+			return archived[i].ArchivedAt.After(archived[j].ArchivedAt)
+		})
+		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "archived"})
+		for _, ws := range archived {
 			m.rows = append(m.rows, Row{
 				Type:      RowWorkspace,
 				Workspace: ws,

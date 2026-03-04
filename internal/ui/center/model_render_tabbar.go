@@ -263,40 +263,42 @@ func (m *Model) renderTabBar() string {
 		renderedTabs = append(renderedTabs, rendered)
 	}
 
-	// Add control buttons with matching border style
-	btn := m.styles.TabPlus.Render("+ New")
-	btnWidth := lipgloss.Width(btn)
-	if btnWidth > 0 {
-		m.tabHits = append(m.tabHits, tabHit{
-			kind:  tabHitPlus,
-			index: -1,
-			region: common.HitRegion{
-				X:      x,
-				Y:      0,
-				Width:  btnWidth,
-				Height: 1,
-			},
-		})
-	}
-	renderedTabs = append(renderedTabs, btn)
-	x += btnWidth
+	// Add control buttons (hidden for archived workspaces)
+	if m.workspace == nil || !m.workspace.Archived() {
+		btn := m.styles.TabPlus.Render("+ New")
+		btnWidth := lipgloss.Width(btn)
+		if btnWidth > 0 {
+			m.tabHits = append(m.tabHits, tabHit{
+				kind:  tabHitPlus,
+				index: -1,
+				region: common.HitRegion{
+					X:      x,
+					Y:      0,
+					Width:  btnWidth,
+					Height: 1,
+				},
+			})
+		}
+		renderedTabs = append(renderedTabs, btn)
+		x += btnWidth
 
-	// Add "+ New (Custom)" button to customize tab settings
-	selectBtn := m.styles.TabPlus.Render("+ New (Custom)")
-	selectBtnWidth := lipgloss.Width(selectBtn)
-	if selectBtnWidth > 0 {
-		m.tabHits = append(m.tabHits, tabHit{
-			kind:  tabHitPlusSelect,
-			index: -1,
-			region: common.HitRegion{
-				X:      x,
-				Y:      0,
-				Width:  selectBtnWidth,
-				Height: 1,
-			},
-		})
+		// Add "+ New (Custom)" button to customize tab settings
+		selectBtn := m.styles.TabPlus.Render("+ New (Custom)")
+		selectBtnWidth := lipgloss.Width(selectBtn)
+		if selectBtnWidth > 0 {
+			m.tabHits = append(m.tabHits, tabHit{
+				kind:  tabHitPlusSelect,
+				index: -1,
+				region: common.HitRegion{
+					X:      x,
+					Y:      0,
+					Width:  selectBtnWidth,
+					Height: 1,
+				},
+			})
+		}
+		renderedTabs = append(renderedTabs, selectBtn)
 	}
-	renderedTabs = append(renderedTabs, selectBtn)
 
 	// Join tabs horizontally at the bottom so borders align
 	tabLine := lipgloss.JoinHorizontal(lipgloss.Bottom, renderedTabs...)
@@ -355,6 +357,12 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 		if hit.region.Contains(localX, localY) {
 			switch hit.kind {
 			case tabHitPlus:
+				if m.workspace != nil && m.workspace.Archived() {
+					ws := m.workspace
+					return func() tea.Msg {
+						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+					}
+				}
 				return func() tea.Msg {
 					return messages.LaunchAgent{
 						Assistant:       "claude",
@@ -365,11 +373,23 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 					}
 				}
 			case tabHitPlusSelect:
+				if m.workspace != nil && m.workspace.Archived() {
+					ws := m.workspace
+					return func() tea.Msg {
+						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+					}
+				}
 				return func() tea.Msg { return messages.ShowCustomizeTabDialog{} }
 			case tabHitInfo:
 				m.infoTabActive = true
 				return nil
 			case tabHitTab:
+				if m.workspace != nil && m.workspace.Archived() {
+					ws := m.workspace
+					return func() tea.Msg {
+						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+					}
+				}
 				m.infoTabActive = false
 				m.setActiveTabIdx(hit.index)
 				return m.tabSelectionChangedCmd()

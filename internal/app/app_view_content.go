@@ -97,6 +97,10 @@ func (a *App) renderWorkspaceInfo() string {
 	}
 
 	var b strings.Builder
+	if ws.Archived() {
+		archiveNotice := lipgloss.NewStyle().Foreground(common.ColorWarning)
+		b.WriteString(archiveNotice.Render("Archived — unarchive to make changes") + "\n\n")
+	}
 	b.WriteString(label.Render("Branch: ") + value.Render(ws.Branch()) + " " + copyHint.Render("[Copy]") + " " + copyHint.Render("[Rename]") + "\n")
 	b.WriteString(label.Render("Path:   ") + value.Render(displayPath) + " " + copyHint.Render("[Copy]") + "\n")
 

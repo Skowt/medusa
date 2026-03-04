@@ -87,13 +87,18 @@ func (m *Model) infoTabRename() tea.Cmd {
 	}
 }
 
-// infoTabDelete emits a ShowDeleteWorkspaceDialog message.
+// infoTabDelete emits archive or delete dialog depending on workspace state.
 func (m *Model) infoTabDelete() tea.Cmd {
 	if m.workspace == nil {
 		return nil
 	}
 	ws := m.workspace
+	if ws.Archived() || ws.IsOrphaned() {
+		return func() tea.Msg {
+			return messages.ShowDeleteWorkspaceDialog{Workspace: ws}
+		}
+	}
 	return func() tea.Msg {
-		return messages.ShowDeleteWorkspaceDialog{Workspace: ws}
+		return messages.ShowArchiveWorkspaceDialog{Workspace: ws}
 	}
 }
