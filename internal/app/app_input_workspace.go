@@ -54,7 +54,10 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	opts := a.tmuxOptions
 	oldWsID := string(ws.ID())
 
-	// 1. Validate: branch must not exist in any repo, target dir must not exist.
+	// 1. Validate: workspace name and branch must not already exist.
+	if a.workspaceNameExists(newName, ws.ID()) {
+		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Workspace '%s' already exists", newName))}
+	}
 	for _, repo := range ws.Repos {
 		if git.BranchExists(repo.Path, newBranch) {
 			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Branch '%s' already exists in %s", newBranch, repo.Name))}

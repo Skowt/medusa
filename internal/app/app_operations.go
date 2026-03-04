@@ -250,6 +250,13 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 			}
 		}
 
+		// Validate workspace name doesn't already exist
+		if a.workspaceNameExists(name) {
+			return messages.WorkspaceCreateFailed{
+				Err: fmt.Errorf("workspace '%s' already exists", name),
+			}
+		}
+
 		// Validate branch doesn't exist in any repo
 		for _, repo := range repos {
 			if git.BranchExists(repo.Path, name) {
