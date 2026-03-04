@@ -7,7 +7,6 @@ import (
 
 	"github.com/andyrewlee/medusa/internal/logging"
 	"github.com/andyrewlee/medusa/internal/messages"
-	"github.com/andyrewlee/medusa/internal/perf"
 	"github.com/andyrewlee/medusa/internal/ui/common"
 )
 
@@ -163,11 +162,6 @@ func (m *TerminalModel) Update(msg tea.Msg) (*TerminalModel, tea.Cmd) {
 		if tab != nil && tab.State != nil {
 			ts := tab.State
 			ts.pendingOutput = append(ts.pendingOutput, msg.Data...)
-			if len(ts.pendingOutput) > ptyMaxBufferedBytes {
-				overflow := len(ts.pendingOutput) - ptyMaxBufferedBytes
-				perf.Count("sidebar_pty_drop_bytes", int64(overflow))
-				ts.pendingOutput = append([]byte(nil), ts.pendingOutput[overflow:]...)
-			}
 			ts.lastOutputAt = time.Now()
 			if !ts.flushScheduled {
 				ts.flushScheduled = true
@@ -209,23 +203,13 @@ func (m *TerminalModel) Update(msg tea.Msg) (*TerminalModel, tea.Cmd) {
 			if len(ts.pendingOutput) > 0 {
 				ts.mu.Lock()
 				if ts.VTerm != nil {
-					chunkSize := len(ts.pendingOutput)
-					if chunkSize > ptyFlushChunkSize {
-						chunkSize = ptyFlushChunkSize
-					}
-					chunk := append([]byte(nil), ts.pendingOutput[:chunkSize]...)
-					copy(ts.pendingOutput, ts.pendingOutput[chunkSize:])
-					ts.pendingOutput = ts.pendingOutput[:len(ts.pendingOutput)-chunkSize]
-					ts.VTerm.Write(chunk)
+					data := ts.pendingOutput
+					ts.pendingOutput = nil
+					ts.VTerm.Write(data)
+				} else {
+					ts.pendingOutput = nil
 				}
 				ts.mu.Unlock()
-				if len(ts.pendingOutput) > 0 {
-					ts.flushScheduled = true
-					ts.flushPendingSince = time.Now()
-					cmds = append(cmds, common.SafeTick(time.Millisecond, func(t time.Time) tea.Msg {
-						return messages.SidebarPTYFlush{WorkspaceID: wsID, TabID: msg.TabID}
-					}))
-				}
 			}
 		}
 

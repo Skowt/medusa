@@ -20,13 +20,11 @@ const (
 	ptyFlushMaxInterval   = 50 * time.Millisecond
 	ptyFlushQuietAlt      = 30 * time.Millisecond
 	ptyFlushMaxAlt        = 120 * time.Millisecond
-	ptyFlushChunkSize     = 32 * 1024
 	ptyReadBufferSize     = 32 * 1024
 	ptyReadQueueSize      = 32
 	ptyFrameInterval      = time.Second / 60
 	ptyMaxPendingBytes    = 256 * 1024
 	ptyReaderStallTimeout = 10 * time.Second
-	ptyMaxBufferedBytes   = 4 * 1024 * 1024
 	ptyRestartMax         = 5
 	ptyRestartWindow      = time.Minute
 )

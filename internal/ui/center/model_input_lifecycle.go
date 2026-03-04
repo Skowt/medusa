@@ -405,11 +405,6 @@ func (m *Model) updatePTYOutput(msg PTYOutput) tea.Cmd {
 	if tab != nil && !tab.isClosed() {
 		m.tracePTYOutput(tab, msg.Data)
 		tab.pendingOutput = append(tab.pendingOutput, msg.Data...)
-		if len(tab.pendingOutput) > ptyMaxBufferedBytes {
-			overflow := len(tab.pendingOutput) - ptyMaxBufferedBytes
-			perf.Count("pty_output_drop_bytes", int64(overflow))
-			tab.pendingOutput = append([]byte(nil), tab.pendingOutput[overflow:]...)
-		}
 		perf.Count("pty_output_bytes", int64(len(msg.Data)))
 		tab.lastOutputAt = time.Now()
 		if !tab.flushScheduled {
@@ -453,35 +448,32 @@ func (m *Model) updatePTYFlush(msg PTYFlush) tea.Cmd {
 		tab.flushScheduled = false
 		tab.flushPendingSince = time.Time{}
 		if len(tab.pendingOutput) > 0 {
-			var chunk []byte
+			var data []byte
 			writeOutput := false
 			tab.mu.Lock()
 			if tab.Terminal != nil {
-				chunkSize := len(tab.pendingOutput)
-				if chunkSize > ptyFlushChunkSize {
-					chunkSize = ptyFlushChunkSize
-				}
-				chunk = append(chunk, tab.pendingOutput[:chunkSize]...)
-				copy(tab.pendingOutput, tab.pendingOutput[chunkSize:])
-				tab.pendingOutput = tab.pendingOutput[:len(tab.pendingOutput)-chunkSize]
+				data = tab.pendingOutput
+				tab.pendingOutput = nil
 				writeOutput = true
+			} else {
+				tab.pendingOutput = nil
 			}
 			tab.mu.Unlock()
-			if writeOutput && len(chunk) > 0 {
+			if writeOutput && len(data) > 0 {
 				if m.isTabActorReady() {
 					if !m.sendTabEvent(tabEvent{
 						tab:         tab,
 						workspaceID: msg.WorkspaceID,
 						tabID:       msg.TabID,
 						kind:        tabEventWriteOutput,
-						output:      chunk,
+						output:      data,
 					}) {
 						tab.mu.Lock()
 						if tab.Terminal != nil {
 							flushDone := perf.Time("pty_flush")
-							tab.Terminal.Write(chunk)
+							tab.Terminal.Write(data)
 							flushDone()
-							perf.Count("pty_flush_bytes", int64(len(chunk)))
+							perf.Count("pty_flush_bytes", int64(len(data)))
 							tab.monitorDirty = true
 						}
 						tab.mu.Unlock()
@@ -490,21 +482,13 @@ func (m *Model) updatePTYFlush(msg PTYFlush) tea.Cmd {
 					tab.mu.Lock()
 					if tab.Terminal != nil {
 						flushDone := perf.Time("pty_flush")
-						tab.Terminal.Write(chunk)
+						tab.Terminal.Write(data)
 						flushDone()
-						perf.Count("pty_flush_bytes", int64(len(chunk)))
+						perf.Count("pty_flush_bytes", int64(len(data)))
 						tab.monitorDirty = true
 					}
 					tab.mu.Unlock()
 				}
-			}
-			if len(tab.pendingOutput) > 0 {
-				tab.flushScheduled = true
-				tab.flushPendingSince = time.Now()
-				tabID := msg.TabID
-				cmds = append(cmds, common.SafeTick(time.Millisecond, func(t time.Time) tea.Msg {
-					return PTYFlush{WorkspaceID: msg.WorkspaceID, TabID: tabID}
-				}))
 			}
 		}
 	}
