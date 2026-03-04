@@ -379,6 +379,14 @@ func (a *App) showNameWorkspaceDialog(repos []data.RepoRef) {
 		if err := validation.ValidateWorkspaceName(s); err != nil {
 			return err.Error()
 		}
+		if a.workspaceNameExists(s) {
+			return "workspace with this name already exists"
+		}
+		for _, repo := range a.dialogWorkspace.Repos {
+			if git.BranchExists(repo.Path, s) {
+				return fmt.Sprintf("branch already exists in %s", repo.Name)
+			}
+		}
 		return ""
 	})
 	a.dialog.SetSize(a.width, a.height)

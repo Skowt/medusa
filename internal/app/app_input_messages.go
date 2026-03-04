@@ -344,6 +344,14 @@ func (a *App) handleShowQuickDuplicateDialog(msg messages.ShowQuickDuplicateDial
 		if err := validation.ValidateWorkspaceName(s); err != nil {
 			return err.Error()
 		}
+		if a.workspaceNameExists(s) {
+			return "workspace with this name already exists"
+		}
+		for _, repo := range a.dialogWorkspace.Repos {
+			if git.BranchExists(repo.Path, s) {
+				return fmt.Sprintf("branch already exists in %s", repo.Name)
+			}
+		}
 		return ""
 	})
 	a.dialog.SetSize(a.width, a.height)
@@ -831,6 +839,14 @@ func (a *App) handleShowRenameWorkspaceDialog(msg messages.ShowRenameWorkspaceDi
 		}
 		if err := validation.ValidateWorkspaceName(s); err != nil {
 			return err.Error()
+		}
+		if a.workspaceNameExists(s, msg.Workspace.ID()) {
+			return "workspace with this name already exists"
+		}
+		for _, repo := range msg.Workspace.Repos {
+			if git.BranchExists(repo.Path, s) {
+				return fmt.Sprintf("branch already exists in %s", repo.Name)
+			}
 		}
 		return ""
 	})
