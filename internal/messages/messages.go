@@ -61,6 +61,16 @@ type WorkspaceDeleteFailed struct {
 	Err       error
 }
 
+// DeleteOrphanWorkspace requests deletion of an orphaned workspace.
+type DeleteOrphanWorkspace struct {
+	Workspace *data.Workspace
+}
+
+// OrphanWorkspaceDeleted is sent after an orphaned workspace has been cleaned up.
+type OrphanWorkspaceDeleted struct {
+	Workspace *data.Workspace
+}
+
 // GitStatusRequest requests a git status refresh
 type GitStatusRequest struct {
 	Root string

@@ -64,6 +64,11 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 		contentWidth = 1
 	}
 
+	// Orphaned workspaces get a distinct rendering
+	if ws.IsOrphaned() {
+		return m.renderOrphanRow(ws, selected, contentWidth)
+	}
+
 	line1 := m.renderWorkspaceLine1(ws, selected, contentWidth)
 	line2 := m.renderWorkspaceLine2(ws, selected, contentWidth)
 
@@ -71,6 +76,53 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 		bg := lipgloss.NewStyle().Background(common.ColorSelection)
 		line1 = padWithBg(line1, contentWidth, bg)
 		line2 = padWithBg(line2, contentWidth, bg)
+	}
+
+	return line1 + "\n" + line2
+}
+
+// renderOrphanRow renders a 2-line orphaned workspace entry.
+func (m *Model) renderOrphanRow(ws *data.Workspace, selected bool, contentWidth int) string {
+	bg := lipgloss.NewStyle()
+	if selected {
+		bg = bg.Background(common.ColorSelection)
+	}
+
+	// Line 1: warning icon + name + delete icon
+	warnStyle := lipgloss.NewStyle().Foreground(common.ColorError)
+	nameStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	if selected {
+		warnStyle = warnStyle.Bold(true).Background(common.ColorSelection)
+		nameStyle = nameStyle.Bold(true).Background(common.ColorSelection)
+	}
+
+	deleteSlot := "   "
+	if selected {
+		deleteSlot = " " + common.Icons.Close + " "
+	}
+
+	line1 := bg.Render(" ") + warnStyle.Render("⚠ ") + nameStyle.Render(ws.Name) + nameStyle.Render(deleteSlot)
+
+	// Line 2: description of orphan type
+	arrowStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
+	mutedStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	if selected {
+		arrowStyle = arrowStyle.Background(common.ColorSelection)
+		mutedStyle = mutedStyle.Background(common.ColorSelection)
+	}
+
+	desc := "worktree missing"
+	if ws.Orphan == data.OrphanDirectory {
+		desc = "no metadata (directory orphan)"
+	}
+
+	indent := bg.Render(" ") + arrowStyle.Render("└ ")
+	line2 := indent + mutedStyle.Render(desc)
+
+	if selected {
+		bgStyle := lipgloss.NewStyle().Background(common.ColorSelection)
+		line1 = padWithBg(line1, contentWidth, bgStyle)
+		line2 = padWithBg(line2, contentWidth, bgStyle)
 	}
 
 	return line1 + "\n" + line2

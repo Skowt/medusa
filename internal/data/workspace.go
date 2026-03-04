@@ -12,6 +12,15 @@ const (
 	RuntimeLocalWorktree = "local-worktree"
 )
 
+// OrphanType identifies why a workspace is orphaned.
+type OrphanType int
+
+const (
+	OrphanNone      OrphanType = iota // Not orphaned
+	OrphanMetadata                    // Registry/metadata exists but worktree directory is missing
+	OrphanDirectory                   // Directory exists under workspaces root but no metadata references it
+)
+
 // WorkspaceStatus represents the lifecycle status of a workspace
 type WorkspaceStatus string
 
@@ -95,6 +104,15 @@ type Workspace struct {
 	// Isolation
 	Isolated        bool `json:"isolated,omitempty"`         // Run in sandbox-exec
 	SkipPermissions bool `json:"skip_permissions,omitempty"` // Run with --dangerously-skip-permissions
+
+	// Orphan detection (runtime only, not persisted)
+	Orphan     OrphanType `json:"-"` // Whether this workspace is orphaned and why
+	OrphanPath string     `json:"-"` // For directory orphans: the path on disk
+}
+
+// IsOrphaned returns true if the workspace is orphaned (metadata or directory).
+func (w Workspace) IsOrphaned() bool {
+	return w.Orphan != OrphanNone
 }
 
 // WorkspaceID is a unique identifier based on repo+root hash

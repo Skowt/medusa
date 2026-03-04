@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andyrewlee/medusa/internal/config"
 	"github.com/andyrewlee/medusa/internal/data"
 	"github.com/andyrewlee/medusa/internal/messages"
 )
@@ -98,6 +99,88 @@ func TestLoadWorkspaces_AppliesProfileFromRegistry(t *testing.T) {
 	}
 	if loaded.Workspaces[0].Profile != "my-profile" {
 		t.Fatalf("profile = %q, want %q", loaded.Workspaces[0].Profile, "my-profile")
+	}
+}
+
+func TestLoadWorkspaces_DetectsMetadataOrphans(t *testing.T) {
+	tmp := t.TempDir()
+	registry := data.NewRegistry(filepath.Join(tmp, "workspaces.json"))
+	store := data.NewWorkspaceStore(filepath.Join(tmp, "workspaces-metadata"))
+
+	// Create a workspace whose worktree directory does NOT exist on disk
+	missingRoot := filepath.Join(tmp, "nonexistent-worktree")
+	ws := data.NewWorkspace("orphan-meta", "branch", "main", "/tmp/repo", missingRoot)
+	if err := store.Save(ws); err != nil {
+		t.Fatalf("Save workspace: %v", err)
+	}
+	if err := registry.AddWorkspace(ws.Name, string(ws.ID()), ""); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
+	}
+
+	app := &App{
+		registry:   registry,
+		workspaces: store,
+	}
+	msg := app.loadWorkspaces()()
+	loaded, ok := msg.(messages.WorkspacesLoaded)
+	if !ok {
+		t.Fatalf("expected WorkspacesLoaded, got %T", msg)
+	}
+
+	if len(loaded.Workspaces) != 1 {
+		t.Fatalf("expected 1 workspace, got %d", len(loaded.Workspaces))
+	}
+	got := loaded.Workspaces[0]
+	if got.Orphan != data.OrphanMetadata {
+		t.Fatalf("expected OrphanMetadata, got %d", got.Orphan)
+	}
+	if !got.IsOrphaned() {
+		t.Fatal("expected IsOrphaned() to return true")
+	}
+}
+
+func TestLoadWorkspaces_DetectsDirectoryOrphans(t *testing.T) {
+	tmp := t.TempDir()
+	workspacesRoot := filepath.Join(tmp, "workspaces")
+	if err := os.MkdirAll(workspacesRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	registry := data.NewRegistry(filepath.Join(tmp, "workspaces.json"))
+	store := data.NewWorkspaceStore(filepath.Join(tmp, "workspaces-metadata"))
+
+	// Create a stray directory that no workspace metadata references
+	orphanDir := filepath.Join(workspacesRoot, "stray-orphan")
+	if err := os.MkdirAll(orphanDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	app := &App{
+		registry:   registry,
+		workspaces: store,
+		config: &config.Config{
+			Paths: &config.Paths{
+				WorkspacesRoot: workspacesRoot,
+			},
+		},
+	}
+	msg := app.loadWorkspaces()()
+	loaded, ok := msg.(messages.WorkspacesLoaded)
+	if !ok {
+		t.Fatalf("expected WorkspacesLoaded, got %T", msg)
+	}
+
+	if len(loaded.Workspaces) != 1 {
+		t.Fatalf("expected 1 workspace (directory orphan), got %d", len(loaded.Workspaces))
+	}
+	got := loaded.Workspaces[0]
+	if got.Orphan != data.OrphanDirectory {
+		t.Fatalf("expected OrphanDirectory, got %d", got.Orphan)
+	}
+	if got.Name != "stray-orphan" {
+		t.Fatalf("name = %q, want %q", got.Name, "stray-orphan")
+	}
+	if got.OrphanPath != orphanDir {
+		t.Fatalf("OrphanPath = %q, want %q", got.OrphanPath, orphanDir)
 	}
 }
 
