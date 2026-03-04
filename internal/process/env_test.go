@@ -11,7 +11,7 @@ func TestEnvBuilder_BuildEnv(t *testing.T) {
 	ports := NewPortAllocator(6200, 10)
 	builder := NewEnvBuilder(ports)
 
-	wt := data.NewWorkspace("feature-1", "feature-1", "main", "/home/user/repo", "/home/user/.medusa/workspaces/feature-1/repo")
+	wt := data.NewWorkspace("feature-1", "feature-1", "main", "/home/user/repo", "/home/user/.medusa/workspaces/feature-1")
 	wt.Env = map[string]string{
 		"CUSTOM_VAR": "custom_value",
 	}
@@ -61,7 +61,7 @@ func TestEnvBuilder_BuildEnvMap(t *testing.T) {
 	ports := NewPortAllocator(6200, 10)
 	builder := NewEnvBuilder(ports)
 
-	wt := data.NewWorkspace("feature-1", "feature-1", "main", "/home/user/repo", "/home/user/.medusa/workspaces/feature-1/repo")
+	wt := data.NewWorkspace("feature-1", "feature-1", "main", "/home/user/repo", "/home/user/.medusa/workspaces/feature-1")
 
 	envMap := builder.BuildEnvMap(wt)
 

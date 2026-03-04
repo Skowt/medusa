@@ -34,29 +34,39 @@ func (a *App) loadWorkspaces() tea.Cmd {
 				continue
 			}
 
-			// Migrate old-layout single-repo workspaces to uniform {ws_name}/{repo_name}/.
+			// Migrate uniform-layout single-repo workspaces to flat {ws_name}/ layout.
 			if a.config != nil && len(ws.Repos) == 1 && len(ws.Worktrees) == 1 {
 				wtRoot := ws.Worktrees[0].Root
-				expectedParent := filepath.Join(a.config.Paths.WorkspacesRoot, ws.Name)
-				if filepath.Dir(wtRoot) != expectedParent {
-					newWtRoot := filepath.Join(expectedParent, ws.Repos[0].Name)
-					if mErr := git.MoveWorkspace(ws.Repos[0].Path, wtRoot, newWtRoot); mErr != nil {
+				expectedRoot := filepath.Join(a.config.Paths.WorkspacesRoot, ws.Name)
+				if wtRoot == filepath.Join(expectedRoot, ws.Repos[0].Name) {
+					// Old uniform layout detected — migrate to flat.
+					tmpRoot := expectedRoot + ".migrating"
+					if mErr := git.MoveWorkspace(ws.Repos[0].Path, wtRoot, tmpRoot); mErr != nil {
 						logging.Warn("Migration: failed to move workspace %s: %v", ws.Name, mErr)
 					} else {
-						oldID := ws.ID()
-						ws.Worktrees[0].Root = newWtRoot
-						if sErr := a.workspaces.Save(ws); sErr != nil {
-							logging.Warn("Migration: failed to save workspace %s: %v", ws.Name, sErr)
-							_ = git.MoveWorkspace(ws.Repos[0].Path, newWtRoot, wtRoot)
-							ws.Worktrees[0].Root = wtRoot // restore
+						_ = os.Remove(expectedRoot) // remove now-empty parent
+						if rErr := os.Rename(tmpRoot, expectedRoot); rErr != nil {
+							logging.Warn("Migration: failed to rename workspace %s: %v", ws.Name, rErr)
+							_ = git.MoveWorkspace(ws.Repos[0].Path, tmpRoot, wtRoot)
 						} else {
-							newID := ws.ID()
-							if oldID != newID {
-								_ = a.workspaces.Delete(oldID)
-								_ = a.registry.UpdateWorkspace(string(oldID), ws.Name, string(newID))
-								entries[i].ID = string(newID)
+							oldID := ws.ID()
+							ws.Worktrees[0].Root = expectedRoot
+							if sErr := a.workspaces.Save(ws); sErr != nil {
+								logging.Warn("Migration: failed to save workspace %s: %v", ws.Name, sErr)
+								// Rollback: move back to uniform layout
+								_ = os.Rename(expectedRoot, tmpRoot)
+								_ = os.MkdirAll(filepath.Dir(wtRoot), 0o755)
+								_ = git.MoveWorkspace(ws.Repos[0].Path, tmpRoot, wtRoot)
+								ws.Worktrees[0].Root = wtRoot
+							} else {
+								newID := ws.ID()
+								if oldID != newID {
+									_ = a.workspaces.Delete(oldID)
+									_ = a.registry.UpdateWorkspace(string(oldID), ws.Name, string(newID))
+									entries[i].ID = string(newID)
+								}
+								logging.Info("Migration: moved workspace %s to flat layout", ws.Name)
 							}
-							logging.Info("Migration: moved workspace %s to uniform layout", ws.Name)
 						}
 					}
 				}
@@ -177,13 +187,12 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 		}
 
 		if len(repos) == 1 {
-			// Single-repo workspace — uniform {ws_name}/{repo_name}/ layout
+			// Single-repo workspace — flat {ws_name}/ layout
 			repo := repos[0]
 			base := bases[0]
 			workspacePath := filepath.Join(
 				a.config.Paths.WorkspacesRoot,
 				name,
-				repo.Name,
 			)
 
 			ws = data.NewWorkspace(name, name, base, repo.Path, workspacePath)

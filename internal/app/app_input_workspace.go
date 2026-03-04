@@ -25,7 +25,10 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 	}
 	// Show the "creating" indicator in the dashboard
 	if msg.Name != "" && len(msg.Repos) > 0 {
-		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name, msg.Repos[0].Name)
+		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
+		if len(msg.Repos) > 1 {
+			workspacePath = filepath.Join(workspacePath, msg.Repos[0].Name)
+		}
 		pending := data.NewWorkspace(msg.Name, msg.Name, msg.Bases[0], msg.Repos[0].Path, workspacePath)
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -78,33 +81,42 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		}
 	}
 
-	// 3. Move worktrees (uniform layout: always iterate).
-	if err := os.MkdirAll(newRoot, 0o755); err != nil {
-		rollbackBranches()
-		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
-	}
-	for i, wt := range ws.Worktrees {
-		newWtPath := filepath.Join(newRoot, ws.Repos[i].Name)
-		if err := git.MoveWorkspace(ws.Repos[i].Path, wt.Root, newWtPath); err != nil {
-			// Rollback previously moved worktrees
-			for j := 0; j < i; j++ {
-				_ = git.MoveWorkspace(ws.Repos[j].Path, filepath.Join(newRoot, ws.Repos[j].Name), ws.Worktrees[j].Root)
-			}
-			_ = os.Remove(newRoot)
+	// 3. Move worktrees.
+	if ws.IsMultiRepo() {
+		if err := os.MkdirAll(newRoot, 0o755); err != nil {
 			rollbackBranches()
-			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed moving %s: %s", ws.Repos[i].Name, err.Error()))}
+			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+		}
+		for i, wt := range ws.Worktrees {
+			newWtPath := filepath.Join(newRoot, ws.Repos[i].Name)
+			if err := git.MoveWorkspace(ws.Repos[i].Path, wt.Root, newWtPath); err != nil {
+				for j := 0; j < i; j++ {
+					_ = git.MoveWorkspace(ws.Repos[j].Path, filepath.Join(newRoot, ws.Repos[j].Name), ws.Worktrees[j].Root)
+				}
+				_ = os.Remove(newRoot)
+				rollbackBranches()
+				return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed moving %s: %s", ws.Repos[i].Name, err.Error()))}
+			}
+		}
+		_ = os.Remove(oldRoot)
+	} else {
+		if err := git.MoveWorkspace(ws.Repos[0].Path, oldRoot, newRoot); err != nil {
+			rollbackBranches()
+			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 		}
 	}
-	// Remove old parent directory (should be empty now).
-	_ = os.Remove(oldRoot)
 
 	// rollbackMoves undoes all worktree moves.
 	rollbackMoves := func() {
-		_ = os.MkdirAll(oldRoot, 0o755)
-		for i := range ws.Worktrees {
-			_ = git.MoveWorkspace(ws.Repos[i].Path, filepath.Join(newRoot, ws.Repos[i].Name), ws.Worktrees[i].Root)
+		if ws.IsMultiRepo() {
+			_ = os.MkdirAll(oldRoot, 0o755)
+			for i := range ws.Worktrees {
+				_ = git.MoveWorkspace(ws.Repos[i].Path, filepath.Join(newRoot, ws.Repos[i].Name), ws.Worktrees[i].Root)
+			}
+			_ = os.Remove(newRoot)
+		} else {
+			_ = git.MoveWorkspace(ws.Repos[0].Path, newRoot, oldRoot)
 		}
-		_ = os.Remove(newRoot)
 	}
 
 	// 4. Update store.
@@ -117,7 +129,11 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	stored.Name = newName
 	for i := range stored.Worktrees {
 		stored.Worktrees[i].Branch = newBranch
-		stored.Worktrees[i].Root = filepath.Join(newRoot, stored.Repos[i].Name)
+		if ws.IsMultiRepo() {
+			stored.Worktrees[i].Root = filepath.Join(newRoot, stored.Repos[i].Name)
+		} else {
+			stored.Worktrees[i].Root = newRoot
+		}
 	}
 	if err := a.workspaces.Save(stored); err != nil {
 		rollbackMoves()
@@ -165,8 +181,12 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	for _, ws := range a.allWorkspaces {
 		if string(ws.ID()) == oldWsID {
 			ws.Name = newWs.Name
-			for i := range ws.Worktrees {
-				ws.Worktrees[i].Root = filepath.Join(newRoot, ws.Repos[i].Name)
+				for i := range ws.Worktrees {
+				if ws.IsMultiRepo() {
+					ws.Worktrees[i].Root = filepath.Join(newRoot, ws.Repos[i].Name)
+				} else {
+					ws.Worktrees[i].Root = newRoot
+				}
 				ws.Worktrees[i].Branch = newBranch
 			}
 		}
@@ -364,6 +384,11 @@ func (a *App) handleAddReposToWorkspace(msg messages.AddReposToWorkspace) tea.Cm
 	newRepos := msg.Repos
 	if ws == nil || len(newRepos) == 0 {
 		return nil
+	}
+	if !ws.IsMultiRepo() {
+		return func() tea.Msg {
+			return messages.ReposAddFailed{Err: fmt.Errorf("cannot add repos to a single-repo workspace")}
+		}
 	}
 
 	return func() tea.Msg {
