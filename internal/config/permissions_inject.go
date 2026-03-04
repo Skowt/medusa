@@ -177,6 +177,98 @@ func InjectIntoAllProfiles(profilesRoot string, global *GlobalPermissions) error
 	return nil
 }
 
+// getOrCreateMap extracts or initializes a sub-map from settings.
+func getOrCreateMap(settings map[string]any, key string) map[string]any {
+	m, _ := settings[key].(map[string]any)
+	if m == nil {
+		m = make(map[string]any)
+	}
+	return m
+}
+
+// InjectHooks merges Claude Code hook definitions into a profile's settings.json.
+// Each hook writes a JSON event file to hooksDir so the Medusa watcher can detect
+// agent lifecycle transitions. The shell guard ensures non-Medusa sessions are no-ops.
+func InjectHooks(profileDir, hooksDir string) error {
+	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
+		hooks := getOrCreateMap(settings, "hooks")
+
+		makeCommand := func(eventName string) string {
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then printf '{"event":"` + eventName + `","ts":%s}\n' "$(date +%s)" > ` + hooksDir + `/"$MEDUSA_SESSION_NAME".json; fi`
+		}
+
+		type hookDef struct {
+			event   string
+			matcher string
+		}
+		defs := []hookDef{
+			{event: "Stop"},
+			{event: "PreToolUse"},
+			{event: "UserPromptSubmit"},
+		}
+
+		for _, def := range defs {
+			hookEntry := map[string]any{
+				"type":    "command",
+				"command": makeCommand(def.event),
+				"timeout": 5000,
+			}
+			rule := map[string]any{
+				"hooks": []any{hookEntry},
+			}
+			if def.matcher != "" {
+				rule["matcher"] = def.matcher
+			}
+			hooks[def.event] = []any{rule}
+		}
+
+		// Split Notification into two entries so the written JSON
+		// distinguishes idle_prompt from permission_prompt.
+		notificationDefs := []hookDef{
+			{event: "NotificationIdle", matcher: "idle_prompt"},
+			{event: "NotificationPermission", matcher: "permission_prompt"},
+		}
+		var notificationRules []any
+		for _, def := range notificationDefs {
+			hookEntry := map[string]any{
+				"type":    "command",
+				"command": makeCommand(def.event),
+				"timeout": 5000,
+			}
+			rule := map[string]any{
+				"hooks":   []any{hookEntry},
+				"matcher": def.matcher,
+			}
+			notificationRules = append(notificationRules, rule)
+		}
+		hooks["Notification"] = notificationRules
+
+		settings["hooks"] = hooks
+	})
+}
+
+// InjectHooksIntoAllProfiles iterates all profile directories and merges
+// hook definitions into each one's settings.json.
+func InjectHooksIntoAllProfiles(profilesRoot, hooksDir string) error {
+	entries, err := os.ReadDir(profilesRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "shared" {
+			continue
+		}
+		profileDir := filepath.Join(profilesRoot, entry.Name())
+		if err := InjectHooks(profileDir, hooksDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func toStringSlice(v any) []string {
 	arr, ok := v.([]any)
 	if !ok {

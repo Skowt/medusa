@@ -651,11 +651,8 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.PTYWatchdogTick:
 		cmds = append(cmds, a.handlePTYWatchdogTick()...)
 
-	case tmuxActivityTick:
-		cmds = append(cmds, a.handleTmuxActivityTick(msg)...)
-
-	case tmuxActivityResult:
-		cmds = append(cmds, a.handleTmuxActivityResult(msg)...)
+	case hookActivityEvent:
+		cmds = append(cmds, a.handleHookActivityEvent(msg)...)
 
 	case tmuxAvailableResult:
 		cmds = append(cmds, a.handleTmuxAvailableResult(msg)...)

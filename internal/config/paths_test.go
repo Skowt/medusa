@@ -16,6 +16,7 @@ func TestPathsEnsureDirectories(t *testing.T) {
 		ConfigPath:        filepath.Join(tmp, "medusa", "config.json"),
 		ProfilesRoot:      filepath.Join(tmp, "medusa", "profiles"),
 		SharedProfileRoot: filepath.Join(tmp, "medusa", "profiles", "shared"),
+		HooksDir:          filepath.Join(tmp, "medusa", "hooks"),
 	}
 
 	if err := paths.EnsureDirectories(); err != nil {

@@ -103,9 +103,11 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		"COLORTERM=truecolor",
 	}
 
-	// Set CLAUDE_CONFIG_DIR for Claude agents with a named profile.
-	// Prefix the agent command directly so it propagates into the tmux session.
-	agentCommand := assistantCfg.Command
+	// Prefix MEDUSA_SESSION_NAME so it propagates into the tmux session
+	// (env vars on the outer process don't reach inside tmux new-session).
+	// Hooks use the session name as the event file key; the app resolves
+	// session → workspace via tabSessionInfoByName().
+	agentCommand := fmt.Sprintf("MEDUSA_SESSION_NAME=%s %s", shellutil.Quote(sessionName), assistantCfg.Command)
 	var profileDir string
 	if agentType == AgentClaude && ws.Profile != "" {
 		profileDir = filepath.Join(m.config.Paths.ProfilesRoot, ws.Profile)
