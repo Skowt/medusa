@@ -108,11 +108,15 @@ func (w Workspace) ID() WorkspaceID {
 	return workspaceIDFromIdentity(workspaceIdentity(w.Repos[0].Path, w.Root()))
 }
 
-// Root returns the workspace root directory (parent of all worktrees).
-// This is always the workspace-level directory, never a git repo itself.
+// Root returns the workspace root directory.
+// For single-repo workspaces the worktree IS the root (flat layout).
+// For multi-repo workspaces it returns the parent of all worktrees.
 func (w Workspace) Root() string {
 	if len(w.Worktrees) == 0 {
 		return ""
+	}
+	if len(w.Repos) <= 1 {
+		return w.Worktrees[0].Root
 	}
 	return filepath.Dir(w.Worktrees[0].Root)
 }

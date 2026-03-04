@@ -12,12 +12,20 @@ const (
 	InfoCursorStatus   = 0
 	InfoCursorProfile  = 1
 	InfoCursorAddRepos = 2
-	InfoCursorMax      = 2
 )
+
+// infoCursorMax returns the maximum cursor position for the info tab.
+// Single-repo workspaces hide the "Edit Repos" row.
+func (m *Model) infoCursorMax() int {
+	if m.workspace != nil && !m.workspace.IsMultiRepo() {
+		return 1
+	}
+	return 2
+}
 
 // infoTabCursorDown moves the info tab cursor down one position.
 func (m *Model) infoTabCursorDown() {
-	if m.infoCursor < InfoCursorMax {
+	if m.infoCursor < m.infoCursorMax() {
 		m.infoCursor++
 	}
 }
@@ -58,6 +66,9 @@ func (m *Model) infoTabActivateSetting() tea.Cmd {
 			return messages.ShowSetWorkspaceProfileDialog{Workspace: ws}
 		}
 	case InfoCursorAddRepos:
+		if !ws.IsMultiRepo() {
+			return nil
+		}
 		return func() tea.Msg {
 			return messages.ShowAddReposToWorkspaceDialog{Workspace: ws}
 		}

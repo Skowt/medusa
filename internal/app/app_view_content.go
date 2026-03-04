@@ -143,8 +143,10 @@ func (a *App) renderWorkspaceInfo() string {
 		}
 	}
 
-	// Edit Repos
-	b.WriteString(prefix(2) + label.Render(fmt.Sprintf("Edit Repos: (%d repos)", len(ws.Repos))) + "\n")
+	// Edit Repos (only for multi-repo workspaces)
+	if ws.IsMultiRepo() {
+		b.WriteString(prefix(2) + label.Render(fmt.Sprintf("Edit Repos: (%d repos)", len(ws.Repos))) + "\n")
+	}
 
 	return b.String()
 }

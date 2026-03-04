@@ -11,6 +11,7 @@ import (
 	"github.com/andyrewlee/medusa/internal/messages"
 	"github.com/andyrewlee/medusa/internal/permissions"
 	"github.com/andyrewlee/medusa/internal/ui/center"
+	"github.com/andyrewlee/medusa/internal/ui/sidebar"
 	"github.com/andyrewlee/medusa/internal/ui/common"
 )
 
@@ -49,6 +50,7 @@ func newTestApp(t *testing.T) (*App, *config.Config) {
 		toast:             common.NewToastModel(),
 		permissionWatcher: pw,
 		dirtyWorkspaces:   make(map[string]bool),
+		sidebarTerminal:   sidebar.NewTerminalModel(),
 	}
 	return app, cfg
 }
@@ -70,8 +72,7 @@ func TestRenameWorkspace_UpdatesPermissionWatcher(t *testing.T) {
 
 	worktreeDir := normalizePath(t.TempDir())
 	oldName := "old-feature"
-	repoName := filepath.Base(repo)
-	worktreePath := filepath.Join(worktreeDir, oldName, repoName)
+	worktreePath := filepath.Join(worktreeDir, oldName)
 	runGit(t, repo, "worktree", "add", "--no-track", "-b", oldName, worktreePath, "main")
 
 	// Persist workspace into the store so handleRenameWorkspace can Load it.
@@ -83,7 +84,7 @@ func TestRenameWorkspace_UpdatesPermissionWatcher(t *testing.T) {
 	}
 
 	// Register the workspace root with the permission watcher.
-	wsRoot := ws.Root() // parent of worktree: .../worktreeDir/old-feature
+	wsRoot := ws.Root() // flat layout: .../worktreeDir/old-feature
 	if err := pw.Watch(wsRoot); err != nil {
 		t.Fatalf("Watch workspace root: %v", err)
 	}

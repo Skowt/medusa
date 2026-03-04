@@ -401,6 +401,9 @@ func (a *App) showAddReposToWorkspaceFilePicker(ws *data.Workspace) {
 	if ws == nil {
 		return
 	}
+	if !ws.IsMultiRepo() {
+		return
+	}
 	a.dialogWorkspace = ws
 
 	home, err := os.UserHomeDir()
@@ -1097,7 +1100,10 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 func (a *App) handleCreateWorkspace(msg messages.CreateWorkspace) []tea.Cmd {
 	var cmds []tea.Cmd
 	if len(msg.Repos) > 0 && msg.Name != "" {
-		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name, msg.Repos[0].Name)
+		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
+		if len(msg.Repos) > 1 {
+			workspacePath = filepath.Join(workspacePath, msg.Repos[0].Name)
+		}
 		pending := data.NewWorkspace(msg.Name, msg.Name, "", msg.Repos[0].Path, workspacePath)
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
