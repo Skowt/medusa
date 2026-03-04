@@ -60,6 +60,18 @@ func (m *StatusManager) GetCached(root string) *StatusResult {
 	return nil
 }
 
+// GetLastKnown returns the most recent cached status regardless of TTL expiry.
+// Returns nil only if the root was never fetched.
+func (m *StatusManager) GetLastKnown(root string) *StatusResult {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if cache, ok := m.cache[root]; ok {
+		return cache.Status
+	}
+	return nil
+}
+
 // RequestRefresh requests an async status refresh for a workspace
 // Uses debouncing to prevent too frequent refreshes
 func (m *StatusManager) RequestRefresh(root string) {
