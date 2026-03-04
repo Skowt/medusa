@@ -46,7 +46,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch result.ID {
 		case DialogAddRepos, DialogAddReposToWorkspace, DialogCreateWorkspace, DialogDeleteWorkspace, DialogCustomizeTab, DialogQuit, DialogCleanupTmux, DialogSetProfile, DialogRenameWorkspace, DialogRenameProfile, DialogCreateProfile, DialogDeleteProfile, DialogCommit,
 			DialogSelectBranchMode, DialogCustomBranch, DialogSelectRecentRepos, DialogCloseTab, DialogSetProfileForCreate, DialogQuickDuplicate,
-			DialogArchiveWorkspace, DialogUnarchiveWorkspace:
+			DialogArchiveWorkspace, DialogUnarchiveWorkspace, DialogSetNote:
 			return a, a.safeCmd(a.handleDialogResult(result))
 		}
 		// If not an App-level dialog, let it fall through to components
@@ -453,6 +453,14 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case messages.SetWorkspaceStatus:
 		if cmd := a.handleSetWorkspaceStatus(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case messages.ShowSetWorkspaceNoteDialog:
+		a.handleShowSetWorkspaceNoteDialog(msg)
+
+	case messages.SetWorkspaceNote:
+		if cmd := a.handleSetWorkspaceNote(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 

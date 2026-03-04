@@ -9,18 +9,19 @@ import (
 
 // Info tab cursor positions (settings only; Branch/Path are not selectable)
 const (
-	InfoCursorStatus   = 0
-	InfoCursorProfile  = 1
-	InfoCursorAddRepos = 2
+	InfoCursorNote     = 0
+	InfoCursorStatus   = 1
+	InfoCursorProfile  = 2
+	InfoCursorAddRepos = 3
 )
 
 // infoCursorMax returns the maximum cursor position for the info tab.
 // Single-repo workspaces hide the "Edit Repos" row.
 func (m *Model) infoCursorMax() int {
 	if m.workspace != nil && !m.workspace.IsMultiRepo() {
-		return 1
+		return 2
 	}
-	return 2
+	return 3
 }
 
 // infoTabCursorDown moves the info tab cursor down one position.
@@ -61,6 +62,10 @@ func (m *Model) infoTabActivateSetting() tea.Cmd {
 		return func() tea.Msg {
 			return messages.SetWorkspaceStatus{Workspace: ws, Status: next}
 		}
+	case InfoCursorNote:
+		return func() tea.Msg {
+			return messages.ShowSetWorkspaceNoteDialog{Workspace: ws}
+		}
 	case InfoCursorProfile:
 		return func() tea.Msg {
 			return messages.ShowSetWorkspaceProfileDialog{Workspace: ws}
@@ -74,6 +79,17 @@ func (m *Model) infoTabActivateSetting() tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// infoTabNote emits a ShowSetWorkspaceNoteDialog message.
+func (m *Model) infoTabNote() tea.Cmd {
+	if m.workspace == nil {
+		return nil
+	}
+	ws := m.workspace
+	return func() tea.Msg {
+		return messages.ShowSetWorkspaceNoteDialog{Workspace: ws}
+	}
 }
 
 // infoTabRename emits a ShowRenameWorkspaceDialog message.

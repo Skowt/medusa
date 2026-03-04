@@ -514,6 +514,37 @@ func (a *App) handleShowSetWorkspaceProfileDialog(msg messages.ShowSetWorkspaceP
 	a.dialog.Show()
 }
 
+// handleShowSetWorkspaceNoteDialog opens the note input dialog.
+func (a *App) handleShowSetWorkspaceNoteDialog(msg messages.ShowSetWorkspaceNoteDialog) {
+	a.dialogWorkspace = msg.Workspace
+	placeholder := ""
+	if msg.Workspace != nil {
+		placeholder = msg.Workspace.Note
+	}
+	a.dialog = common.NewInputDialog(DialogSetNote, "Set Note", placeholder)
+	a.dialog.SetMessage("Short note shown at the top of the Info tab (leave empty to clear).")
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
+}
+
+// handleSetWorkspaceNote persists a note on a workspace and refreshes the info tab.
+func (a *App) handleSetWorkspaceNote(msg messages.SetWorkspaceNote) tea.Cmd {
+	if msg.Workspace == nil {
+		return nil
+	}
+	msg.Workspace.Note = msg.Note
+	if err := a.workspaces.Save(msg.Workspace); err != nil {
+		logging.Error("Failed to save workspace: %v", err)
+		return a.toast.ShowError("Failed to save note")
+	}
+	a.center.SetInfoContent(a.renderWorkspaceInfo())
+	if a.dashboard != nil {
+		a.dashboard.SetWorkspaces(a.allWorkspaces)
+	}
+	return nil
+}
+
 // handleSetWorkspaceProfile persists a profile for a workspace and reloads.
 func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cmd {
 	if msg.Workspace == nil {

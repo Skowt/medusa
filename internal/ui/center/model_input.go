@@ -173,6 +173,8 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				return m, m.infoTabActivateSetting()
 			case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 				return m, m.infoTabRename()
+			case key.Matches(msg, key.NewBinding(key.WithKeys("N"))):
+				return m, m.infoTabNote()
 			case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
 				return m, m.infoTabDelete()
 			}

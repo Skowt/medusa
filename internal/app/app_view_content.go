@@ -101,7 +101,17 @@ func (a *App) renderWorkspaceInfo() string {
 		archiveNotice := lipgloss.NewStyle().Foreground(common.ColorWarning)
 		b.WriteString(archiveNotice.Render("Archived — unarchive to make changes") + "\n\n")
 	}
-	b.WriteString(label.Render("Branch: ") + value.Render(ws.Branch()) + " " + copyHint.Render("[Copy]") + " " + copyHint.Render("[Rename]") + "\n")
+
+	// Notes
+	b.WriteString(label.Render("Notes") + "\n")
+	noteDisplay := lipgloss.NewStyle().Foreground(common.ColorPrimary)
+	if ws.Note != "" {
+		b.WriteString(prefix(0) + noteDisplay.Render(ws.Note) + "\n")
+	} else {
+		b.WriteString(prefix(0) + off.Render("(no note)") + "\n")
+	}
+
+	b.WriteString("\n" + label.Render("Branch: ") + value.Render(ws.Branch()) + " " + copyHint.Render("[Copy]") + " " + copyHint.Render("[Rename]") + "\n")
 	b.WriteString(label.Render("Path:   ") + value.Render(displayPath) + " " + copyHint.Render("[Copy]") + "\n")
 
 	// Settings section
@@ -124,14 +134,14 @@ func (a *App) renderWorkspaceInfo() string {
 		statusStr = "Archived"
 		statusStyle = off
 	}
-	b.WriteString(prefix(0) + label.Render("Status:  ") + statusStyle.Render(statusStr) + "\n")
+	b.WriteString(prefix(1) + label.Render("Status:  ") + statusStyle.Render(statusStr) + "\n")
 
 	// Profile
 	profileStr := "Default"
 	if ws.Profile != "" {
 		profileStr = ws.Profile
 	}
-	b.WriteString(prefix(1) + label.Render("Profile: ") + value.Render(profileStr) + "\n")
+	b.WriteString(prefix(2) + label.Render("Profile: ") + value.Render(profileStr) + "\n")
 
 	// Repos
 	if ws.IsMultiRepo() {
@@ -150,7 +160,7 @@ func (a *App) renderWorkspaceInfo() string {
 
 	// Edit Repos (only for multi-repo workspaces)
 	if ws.IsMultiRepo() {
-		b.WriteString(prefix(2) + label.Render(fmt.Sprintf("Edit Repos: (%d repos)", len(ws.Repos))) + "\n")
+		b.WriteString(prefix(3) + label.Render(fmt.Sprintf("Edit Repos: (%d repos)", len(ws.Repos))) + "\n")
 	}
 
 	// Git Changes section

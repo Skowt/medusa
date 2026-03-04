@@ -93,6 +93,9 @@ type Workspace struct {
 	OpenTabs       []TabInfo `json:"open_tabs,omitempty"`
 	ActiveTabIndex int       `json:"active_tab_index"`
 
+	// Note
+	Note string `json:"note,omitempty"`
+
 	// Lifecycle
 	Status        WorkspaceStatus `json:"status"`
 	StatusChanged time.Time       `json:"status_changed,omitempty"`

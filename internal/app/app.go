@@ -52,6 +52,7 @@ const (
 	DialogQuickDuplicate        = "quick_duplicate"
 	DialogArchiveWorkspace      = "archive_workspace"
 	DialogUnarchiveWorkspace    = "unarchive_workspace"
+	DialogSetNote               = "set_note"
 )
 
 // Prefix mode constants
