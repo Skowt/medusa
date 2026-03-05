@@ -420,6 +420,19 @@ func (a *App) Init() tea.Cmd {
 // Shutdown releases resources that may outlive the Bubble Tea program.
 func (a *App) Shutdown() {
 	a.shutdownOnce.Do(func() {
+		// Close terminals and scripts first. The supervisor's tab actor
+		// may be blocked on a PTY write (a raw syscall that ignores
+		// context cancellation). Closing the PTY file descriptors here
+		// unblocks those writes so the supervisor can stop cleanly.
+		if a.center != nil {
+			a.center.Close()
+		}
+		if a.sidebarTerminal != nil {
+			a.sidebarTerminal.CloseAll()
+		}
+		if a.scripts != nil {
+			a.scripts.StopAll()
+		}
 		if a.supervisor != nil {
 			a.supervisor.Stop()
 		}
@@ -431,15 +444,6 @@ func (a *App) Shutdown() {
 		}
 		if a.hooksWatcher != nil {
 			_ = a.hooksWatcher.Close()
-		}
-		if a.center != nil {
-			a.center.Close()
-		}
-		if a.sidebarTerminal != nil {
-			a.sidebarTerminal.CloseAll()
-		}
-		if a.scripts != nil {
-			a.scripts.StopAll()
 		}
 	})
 }
