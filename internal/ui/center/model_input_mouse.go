@@ -355,26 +355,30 @@ func (m *Model) handleInfoContentClick(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 
-	// Check clickable buttons on each line
-	// Line 0: "Branch: <branch> [Copy] [Rename]"
-	// Line 1: "Path:   <path> [Copy]"
-	type button struct {
-		lineIdx int
-		text    string
-		action  func() tea.Msg
+	// Find clickable buttons dynamically by scanning the clicked line
+	if infoY >= len(lines) {
+		return nil
 	}
+
 	ws := m.workspace
+	stripped := ansi.Strip(lines[infoY])
+
+	type button struct {
+		prefix string // line must contain this prefix to match
+		text   string
+		action func() tea.Msg
+	}
 	buttons := []button{
-		{0, "[Copy]", func() tea.Msg {
+		{"Branch:", "[Copy]", func() tea.Msg {
 			if err := common.CopyToClipboard(ws.Branch()); err != nil {
 				return messages.Toast{Message: "Failed to copy: " + err.Error(), Level: messages.ToastError}
 			}
 			return messages.Toast{Message: "Copied branch to clipboard", Level: messages.ToastInfo}
 		}},
-		{0, "[Rename]", func() tea.Msg {
+		{"Branch:", "[Rename]", func() tea.Msg {
 			return messages.ShowRenameWorkspaceDialog{Workspace: ws}
 		}},
-		{1, "[Copy]", func() tea.Msg {
+		{"Path:", "[Copy]", func() tea.Msg {
 			if err := common.CopyToClipboard(ws.Root()); err != nil {
 				return messages.Toast{Message: "Failed to copy: " + err.Error(), Level: messages.ToastError}
 			}
@@ -383,17 +387,16 @@ func (m *Model) handleInfoContentClick(msg tea.MouseClickMsg) tea.Cmd {
 	}
 
 	for _, btn := range buttons {
-		if infoY != btn.lineIdx || btn.lineIdx >= len(lines) {
+		if !strings.Contains(stripped, btn.prefix) {
 			continue
 		}
-		stripped := ansi.Strip(lines[btn.lineIdx])
 		idx := strings.Index(stripped, btn.text)
 		if idx < 0 {
 			continue
 		}
 		region := common.HitRegion{
 			X:      idx,
-			Y:      btn.lineIdx,
+			Y:      infoY,
 			Width:  len(btn.text),
 			Height: 1,
 		}
