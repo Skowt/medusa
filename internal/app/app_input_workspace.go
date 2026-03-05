@@ -57,7 +57,6 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 
 	ws := msg.Workspace
 	newName := msg.NewName
-	oldBranch := ws.Branch()
 	newBranch := newName
 	oldRoot := ws.Root()
 	oldPrimaryRoot := ws.PrimaryWorktreeRoot()
@@ -78,11 +77,22 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Directory '%s' already exists", filepath.Base(newRoot)))}
 	}
 
+	// Resolve the actual branch in each worktree so we rename the right thing,
+	// even when the stored branch name has drifted from reality.
+	actualBranches := make([]string, len(ws.Worktrees))
+	for i, wt := range ws.Worktrees {
+		branch, err := git.GetCurrentBranch(wt.Root)
+		if err != nil {
+			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed: cannot determine branch in %s: %s", ws.Repos[i].Name, err.Error()))}
+		}
+		actualBranches[i] = strings.TrimSpace(branch)
+	}
+
 	// 2. Rename branches in all repos.
 	for i, repo := range ws.Repos {
-		if err := git.RenameBranch(repo.Path, oldBranch, newBranch); err != nil {
+		if err := git.RenameBranch(repo.Path, actualBranches[i], newBranch); err != nil {
 			for j := 0; j < i; j++ {
-				_ = git.RenameBranch(ws.Repos[j].Path, newBranch, oldBranch)
+				_ = git.RenameBranch(ws.Repos[j].Path, newBranch, actualBranches[j])
 			}
 			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed in %s: %s", repo.Name, err.Error()))}
 		}
@@ -90,8 +100,8 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 
 	// rollbackBranches undoes all branch renames.
 	rollbackBranches := func() {
-		for _, repo := range ws.Repos {
-			_ = git.RenameBranch(repo.Path, newBranch, oldBranch)
+		for i, repo := range ws.Repos {
+			_ = git.RenameBranch(repo.Path, newBranch, actualBranches[i])
 		}
 	}
 

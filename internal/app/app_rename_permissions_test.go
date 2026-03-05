@@ -55,6 +55,56 @@ func newTestApp(t *testing.T) (*App, *config.Config) {
 	return app, cfg
 }
 
+// TestRenameWorkspace_StaleBranch verifies that rename succeeds even when the
+// stored branch name doesn't match the actual git branch (e.g. after a manual
+// git branch -m outside of medusa).
+func TestRenameWorkspace_StaleBranch(t *testing.T) {
+	skipIfNoGit(t)
+
+	app, _ := newTestApp(t)
+
+	// Set up a git repo with a worktree.
+	repo := normalizePath(t.TempDir())
+	runGit(t, repo, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("ok\n"), 0644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "init")
+
+	worktreeDir := normalizePath(t.TempDir())
+	storedBranch := "stale-name"
+	actualBranch := "actual-branch"
+	worktreePath := filepath.Join(worktreeDir, storedBranch)
+
+	// Create worktree with the "actual" branch name.
+	runGit(t, repo, "worktree", "add", "--no-track", "-b", actualBranch, worktreePath, "main")
+
+	// Persist workspace with the WRONG (stale) branch name.
+	ws := data.NewWorkspace(storedBranch, storedBranch, "main", repo, worktreePath)
+	ws.Created = time.Now()
+	ws.Runtime = data.RuntimeLocalWorktree
+	if err := app.workspaces.Save(ws); err != nil {
+		t.Fatalf("Save workspace: %v", err)
+	}
+
+	// Rename should succeed by detecting the actual branch, not the stored one.
+	newName := "renamed-ws"
+	cmds := app.handleRenameWorkspace(messages.RenameWorkspace{
+		Workspace: ws,
+		NewName:   newName,
+	})
+	if len(cmds) == 0 {
+		t.Fatal("handleRenameWorkspace returned no commands (rename likely failed)")
+	}
+
+	// Verify the new worktree directory exists.
+	newRoot := filepath.Join(worktreeDir, newName)
+	if _, err := os.Stat(newRoot); os.IsNotExist(err) {
+		t.Fatalf("expected new worktree root %s to exist", newRoot)
+	}
+}
+
 func TestRenameWorkspace_UpdatesPermissionWatcher(t *testing.T) {
 	skipIfNoGit(t)
 
