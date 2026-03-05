@@ -65,10 +65,39 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	}
 
 	var cmds []tea.Cmd
+	// Persist the hook state change to the workspace JSON.
+	if cmd := a.persistHookState(wsID); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	if cmd := a.syncActiveWorkspacesToDashboard(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	return cmds
+}
+
+// persistHookState updates the workspace's HookState field and triggers a debounced save.
+func (a *App) persistHookState(wsID string) tea.Cmd {
+	ws := a.findWorkspaceByID(wsID)
+	if ws == nil {
+		return nil
+	}
+	if evt, ok := a.hookWorkspaceStates[wsID]; ok {
+		ws.ActivityState = string(evt)
+	} else {
+		ws.ActivityState = ""
+	}
+	return a.persistWorkspaceTabs(wsID)
+}
+
+// restoreHookStatesFromWorkspaces populates hookWorkspaceStates from persisted
+// workspace HookState fields so that indicators (like '!') survive app restarts.
+func (a *App) restoreHookStatesFromWorkspaces() {
+	for _, ws := range a.allWorkspaces {
+		if ws.ActivityState == "" {
+			continue
+		}
+		a.hookWorkspaceStates[string(ws.ID())] = hooks.EventType(ws.ActivityState)
+	}
 }
 
 // hookActiveIDs returns the set of workspace IDs that are currently active

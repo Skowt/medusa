@@ -108,6 +108,9 @@ type Workspace struct {
 	Isolated        bool `json:"isolated,omitempty"`         // Run in sandbox-exec
 	SkipPermissions bool `json:"skip_permissions,omitempty"` // Run with --dangerously-skip-permissions
 
+	// Activity state (persisted so indicators like '!' survive restarts)
+	ActivityState string `json:"activity_state,omitempty"`
+
 	// Orphan detection (runtime only, not persisted)
 	Orphan     OrphanType `json:"-"` // Whether this workspace is orphaned and why
 	OrphanPath string     `json:"-"` // For directory orphans: the path on disk

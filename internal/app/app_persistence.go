@@ -27,6 +27,12 @@ func (a *App) persistAllWorkspacesNow() {
 		}
 		ws.OpenTabs = tabs
 		ws.ActiveTabIndex = activeIdx
+		// Sync hook state to workspace before saving
+		if evt, ok := a.hookWorkspaceStates[wsID]; ok {
+			ws.ActivityState = string(evt)
+		} else {
+			ws.ActivityState = ""
+		}
 		snap := data.SnapshotWorkspaceForSave(ws)
 		if err := a.workspaces.Save(snap); err != nil {
 			logging.Warn("Failed to persist workspace on shutdown: %v", err)
@@ -84,6 +90,12 @@ func (a *App) handlePersistDebounce(msg persistDebounceMsg) tea.Cmd {
 		tabs, activeIdx := a.center.GetTabsInfoForWorkspace(wsID)
 		ws.OpenTabs = tabs
 		ws.ActiveTabIndex = activeIdx
+		// Sync hook state
+		if evt, ok := a.hookWorkspaceStates[wsID]; ok {
+			ws.ActivityState = string(evt)
+		} else {
+			ws.ActivityState = ""
+		}
 		snapshots = append(snapshots, data.SnapshotWorkspaceForSave(ws))
 	}
 	// Clear dirty set
