@@ -78,12 +78,23 @@ func (s *Supervisor) Context() context.Context {
 }
 
 // Stop cancels all workers and waits for them to exit.
+// If workers don't exit within 3 seconds, Stop returns anyway to avoid
+// hanging the application on quit.
 func (s *Supervisor) Stop() {
 	if s == nil {
 		return
 	}
 	s.cancel()
-	s.wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		logging.Warn("supervisor: workers did not exit within timeout")
+	}
 }
 
 // SetErrorHandler registers a handler for worker errors.
