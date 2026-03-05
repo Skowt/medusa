@@ -79,6 +79,14 @@ func (m *Model) SetWorkspaceDeleting(root string, deleting bool) tea.Cmd {
 
 // rebuildRows rebuilds the row list from workspaces
 func (m *Model) rebuildRows() {
+	// Remember the workspace at the current cursor so we can re-anchor after rebuild.
+	var prevCursorRoot string
+	if m.cursor >= 0 && m.cursor < len(m.rows) {
+		if row := m.rows[m.cursor]; row.Type == RowWorkspace && row.Workspace != nil {
+			prevCursorRoot = row.Workspace.Root()
+		}
+	}
+
 	m.rows = []Row{
 		{Type: RowHome},
 	}
@@ -205,18 +213,46 @@ func (m *Model) rebuildRows() {
 		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "archived-footer"})
 	}
 
-	// Clamp cursor
-	if m.cursor >= len(m.rows) {
-		m.cursor = len(m.rows) - 1
-	}
-	if m.cursor < 0 {
-		m.cursor = 0
-	}
-	if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor].Type) {
-		if next := m.findSelectableRow(m.cursor, 1); next != -1 {
-			m.cursor = next
-		} else if prev := m.findSelectableRow(m.cursor, -1); prev != -1 {
-			m.cursor = prev
+	// Try to re-anchor cursor to the previously selected workspace.
+	if prevCursorRoot != "" {
+		found := false
+		for i, row := range m.rows {
+			if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == prevCursorRoot {
+				m.cursor = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Workspace was removed — clamp index so it lands on a neighbor.
+			if m.cursor >= len(m.rows) {
+				m.cursor = len(m.rows) - 1
+			}
+			if m.cursor < 0 {
+				m.cursor = 0
+			}
+			if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor].Type) {
+				if next := m.findSelectableRow(m.cursor, -1); next != -1 {
+					m.cursor = next
+				} else if next := m.findSelectableRow(m.cursor, 1); next != -1 {
+					m.cursor = next
+				}
+			}
+		}
+	} else {
+		// No previous workspace — just clamp.
+		if m.cursor >= len(m.rows) {
+			m.cursor = len(m.rows) - 1
+		}
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor].Type) {
+			if next := m.findSelectableRow(m.cursor, 1); next != -1 {
+				m.cursor = next
+			} else if prev := m.findSelectableRow(m.cursor, -1); prev != -1 {
+				m.cursor = prev
+			}
 		}
 	}
 
