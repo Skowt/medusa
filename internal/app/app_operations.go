@@ -194,6 +194,12 @@ func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile string) te
 			if err != nil {
 				base = "HEAD"
 			}
+			// Verify the base ref resolves to a commit
+			if err := git.ValidateRef(repo.Path, base); err != nil {
+				return messages.WorkspaceCreateFailed{
+					Err: fmt.Errorf("%s: repo has no commits — make an initial commit first", repo.Name),
+				}
+			}
 			bases[i] = base
 		}
 		return messages.WorkspaceFetchDone{

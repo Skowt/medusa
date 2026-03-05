@@ -545,6 +545,11 @@ func (a *App) handleAddReposToWorkspace(msg messages.AddReposToWorkspace) tea.Cm
 					Err: fmt.Errorf("failed to get default base for %s: %w", repo.Name, err),
 				}
 			}
+			if err := git.ValidateRef(repo.Path, base); err != nil {
+				return messages.ReposAddFailed{
+					Err: fmt.Errorf("%s: repo has no commits — make an initial commit first", repo.Name),
+				}
+			}
 
 			wtPath := filepath.Join(wsRoot, repo.Name)
 			if err := git.CreateWorkspace(repo.Path, wtPath, branch, base); err != nil {
