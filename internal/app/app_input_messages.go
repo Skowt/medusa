@@ -1243,11 +1243,20 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 func (a *App) handleCreateWorkspace(msg messages.CreateWorkspace) []tea.Cmd {
 	var cmds []tea.Cmd
 	if len(msg.Repos) > 0 && msg.Name != "" {
-		workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
-		if len(msg.Repos) > 1 {
-			workspacePath = filepath.Join(workspacePath, msg.Repos[0].Name)
+		var pending *data.Workspace
+		if len(msg.Repos) == 1 {
+			workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
+			pending = data.NewWorkspace(msg.Name, msg.Name, "", msg.Repos[0].Path, workspacePath)
+		} else {
+			worktrees := make([]data.WorktreeRef, len(msg.Repos))
+			for i, repo := range msg.Repos {
+				worktrees[i] = data.WorktreeRef{
+					Branch: msg.Name,
+					Root:   filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name, repo.Name),
+				}
+			}
+			pending = data.NewMultiRepoWorkspace(msg.Name, msg.Repos, worktrees)
 		}
-		pending := data.NewWorkspace(msg.Name, msg.Name, "", msg.Repos[0].Path, workspacePath)
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
