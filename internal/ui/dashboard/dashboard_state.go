@@ -117,16 +117,8 @@ func (m *Model) rebuildRows() {
 		all = append(all, ws)
 	}
 
-	// Sort by StatusChanged (zero means never changed, sorts first), then by creation time
+	// Sort by Created ascending (oldest first, newest at bottom)
 	sort.SliceStable(all, func(i, j int) bool {
-		ti, tj := all[i].StatusChanged, all[j].StatusChanged
-		if !ti.Equal(tj) {
-			// Zero values (never changed) sort before non-zero (changed more recently = later)
-			if ti.IsZero() != tj.IsZero() {
-				return ti.IsZero()
-			}
-			return ti.Before(tj)
-		}
 		if all[i].Created.Equal(all[j].Created) {
 			return all[i].Name < all[j].Name
 		}
