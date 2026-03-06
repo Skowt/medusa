@@ -17,11 +17,13 @@ type EventType string
 
 const (
 	EventStop                       EventType = "Stop"
+	EventSubagentStop               EventType = "SubagentStop"
 	EventNotificationIdle           EventType = "NotificationIdle"
 	EventNotificationPermission     EventType = "NotificationPermission"
 	EventNotificationElicitation    EventType = "NotificationElicitation"
 	EventPermissionRequest          EventType = "PermissionRequest"
 	EventPreToolUse                 EventType = "PreToolUse"
+	EventPostToolUse                EventType = "PostToolUse"
 	EventUserPromptSubmit           EventType = "UserPromptSubmit"
 )
 

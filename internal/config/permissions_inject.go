@@ -203,7 +203,9 @@ func InjectHooks(profileDir, hooksDir string) error {
 		}
 		defs := []hookDef{
 			{event: "Stop"},
+			{event: "SubagentStop"},
 			{event: "PreToolUse"},
+			{event: "PostToolUse"},
 			{event: "PermissionRequest"},
 			{event: "UserPromptSubmit"},
 		}

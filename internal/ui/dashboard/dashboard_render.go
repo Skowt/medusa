@@ -226,7 +226,7 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	// Hook-based activity overrides: spinner on PreToolUse, warning symbols for notifications
 	if hookState, ok := m.hookStates[wsID]; ok {
 		switch hookState {
-		case "PreToolUse", "UserPromptSubmit":
+		case "PreToolUse", "PostToolUse", "SubagentStop", "UserPromptSubmit":
 			indicator = common.SpinnerFrame(m.spinnerFrame)
 			indicatorFg = common.ColorSuccess
 		case "NotificationPermission", "NotificationElicitation", "PermissionRequest":

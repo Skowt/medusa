@@ -105,7 +105,8 @@ func (a *App) restoreHookStatesFromWorkspaces() {
 func (a *App) hookActiveIDs() map[string]bool {
 	active := make(map[string]bool)
 	for wsID, evt := range a.hookWorkspaceStates {
-		if evt == hooks.EventPreToolUse || evt == hooks.EventUserPromptSubmit {
+		switch evt {
+		case hooks.EventPreToolUse, hooks.EventPostToolUse, hooks.EventSubagentStop, hooks.EventUserPromptSubmit:
 			active[wsID] = true
 		}
 	}
