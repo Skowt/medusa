@@ -229,7 +229,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 
 			m.toolbarFocused = false
 			m.cursor = idx
-			return m, m.handleEnter()
+			return m, m.handleClick()
 		}
 
 	case tea.KeyPressMsg:

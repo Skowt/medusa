@@ -193,6 +193,17 @@ func (m *Model) previewCurrentRow() tea.Cmd {
 
 // handleEnter handles the enter key
 func (m *Model) handleEnter() tea.Cmd {
+	return m.activateRow(false)
+}
+
+// handleClick handles a mouse click on a row
+func (m *Model) handleClick() tea.Cmd {
+	return m.activateRow(true)
+}
+
+// activateRow activates the row at the cursor. viaClick indicates whether
+// the activation was triggered by a mouse click (affects focus behavior).
+func (m *Model) activateRow(viaClick bool) tea.Cmd {
 	if m.cursor >= len(m.rows) {
 		return nil
 	}
@@ -214,9 +225,11 @@ func (m *Model) handleEnter() tea.Cmd {
 				return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
 			}
 		}
+		ws := row.Workspace
 		return func() tea.Msg {
 			return messages.WorkspaceActivated{
-				Workspace: row.Workspace,
+				Workspace: ws,
+				ViaClick:  viaClick,
 			}
 		}
 	case RowCreate:

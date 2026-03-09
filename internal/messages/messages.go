@@ -25,6 +25,7 @@ type WorkspacesLoaded struct {
 // WorkspaceActivated is sent when a workspace is selected
 type WorkspaceActivated struct {
 	Workspace *data.Workspace
+	ViaClick  bool // true when triggered by mouse click (not Enter key)
 }
 
 // WorkspacePreviewed is sent when a workspace is previewed (cursor movement)
