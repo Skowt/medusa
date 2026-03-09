@@ -57,58 +57,23 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 
 	ws := msg.Workspace
 	newName := msg.NewName
-	newBranch := newName
 	oldRoot := ws.Root()
 	oldPrimaryRoot := ws.PrimaryWorktreeRoot()
 	newRoot := filepath.Join(filepath.Dir(oldRoot), newName)
 	opts := a.tmuxOptions
 	oldWsID := string(ws.ID())
 
-	// 1. Validate: workspace name and branch must not already exist.
+	// 1. Validate: workspace name and directory must not already exist.
 	if a.workspaceNameExists(newName, ws.ID()) {
 		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Workspace '%s' already exists", newName))}
-	}
-	for _, repo := range ws.Repos {
-		if git.BranchExists(repo.Path, newBranch) {
-			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Branch '%s' already exists in %s", newBranch, repo.Name))}
-		}
 	}
 	if _, err := os.Stat(newRoot); err == nil {
 		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Directory '%s' already exists", filepath.Base(newRoot)))}
 	}
 
-	// Resolve the actual branch in each worktree so we rename the right thing,
-	// even when the stored branch name has drifted from reality.
-	actualBranches := make([]string, len(ws.Worktrees))
-	for i, wt := range ws.Worktrees {
-		branch, err := git.GetCurrentBranch(wt.Root)
-		if err != nil {
-			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed: cannot determine branch in %s: %s", ws.Repos[i].Name, err.Error()))}
-		}
-		actualBranches[i] = strings.TrimSpace(branch)
-	}
-
-	// 2. Rename branches in all repos.
-	for i, repo := range ws.Repos {
-		if err := git.RenameBranch(repo.Path, actualBranches[i], newBranch); err != nil {
-			for j := 0; j < i; j++ {
-				_ = git.RenameBranch(ws.Repos[j].Path, newBranch, actualBranches[j])
-			}
-			return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed in %s: %s", repo.Name, err.Error()))}
-		}
-	}
-
-	// rollbackBranches undoes all branch renames.
-	rollbackBranches := func() {
-		for i, repo := range ws.Repos {
-			_ = git.RenameBranch(repo.Path, newBranch, actualBranches[i])
-		}
-	}
-
-	// 3. Move worktrees.
+	// 2. Move worktree folders (does not rename git branches).
 	if ws.IsMultiRepo() {
 		if err := os.MkdirAll(newRoot, 0o755); err != nil {
-			rollbackBranches()
 			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 		}
 		for i, wt := range ws.Worktrees {
@@ -118,14 +83,12 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 					_ = git.MoveWorkspace(ws.Repos[j].Path, filepath.Join(newRoot, ws.Repos[j].Name), ws.Worktrees[j].Root)
 				}
 				_ = os.Remove(newRoot)
-				rollbackBranches()
 				return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed moving %s: %s", ws.Repos[i].Name, err.Error()))}
 			}
 		}
 		_ = os.Remove(oldRoot)
 	} else {
 		if err := git.MoveWorkspace(ws.Repos[0].Path, oldRoot, newRoot); err != nil {
-			rollbackBranches()
 			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 		}
 	}
@@ -143,16 +106,14 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		}
 	}
 
-	// 4. Update store.
+	// 3. Update store (name and paths only, branch unchanged).
 	stored, err := a.workspaces.Load(ws.ID())
 	if err != nil {
 		rollbackMoves()
-		rollbackBranches()
 		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 	}
 	stored.Name = newName
 	for i := range stored.Worktrees {
-		stored.Worktrees[i].Branch = newBranch
 		if ws.IsMultiRepo() {
 			stored.Worktrees[i].Root = filepath.Join(newRoot, stored.Repos[i].Name)
 		} else {
@@ -161,7 +122,6 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	}
 	if err := a.workspaces.Save(stored); err != nil {
 		rollbackMoves()
-		rollbackBranches()
 		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 	}
 	newWs := stored
@@ -205,13 +165,12 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	for _, ws := range a.allWorkspaces {
 		if string(ws.ID()) == oldWsID {
 			ws.Name = newWs.Name
-				for i := range ws.Worktrees {
+			for i := range ws.Worktrees {
 				if ws.IsMultiRepo() {
 					ws.Worktrees[i].Root = filepath.Join(newRoot, ws.Repos[i].Name)
 				} else {
 					ws.Worktrees[i].Root = newRoot
 				}
-				ws.Worktrees[i].Branch = newBranch
 			}
 		}
 	}

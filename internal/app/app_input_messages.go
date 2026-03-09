@@ -886,7 +886,7 @@ func (a *App) handleShowRenameWorkspaceDialog(msg messages.ShowRenameWorkspaceDi
 		return a.toast.ShowError("Cannot rename main/master branch")
 	}
 	a.dialogWorkspace = msg.Workspace
-	a.dialog = common.NewInputDialog(DialogRenameWorkspace, "Rename Worktree", msg.Workspace.Name)
+	a.dialog = common.NewInputDialog(DialogRenameWorkspace, "Rename Workspace", msg.Workspace.Name)
 	a.dialog.SetInputValidate(func(s string) string {
 		s = validation.SanitizeInput(s)
 		if s == "" {
