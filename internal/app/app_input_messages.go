@@ -898,11 +898,6 @@ func (a *App) handleShowRenameWorkspaceDialog(msg messages.ShowRenameWorkspaceDi
 		if a.workspaceNameExists(s, msg.Workspace.ID()) {
 			return "workspace with this name already exists"
 		}
-		for _, repo := range msg.Workspace.Repos {
-			if git.BranchExists(repo.Path, s) {
-				return fmt.Sprintf("branch already exists in %s", repo.Name)
-			}
-		}
 		return ""
 	})
 	tabsInfo, _ := a.center.GetTabsInfoForWorkspace(string(msg.Workspace.ID()))
