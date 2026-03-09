@@ -52,11 +52,7 @@ func SaveGlobalPermissions(path string, perms *GlobalPermissions) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicWriteFile(path, data, 0644)
 }
 
 // dedupe removes duplicate entries from a slice while preserving order.
