@@ -50,9 +50,34 @@ func DeleteBranch(repoPath, branch string) error {
 }
 
 // MoveWorkspace moves a git worktree from oldPath to newPath.
+// It first tries "git worktree move", then falls back to a manual move
+// for worktrees that contain submodules (which git refuses to move).
 func MoveWorkspace(repoPath, oldPath, newPath string) error {
 	_, err := RunGit(repoPath, "worktree", "move", oldPath, newPath)
-	return err
+	if err == nil {
+		return nil
+	}
+
+	// Fallback: manually move the directory and repair the worktree links.
+	if renameErr := os.Rename(oldPath, newPath); renameErr != nil {
+		return fmt.Errorf("move worktree directory: %w", renameErr)
+	}
+
+	// "git worktree repair" fixes the bidirectional link between the
+	// worktree's .git file and the main repo's .git/worktrees/<name>/gitdir.
+	if _, repairErr := RunGit(newPath, "worktree", "repair"); repairErr != nil {
+		// Try to undo the move so we don't leave things half-broken.
+		_ = os.Rename(newPath, oldPath)
+		return fmt.Errorf("repair worktree after move: %w", repairErr)
+	}
+
+	// Re-initialize submodules so their path references point to the new
+	// worktree location. This is needed because submodule configs under
+	// .git/worktrees/<name>/modules/ contain core.worktree paths that
+	// still reference the old worktree directory.
+	_, _ = RunGit(newPath, "submodule", "update", "--init", "--recursive")
+
+	return nil
 }
 
 // RenameBranch renames a git branch from oldBranch to newBranch.
