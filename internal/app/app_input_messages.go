@@ -817,7 +817,10 @@ func (a *App) handleCreateProfile(msg messages.CreateProfile) tea.Cmd {
 		logging.Error("Failed to create profile directory: %v", err)
 		return a.toast.ShowError("Failed to create profile: " + err.Error())
 	}
-	_ = config.InjectHooks(profileDir, a.config.Paths.HooksDir)
+	if err := config.InjectHooks(profileDir, a.config.Paths.HooksDir); err != nil {
+		logging.Error("Failed to inject hooks: %v", err)
+		return a.toast.ShowError("Profile config corrupt: " + err.Error())
+	}
 
 	var cmds []tea.Cmd
 	cmds = append(cmds, a.toast.ShowSuccess(fmt.Sprintf("Profile '%s' created", name)))
