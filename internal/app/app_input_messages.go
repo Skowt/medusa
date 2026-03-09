@@ -145,6 +145,8 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 // handleWorkspaceActivated processes the WorkspaceActivated message.
 func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cmd {
 	var cmds []tea.Cmd
+	alreadyActive := a.activeWorkspace != nil && msg.Workspace != nil &&
+		a.activeWorkspace.ID() == msg.Workspace.ID()
 	a.activeWorkspace = msg.Workspace
 	a.showWelcome = false
 	a.centerBtnFocused = false
@@ -223,8 +225,9 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 		}
 	}
 
-	// Focus center pane when workspace has active tabs
-	if msg.Workspace != nil {
+	// Focus center pane when workspace has active tabs.
+	// If the workspace was already active, keep focus on the dashboard instead.
+	if msg.Workspace != nil && !alreadyActive {
 		wsID := string(msg.Workspace.ID())
 		if a.center.HasTabsForWorkspace(wsID) || workspaceHasLiveTabs(msg.Workspace) {
 			if a.monitorMode {
@@ -233,6 +236,8 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 				a.focusPane(messages.PaneCenter)
 			}
 		}
+	} else if alreadyActive {
+		a.focusPane(messages.PaneDashboard)
 	}
 
 	return cmds
