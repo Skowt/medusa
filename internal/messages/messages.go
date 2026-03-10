@@ -265,6 +265,7 @@ type CreateWorkspace struct {
 	Repos        []data.RepoRef
 	BranchMode   git.BranchMode
 	CustomBranch string
+	CopyIgnored  bool
 }
 
 // DeleteWorkspace requests deleting a workspace
@@ -576,8 +577,9 @@ type ShowCommitDialog struct {
 
 // WorkspaceFetchDone is sent after remote bases have been fetched for workspace creation.
 type WorkspaceFetchDone struct {
-	Name    string
-	Repos   []data.RepoRef
-	Bases   []string // parallel to Repos
-	Profile string
+	Name        string
+	Repos       []data.RepoRef
+	Bases       []string // parallel to Repos
+	Profile     string
+	CopyIgnored bool
 }

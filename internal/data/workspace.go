@@ -108,6 +108,9 @@ type Workspace struct {
 	Isolated        bool `json:"isolated,omitempty"`         // Run in sandbox-exec
 	SkipPermissions bool `json:"skip_permissions,omitempty"` // Run with --dangerously-skip-permissions
 
+	// Worktree setup
+	CopyIgnored bool `json:"copy_ignored,omitempty"` // Copy gitignored files from source repo
+
 	// Activity state (persisted so indicators like '!' survive restarts)
 	ActivityState string `json:"activity_state,omitempty"`
 

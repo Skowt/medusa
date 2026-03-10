@@ -156,7 +156,7 @@ func (a *App) deleteOrphanWorkspace(ws *data.Workspace) tea.Cmd {
 }
 
 // fetchRemoteBase fetches the remote base branch asynchronously.
-func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string) tea.Cmd {
+func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string, copyIgnored bool) tea.Cmd {
 	reposCopy := make([]data.RepoRef, len(repos))
 	copy(reposCopy, repos)
 	return func() tea.Msg {
@@ -175,16 +175,17 @@ func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string) tea.Cm
 			bases[i] = base
 		}
 		return messages.WorkspaceFetchDone{
-			Name:    name,
-			Repos:   reposCopy,
-			Bases:   bases,
-			Profile: profile,
+			Name:        name,
+			Repos:       reposCopy,
+			Bases:       bases,
+			Profile:     profile,
+			CopyIgnored: copyIgnored,
 		}
 	}
 }
 
 // fetchCheckedOutBase resolves the currently checked-out branch as the base (no fetch).
-func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile string) tea.Cmd {
+func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile string, copyIgnored bool) tea.Cmd {
 	reposCopy := make([]data.RepoRef, len(repos))
 	copy(reposCopy, repos)
 	return func() tea.Msg {
@@ -203,16 +204,17 @@ func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile string) te
 			bases[i] = base
 		}
 		return messages.WorkspaceFetchDone{
-			Name:    name,
-			Repos:   reposCopy,
-			Bases:   bases,
-			Profile: profile,
+			Name:        name,
+			Repos:       reposCopy,
+			Bases:       bases,
+			Profile:     profile,
+			CopyIgnored: copyIgnored,
 		}
 	}
 }
 
 // fetchCustomBase fetches if stale, then resolves a custom branch name locally or on remote.
-func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, customBranch string) tea.Cmd {
+func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, customBranch string, copyIgnored bool) tea.Cmd {
 	reposCopy := make([]data.RepoRef, len(repos))
 	copy(reposCopy, repos)
 	return func() tea.Msg {
@@ -228,16 +230,17 @@ func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, customBranch 
 			bases[i] = base
 		}
 		return messages.WorkspaceFetchDone{
-			Name:    name,
-			Repos:   reposCopy,
-			Bases:   bases,
-			Profile: profile,
+			Name:        name,
+			Repos:       reposCopy,
+			Bases:       bases,
+			Profile:     profile,
+			CopyIgnored: copyIgnored,
 		}
 	}
 }
 
 // createWorkspace creates a new workspace (single or multi-repo).
-func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string, profile string) tea.Cmd {
+func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string, profile string, copyIgnored bool) tea.Cmd {
 	return func() (msg tea.Msg) {
 		var ws *data.Workspace
 		defer func() {
@@ -290,8 +293,10 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 			// Wait for .git file to exist
 			waitForGitFile(workspacePath)
 
-			// Copy .env* files
-			copyEnvFiles(repo.Path, workspacePath)
+			// Copy gitignored files (secrets, .env, etc.)
+			if copyIgnored {
+				copyIgnoredFiles(repo.Path, workspacePath)
+			}
 		} else {
 			// Multi-repo workspace
 			specs := make([]git.RepoSpec, len(repos))
@@ -319,9 +324,11 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 				waitForGitFile(spec.WorkspacePath)
 			}
 
-			// Copy .env* files
-			for _, spec := range specs {
-				copyEnvFiles(spec.RepoPath, spec.WorkspacePath)
+			// Copy gitignored files (secrets, .env, etc.)
+			if copyIgnored {
+				for _, spec := range specs {
+					copyIgnoredFiles(spec.RepoPath, spec.WorkspacePath)
+				}
 			}
 
 			worktrees := make([]data.WorktreeRef, len(specs))
@@ -334,6 +341,8 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 			}
 			ws = data.NewMultiRepoWorkspace(name, repos, worktrees)
 		}
+
+		ws.CopyIgnored = copyIgnored
 
 		// Save workspace
 		if err := a.workspaces.Save(ws); err != nil {

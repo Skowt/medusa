@@ -95,7 +95,7 @@ func TestCreateWorkspace_RejectsDuplicateName(t *testing.T) {
 	repos := []data.RepoRef{{Path: repo, Name: "repo"}}
 	bases := []string{"main"}
 
-	cmd := app.createWorkspace("existing-ws", repos, bases, "")
+	cmd := app.createWorkspace("existing-ws", repos, bases, "", false)
 	msg := cmd()
 
 	fail, ok := msg.(messages.WorkspaceCreateFailed)
@@ -136,7 +136,7 @@ func TestCreateWorkspace_RejectsBranchExists(t *testing.T) {
 	repos := []data.RepoRef{{Path: repo, Name: "myrepo"}}
 	bases := []string{"main"}
 
-	cmd := app.createWorkspace("taken-branch", repos, bases, "")
+	cmd := app.createWorkspace("taken-branch", repos, bases, "", false)
 	msg := cmd()
 
 	fail, ok := msg.(messages.WorkspaceCreateFailed)
@@ -172,7 +172,7 @@ func TestCreateWorkspace_PassesValidationForUniqueName(t *testing.T) {
 	repos := []data.RepoRef{{Path: "/nonexistent", Name: "repo"}}
 	bases := []string{"main"}
 
-	cmd := app.createWorkspace("unique-ws", repos, bases, "")
+	cmd := app.createWorkspace("unique-ws", repos, bases, "", false)
 	msg := cmd()
 
 	fail, ok := msg.(messages.WorkspaceCreateFailed)
