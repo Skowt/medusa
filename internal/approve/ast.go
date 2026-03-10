@@ -25,124 +25,82 @@ func IsCompound(cmd string) bool {
 // sub-commands found in the AST.
 func ExtractCommands(cmd string) ([]string, error) {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
+	printer := syntax.NewPrinter()
 	f, err := parser.Parse(strings.NewReader(cmd), "")
 	if err != nil {
 		return nil, err
 	}
 	var commands []string
 	for _, stmt := range f.Stmts {
-		commands = extractFromNode(stmt, commands, parser)
+		commands = extractFromNode(stmt, commands, printer)
 	}
 	return commands, nil
 }
 
-func extractFromNode(node syntax.Node, out []string, parser *syntax.Parser) []string {
+func extractFromNode(node syntax.Node, out []string, printer *syntax.Printer) []string {
 	if node == nil {
 		return out
 	}
 	switch n := node.(type) {
 	case *syntax.Stmt:
-		out = extractFromNode(n.Cmd, out, parser)
-		// Check redirections for command/process substitutions
+		out = extractFromNode(n.Cmd, out, printer)
 		for _, redir := range n.Redirs {
-			out = extractFromWord(redir.Word, out, parser)
+			out = extractCmdSubstsFromWord(redir.Word, out, printer)
 			if redir.Hdoc != nil {
-				out = extractFromWord(redir.Hdoc, out, parser)
+				out = extractCmdSubstsFromWord(redir.Hdoc, out, printer)
 			}
 		}
 
 	case *syntax.CallExpr:
-		cmdStr := callExprString(n)
+		cmdStr := callExprString(n, printer)
 		if cmdStr != "" {
 			out = append(out, cmdStr)
 		}
-		// Recurse into command substitutions in arguments
 		for _, arg := range n.Args {
-			out = extractCmdSubstsFromWord(arg, out, parser)
+			out = extractCmdSubstsFromWord(arg, out, printer)
 		}
-		// Recurse into assignments
-		for _, assign := range n.Assigns {
-			if assign.Value != nil {
-				out = extractCmdSubstsFromWord(assign.Value, out, parser)
-			}
-			if assign.Array != nil {
-				for _, elem := range assign.Array.Elems {
-					if elem.Value != nil {
-						out = extractCmdSubstsFromWord(elem.Value, out, parser)
-					}
-				}
-			}
-		}
-		// Recurse into bash -c / sh -c arguments
-		out = maybeRecurseBashC(n, out, parser)
+		out = extractCmdSubstsFromAssigns(n.Assigns, out, printer)
+		out = maybeRecurseBashC(n, out, printer)
 
 	case *syntax.BinaryCmd:
-		out = extractFromNode(n.X, out, parser)
-		out = extractFromNode(n.Y, out, parser)
+		out = extractFromNode(n.X, out, printer)
+		out = extractFromNode(n.Y, out, printer)
 
 	case *syntax.Subshell:
-		for _, stmt := range n.Stmts {
-			out = extractFromNode(stmt, out, parser)
-		}
+		out = extractFromStmts(n.Stmts, out, printer)
 
 	case *syntax.Block:
-		for _, stmt := range n.Stmts {
-			out = extractFromNode(stmt, out, parser)
-		}
+		out = extractFromStmts(n.Stmts, out, printer)
 
 	case *syntax.IfClause:
-		for _, stmt := range n.Cond {
-			out = extractFromNode(stmt, out, parser)
-		}
-		for _, stmt := range n.Then {
-			out = extractFromNode(stmt, out, parser)
-		}
+		out = extractFromStmts(n.Cond, out, printer)
+		out = extractFromStmts(n.Then, out, printer)
 		if n.Else != nil {
-			out = extractFromNode(n.Else, out, parser)
+			out = extractFromNode(n.Else, out, printer)
 		}
 
 	case *syntax.WhileClause:
-		for _, stmt := range n.Cond {
-			out = extractFromNode(stmt, out, parser)
-		}
-		for _, stmt := range n.Do {
-			out = extractFromNode(stmt, out, parser)
-		}
+		out = extractFromStmts(n.Cond, out, printer)
+		out = extractFromStmts(n.Do, out, printer)
 
 	case *syntax.ForClause:
 		if wl, ok := n.Loop.(*syntax.WordIter); ok {
 			for _, w := range wl.Items {
-				out = extractCmdSubstsFromWord(w, out, parser)
+				out = extractCmdSubstsFromWord(w, out, printer)
 			}
 		}
-		for _, stmt := range n.Do {
-			out = extractFromNode(stmt, out, parser)
-		}
+		out = extractFromStmts(n.Do, out, printer)
 
 	case *syntax.CaseClause:
 		for _, ci := range n.Items {
-			for _, stmt := range ci.Stmts {
-				out = extractFromNode(stmt, out, parser)
-			}
+			out = extractFromStmts(ci.Stmts, out, printer)
 		}
 
 	case *syntax.DeclClause:
-		// export, local, declare, etc.
-		for _, assign := range n.Args {
-			if assign.Value != nil {
-				out = extractCmdSubstsFromWord(assign.Value, out, parser)
-			}
-			if assign.Array != nil {
-				for _, elem := range assign.Array.Elems {
-					if elem.Value != nil {
-						out = extractCmdSubstsFromWord(elem.Value, out, parser)
-					}
-				}
-			}
-		}
+		out = extractCmdSubstsFromAssigns(n.Args, out, printer)
 
 	case *syntax.CoprocClause:
-		out = extractFromNode(n.Stmt, out, parser)
+		out = extractFromNode(n.Stmt, out, printer)
 
 	case *syntax.ArithmCmd:
 		// Arithmetic: no sub-commands
@@ -151,54 +109,67 @@ func extractFromNode(node syntax.Node, out []string, parser *syntax.Parser) []st
 		// [[ ... ]]: no sub-commands typically
 
 	case *syntax.FuncDecl:
-		out = extractFromNode(n.Body, out, parser)
+		out = extractFromNode(n.Body, out, printer)
 	}
 	return out
 }
 
-// extractFromWord looks for CmdSubst and ProcSubst in a word's parts.
-func extractFromWord(w *syntax.Word, out []string, parser *syntax.Parser) []string {
-	if w == nil {
-		return out
+func extractFromStmts(stmts []*syntax.Stmt, out []string, printer *syntax.Printer) []string {
+	for _, stmt := range stmts {
+		out = extractFromNode(stmt, out, printer)
 	}
-	return extractCmdSubstsFromWord(w, out, parser)
+	return out
+}
+
+// extractCmdSubstsFromAssigns extracts command substitutions from a slice
+// of assignments (used by both CallExpr and DeclClause).
+func extractCmdSubstsFromAssigns(assigns []*syntax.Assign, out []string, printer *syntax.Printer) []string {
+	for _, assign := range assigns {
+		if assign.Value != nil {
+			out = extractCmdSubstsFromWord(assign.Value, out, printer)
+		}
+		if assign.Array != nil {
+			for _, elem := range assign.Array.Elems {
+				if elem.Value != nil {
+					out = extractCmdSubstsFromWord(elem.Value, out, printer)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // extractCmdSubstsFromWord recursively finds CmdSubst/ProcSubst in word parts.
-func extractCmdSubstsFromWord(w *syntax.Word, out []string, parser *syntax.Parser) []string {
+func extractCmdSubstsFromWord(w *syntax.Word, out []string, printer *syntax.Printer) []string {
 	if w == nil {
 		return out
 	}
 	for _, part := range w.Parts {
-		out = extractCmdSubstsFromPart(part, out, parser)
+		out = extractCmdSubstsFromPart(part, out, printer)
 	}
 	return out
 }
 
-func extractCmdSubstsFromPart(part syntax.WordPart, out []string, parser *syntax.Parser) []string {
+func extractCmdSubstsFromPart(part syntax.WordPart, out []string, printer *syntax.Printer) []string {
 	switch p := part.(type) {
 	case *syntax.CmdSubst:
-		for _, stmt := range p.Stmts {
-			out = extractFromNode(stmt, out, parser)
-		}
+		out = extractFromStmts(p.Stmts, out, printer)
 	case *syntax.ProcSubst:
-		for _, stmt := range p.Stmts {
-			out = extractFromNode(stmt, out, parser)
-		}
+		out = extractFromStmts(p.Stmts, out, printer)
 	case *syntax.DblQuoted:
 		for _, inner := range p.Parts {
-			out = extractCmdSubstsFromPart(inner, out, parser)
+			out = extractCmdSubstsFromPart(inner, out, printer)
 		}
 	case *syntax.ParamExp:
 		if p.Exp != nil && p.Exp.Word != nil {
-			out = extractCmdSubstsFromWord(p.Exp.Word, out, parser)
+			out = extractCmdSubstsFromWord(p.Exp.Word, out, printer)
 		}
 		if p.Repl != nil {
 			if p.Repl.Orig != nil {
-				out = extractCmdSubstsFromWord(p.Repl.Orig, out, parser)
+				out = extractCmdSubstsFromWord(p.Repl.Orig, out, printer)
 			}
 			if p.Repl.With != nil {
-				out = extractCmdSubstsFromWord(p.Repl.With, out, parser)
+				out = extractCmdSubstsFromWord(p.Repl.With, out, printer)
 			}
 		}
 	}
@@ -207,12 +178,11 @@ func extractCmdSubstsFromPart(part syntax.WordPart, out []string, parser *syntax
 
 // callExprString reconstructs the command string from a CallExpr,
 // including any leading environment variable assignments.
-func callExprString(ce *syntax.CallExpr) string {
+func callExprString(ce *syntax.CallExpr, printer *syntax.Printer) string {
 	if len(ce.Args) == 0 && len(ce.Assigns) == 0 {
 		return ""
 	}
 	var buf bytes.Buffer
-	printer := syntax.NewPrinter()
 	for _, assign := range ce.Assigns {
 		if buf.Len() > 0 {
 			buf.WriteByte(' ')
@@ -228,28 +198,25 @@ func callExprString(ce *syntax.CallExpr) string {
 	return buf.String()
 }
 
+func basename(s string) string {
+	if idx := strings.LastIndex(s, "/"); idx >= 0 {
+		return s[idx+1:]
+	}
+	return s
+}
+
 // maybeRecurseBashC checks if a CallExpr is `bash -c '...'` or `sh -c '...'`
 // and recursively extracts commands from the inner script.
-func maybeRecurseBashC(ce *syntax.CallExpr, out []string, parser *syntax.Parser) []string {
+func maybeRecurseBashC(ce *syntax.CallExpr, out []string, printer *syntax.Printer) []string {
 	if len(ce.Args) < 3 {
 		return out
 	}
-	// Get the base command name
-	cmdName := wordToLiteral(ce.Args[0])
-	base := cmdName
-	// Handle paths like /bin/bash, /usr/bin/env
-	if idx := strings.LastIndex(base, "/"); idx >= 0 {
-		base = base[idx+1:]
-	}
+	base := basename(wordToLiteral(ce.Args[0]))
 
 	// For "env bash -c ..." or "env sh -c ...", skip the "env" arg
 	args := ce.Args[1:]
 	if base == "env" && len(args) >= 3 {
-		cmdName = wordToLiteral(args[0])
-		base = cmdName
-		if idx := strings.LastIndex(base, "/"); idx >= 0 {
-			base = base[idx+1:]
-		}
+		base = basename(wordToLiteral(args[0]))
 		args = args[1:]
 	}
 
@@ -269,13 +236,11 @@ func maybeRecurseBashC(ce *syntax.CallExpr, out []string, parser *syntax.Parser)
 		return out
 	}
 
-	// Get the script argument
 	script := wordToLiteral(args[cIdx+1])
 	if script == "" {
 		return out
 	}
 
-	// Recursively parse
 	inner, err := ExtractCommands(script)
 	if err != nil {
 		return out

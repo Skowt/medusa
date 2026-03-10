@@ -15,36 +15,13 @@ type Permissions struct {
 }
 
 // LoadPermissions reads Claude Code settings from all layers and extracts
-// Bash permission prefixes.
+// Bash permission prefixes. Reads global settings first; only spawns git
+// to find the project root if needed.
 func LoadPermissions(gitRoot string) *Permissions {
-	var files []string
-
-	// Global settings: either CLAUDE_CONFIG_DIR or ~/.claude
-	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if configDir == "" {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			configDir = filepath.Join(home, ".claude")
-		}
-	}
-	if configDir != "" {
-		files = append(files,
-			filepath.Join(configDir, "settings.json"),
-			filepath.Join(configDir, "settings.local.json"),
-		)
-	}
-
-	// Project settings
-	if gitRoot != "" {
-		files = append(files,
-			filepath.Join(gitRoot, ".claude", "settings.json"),
-			filepath.Join(gitRoot, ".claude", "settings.local.json"),
-		)
-	}
-
 	perms := &Permissions{}
 	seen := make(map[string]bool)
-	for _, f := range files {
+
+	addPerms := func(f string) {
 		allow, deny := readSettingsPermissions(f)
 		for _, p := range allow {
 			if !seen["a:"+p] {
@@ -59,6 +36,26 @@ func LoadPermissions(gitRoot string) *Permissions {
 			}
 		}
 	}
+
+	// Global settings: either CLAUDE_CONFIG_DIR or ~/.claude
+	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if configDir == "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			configDir = filepath.Join(home, ".claude")
+		}
+	}
+	if configDir != "" {
+		addPerms(filepath.Join(configDir, "settings.json"))
+		addPerms(filepath.Join(configDir, "settings.local.json"))
+	}
+
+	// Project settings
+	if gitRoot != "" {
+		addPerms(filepath.Join(gitRoot, ".claude", "settings.json"))
+		addPerms(filepath.Join(gitRoot, ".claude", "settings.local.json"))
+	}
+
 	return perms
 }
 
@@ -93,23 +90,24 @@ func readSettingsPermissions(path string) (allow, deny []string) {
 
 // FindGitRoot returns the top-level directory of the git repository, handling
 // worktrees by resolving --git-common-dir. Returns "" if not in a git repo.
+// Uses a single git process for all three queries.
 func FindGitRoot() string {
-	toplevel, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir").Output()
 	if err != nil {
 		return ""
 	}
-	gitDir, err := exec.Command("git", "rev-parse", "--git-dir").Output()
-	if err != nil {
-		return strings.TrimSpace(string(toplevel))
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 3 {
+		if len(lines) > 0 {
+			return strings.TrimSpace(lines[0])
+		}
+		return ""
 	}
-	commonDir, err := exec.Command("git", "rev-parse", "--git-common-dir").Output()
-	if err != nil {
-		return strings.TrimSpace(string(toplevel))
+	toplevel := strings.TrimSpace(lines[0])
+	gitDir := strings.TrimSpace(lines[1])
+	commonDir := strings.TrimSpace(lines[2])
+	if gitDir != commonDir {
+		return filepath.Dir(commonDir)
 	}
-	gd := strings.TrimSpace(string(gitDir))
-	cd := strings.TrimSpace(string(commonDir))
-	if gd != cd {
-		return filepath.Dir(cd)
-	}
-	return strings.TrimSpace(string(toplevel))
+	return toplevel
 }

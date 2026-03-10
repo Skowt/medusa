@@ -235,23 +235,18 @@ func InjectIntoAllProfiles(profilesRoot string, global *GlobalPermissions) error
 	if global == nil || (len(global.Allow) == 0 && len(global.Deny) == 0) {
 		return nil
 	}
-	entries, err := os.ReadDir(profilesRoot)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+	return forEachProfile(profilesRoot, func(profileDir string) error {
+		return InjectGlobalPermissions(profileDir, global)
+	})
+}
+
+// getOrCreateMap extracts or initializes a sub-map from settings.
+func getOrCreateMap(settings map[string]any, key string) map[string]any {
+	m, _ := settings[key].(map[string]any)
+	if m == nil {
+		m = make(map[string]any)
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "shared" {
-			continue
-		}
-		profileDir := filepath.Join(profilesRoot, entry.Name())
-		if err := InjectGlobalPermissions(profileDir, global); err != nil {
-			return err
-		}
-	}
-	return nil
+	return m
 }
 
 // InjectHooks merges Claude Code hook definitions into a profile's settings.json.
@@ -260,10 +255,7 @@ func InjectIntoAllProfiles(profilesRoot string, global *GlobalPermissions) error
 // Existing hook entries (e.g. compound approve) are preserved via append-and-dedup.
 func InjectHooks(profileDir, hooksDir string) error {
 	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
-		hooks, _ := settings["hooks"].(map[string]any)
-		if hooks == nil {
-			hooks = make(map[string]any)
-		}
+		hooks := getOrCreateMap(settings, "hooks")
 
 		makeCommand := func(eventName string) string {
 			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then printf '{"event":"` + eventName + `","ts":%s}\n' "$(date +%s)" > ` + hooksDir + `/"$MEDUSA_SESSION_NAME".json; fi`
@@ -336,51 +328,6 @@ func InjectHooks(profileDir, hooksDir string) error {
 	})
 }
 
-// upsertHookRule appends rule to the existing hook event array, replacing any
-// entry whose command matches cmd to avoid duplicates.
-func upsertHookRule(existing any, rule map[string]any, cmd string) []any {
-	arr, _ := existing.([]any)
-	var result []any
-	for _, entry := range arr {
-		m, ok := entry.(map[string]any)
-		if !ok {
-			result = append(result, entry)
-			continue
-		}
-		if hookRuleHasCommand(m, cmd) {
-			continue // Will be replaced by the new rule
-		}
-		result = append(result, entry)
-	}
-	return append(result, rule)
-}
-
-// hookRuleHasCommand returns true if a hook rule entry contains the given command.
-func hookRuleHasCommand(rule map[string]any, cmd string) bool {
-	innerHooks, _ := rule["hooks"].([]any)
-	for _, h := range innerHooks {
-		if hm, ok := h.(map[string]any); ok {
-			if c, _ := hm["command"].(string); c == cmd {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// hookRuleHasCommandPrefix returns true if any command in the rule starts with prefix.
-func hookRuleHasCommandPrefix(rule map[string]any, prefix string) bool {
-	innerHooks, _ := rule["hooks"].([]any)
-	for _, h := range innerHooks {
-		if hm, ok := h.(map[string]any); ok {
-			if c, _ := hm["command"].(string); strings.HasPrefix(c, prefix) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // InjectHooksIntoAllProfiles iterates all profile directories and merges
 // hook definitions into each one's settings.json.
 func InjectHooksIntoAllProfiles(profilesRoot, hooksDir string) error {
@@ -394,12 +341,8 @@ func InjectHooksIntoAllProfiles(profilesRoot, hooksDir string) error {
 // when every sub-command is individually allowed.
 func InjectCompoundApproveHook(profileDir string, hookBinaryPath string) error {
 	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
-		hooks, _ := settings["hooks"].(map[string]any)
-		if hooks == nil {
-			hooks = make(map[string]any)
-		}
+		hooks := getOrCreateMap(settings, "hooks")
 
-		// Build the desired hook entry
 		hookEntry := map[string]any{
 			"matcher": "Bash",
 			"hooks": []any{
@@ -411,19 +354,11 @@ func InjectCompoundApproveHook(profileDir string, hookBinaryPath string) error {
 			},
 		}
 
-		// Check existing PreToolUse entries to avoid duplicates
+		// Dedup: check if already installed
 		existing, _ := hooks["PreToolUse"].([]any)
 		for _, entry := range existing {
-			if m, ok := entry.(map[string]any); ok {
-				if innerHooks, ok := m["hooks"].([]any); ok {
-					for _, h := range innerHooks {
-						if hm, ok := h.(map[string]any); ok {
-							if cmd, _ := hm["command"].(string); cmd == hookBinaryPath {
-								return // Already installed
-							}
-						}
-					}
-				}
+			if m, ok := entry.(map[string]any); ok && hookRuleHasCommand(m, hookBinaryPath) {
+				return
 			}
 		}
 
@@ -448,25 +383,7 @@ func RemoveCompoundApproveHook(profileDir string, hookBinaryPath string) error {
 		var kept []any
 		for _, entry := range existing {
 			m, ok := entry.(map[string]any)
-			if !ok {
-				kept = append(kept, entry)
-				continue
-			}
-			innerHooks, ok := m["hooks"].([]any)
-			if !ok {
-				kept = append(kept, entry)
-				continue
-			}
-			isOurs := false
-			for _, h := range innerHooks {
-				if hm, ok := h.(map[string]any); ok {
-					if cmd, _ := hm["command"].(string); cmd == hookBinaryPath {
-						isOurs = true
-						break
-					}
-				}
-			}
-			if !isOurs {
+			if !ok || !hookRuleHasCommand(m, hookBinaryPath) {
 				kept = append(kept, entry)
 			}
 		}
