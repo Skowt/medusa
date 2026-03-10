@@ -132,9 +132,8 @@ func (s *SettingsDialog) renderLines() []string {
 		style = style.Foreground(ColorPrimary)
 	}
 	y = len(lines)
-	lines = append(lines, style.Render(checkbox+" Auto-approve compound commands"))
+	lines = append(lines, style.Render(checkbox+" Auto-split compound commands for permission checks"))
 	s.addHit(settingsItemCompoundApprove, -1, y)
-	lines = append(lines, muted.Render("  Approve piped/chained Bash commands"))
 
 	// Notification sound link
 	soundLabel := "None"
