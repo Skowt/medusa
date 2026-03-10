@@ -118,7 +118,8 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 					return messages.Error{Err: err, Context: "validating workspace name"}
 				}
 			}
-			// Re-set dialog state for chaining and show profile picker
+			// Capture checkbox and re-set dialog state for chaining
+			workspace.CopyIgnored = result.CheckboxValue
 			a.dialogWorkspace = workspace
 			a.dialogDefaultName = name
 			a.showProfilePickerForCreate()
@@ -315,6 +316,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			name := defaultName
 			repos := workspace.Repos
 			wsProfile := workspace.Profile
+			copyIgnored := workspace.CopyIgnored
 			switch result.Index {
 			case 0: // Latest remote main
 				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
@@ -323,7 +325,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				})
 				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchRemoteBase(repos, name, wsProfile)
+				return a.fetchRemoteBase(repos, name, wsProfile, copyIgnored)
 			case 1: // Checked out branch
 				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
 					"Resolving checked out branch",
@@ -331,7 +333,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				})
 				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchCheckedOutBase(repos, name, wsProfile)
+				return a.fetchCheckedOutBase(repos, name, wsProfile, copyIgnored)
 			case 2: // Custom branch
 				a.dialogWorkspace = workspace
 				a.dialogDefaultName = name
@@ -353,13 +355,14 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			name := defaultName
 			repos := workspace.Repos
 			wsProfile := workspace.Profile
+			copyIgnored := workspace.CopyIgnored
 			a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
 				"Resolving custom branch",
 				"Creating worktree",
 			})
 			a.creationOverlay.SetStepDetail(repos[0].Name)
 			a.creationOverlay.SetSize(a.width, a.height)
-			return a.fetchCustomBase(repos, name, wsProfile, customBranch)
+			return a.fetchCustomBase(repos, name, wsProfile, customBranch, copyIgnored)
 		}
 
 	case DialogQuit:
@@ -414,6 +417,7 @@ func (a *App) showNameWorkspaceDialog(repos []data.RepoRef) {
 		}
 		return ""
 	})
+	a.dialog.SetCheckbox("Copy gitignore'd files", true)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()

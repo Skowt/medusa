@@ -1268,11 +1268,11 @@ func (a *App) handleCreateWorkspace(msg messages.CreateWorkspace) []tea.Cmd {
 	// Start the fetch+create flow based on branch mode
 	switch msg.BranchMode {
 	case git.BranchModeCheckedOut:
-		cmds = append(cmds, a.fetchCheckedOutBase(msg.Repos, msg.Name, ""))
+		cmds = append(cmds, a.fetchCheckedOutBase(msg.Repos, msg.Name, "", msg.CopyIgnored))
 	case git.BranchModeCustom:
-		cmds = append(cmds, a.fetchCustomBase(msg.Repos, msg.Name, "", msg.CustomBranch))
+		cmds = append(cmds, a.fetchCustomBase(msg.Repos, msg.Name, "", msg.CustomBranch, msg.CopyIgnored))
 	default: // BranchModeRemoteMain
-		cmds = append(cmds, a.fetchRemoteBase(msg.Repos, msg.Name, ""))
+		cmds = append(cmds, a.fetchRemoteBase(msg.Repos, msg.Name, "", msg.CopyIgnored))
 	}
 	return cmds
 }
