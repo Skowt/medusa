@@ -254,21 +254,16 @@ func InjectIntoAllProfiles(profilesRoot string, global *GlobalPermissions) error
 	return nil
 }
 
-// getOrCreateMap extracts or initializes a sub-map from settings.
-func getOrCreateMap(settings map[string]any, key string) map[string]any {
-	m, _ := settings[key].(map[string]any)
-	if m == nil {
-		m = make(map[string]any)
-	}
-	return m
-}
-
 // InjectHooks merges Claude Code hook definitions into a profile's settings.json.
 // Each hook writes a JSON event file to hooksDir so the Medusa watcher can detect
 // agent lifecycle transitions. The shell guard ensures non-Medusa sessions are no-ops.
+// Existing hook entries (e.g. compound approve) are preserved via append-and-dedup.
 func InjectHooks(profileDir, hooksDir string) error {
 	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
-		hooks := getOrCreateMap(settings, "hooks")
+		hooks, _ := settings["hooks"].(map[string]any)
+		if hooks == nil {
+			hooks = make(map[string]any)
+		}
 
 		makeCommand := func(eventName string) string {
 			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then printf '{"event":"` + eventName + `","ts":%s}\n' "$(date +%s)" > ` + hooksDir + `/"$MEDUSA_SESSION_NAME".json; fi`
@@ -288,21 +283,23 @@ func InjectHooks(profileDir, hooksDir string) error {
 		}
 
 		for _, def := range defs {
-			hookEntry := map[string]any{
-				"type":    "command",
-				"command": makeCommand(def.event),
-				"timeout": 5000,
-			}
+			cmd := makeCommand(def.event)
 			rule := map[string]any{
-				"hooks": []any{hookEntry},
+				"hooks": []any{
+					map[string]any{
+						"type":    "command",
+						"command": cmd,
+						"timeout": 5000,
+					},
+				},
 			}
 			if def.matcher != "" {
 				rule["matcher"] = def.matcher
 			}
-			hooks[def.event] = []any{rule}
+			hooks[def.event] = upsertHookRule(hooks[def.event], rule, cmd)
 		}
 
-		// Split Notification into two entries so the written JSON
+		// Split Notification into sub-matchers so written JSON
 		// distinguishes idle_prompt from permission_prompt.
 		notificationDefs := []hookDef{
 			{event: "NotificationIdle", matcher: "idle_prompt"},
@@ -310,14 +307,25 @@ func InjectHooks(profileDir, hooksDir string) error {
 			{event: "NotificationElicitation", matcher: "elicitation_dialog"},
 		}
 		var notificationRules []any
-		for _, def := range notificationDefs {
-			hookEntry := map[string]any{
-				"type":    "command",
-				"command": makeCommand(def.event),
-				"timeout": 5000,
+		existing, _ := hooks["Notification"].([]any)
+		// Preserve non-medusa notification entries
+		for _, e := range existing {
+			if m, ok := e.(map[string]any); ok {
+				if !hookRuleHasCommandPrefix(m, "if [ -n \"$MEDUSA_SESSION_NAME\"") {
+					notificationRules = append(notificationRules, e)
+				}
 			}
+		}
+		for _, def := range notificationDefs {
+			cmd := makeCommand(def.event)
 			rule := map[string]any{
-				"hooks":   []any{hookEntry},
+				"hooks": []any{
+					map[string]any{
+						"type":    "command",
+						"command": cmd,
+						"timeout": 5000,
+					},
+				},
 				"matcher": def.matcher,
 			}
 			notificationRules = append(notificationRules, rule)
@@ -328,9 +336,168 @@ func InjectHooks(profileDir, hooksDir string) error {
 	})
 }
 
+// upsertHookRule appends rule to the existing hook event array, replacing any
+// entry whose command matches cmd to avoid duplicates.
+func upsertHookRule(existing any, rule map[string]any, cmd string) []any {
+	arr, _ := existing.([]any)
+	var result []any
+	for _, entry := range arr {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			result = append(result, entry)
+			continue
+		}
+		if hookRuleHasCommand(m, cmd) {
+			continue // Will be replaced by the new rule
+		}
+		result = append(result, entry)
+	}
+	return append(result, rule)
+}
+
+// hookRuleHasCommand returns true if a hook rule entry contains the given command.
+func hookRuleHasCommand(rule map[string]any, cmd string) bool {
+	innerHooks, _ := rule["hooks"].([]any)
+	for _, h := range innerHooks {
+		if hm, ok := h.(map[string]any); ok {
+			if c, _ := hm["command"].(string); c == cmd {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hookRuleHasCommandPrefix returns true if any command in the rule starts with prefix.
+func hookRuleHasCommandPrefix(rule map[string]any, prefix string) bool {
+	innerHooks, _ := rule["hooks"].([]any)
+	for _, h := range innerHooks {
+		if hm, ok := h.(map[string]any); ok {
+			if c, _ := hm["command"].(string); strings.HasPrefix(c, prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // InjectHooksIntoAllProfiles iterates all profile directories and merges
 // hook definitions into each one's settings.json.
 func InjectHooksIntoAllProfiles(profilesRoot, hooksDir string) error {
+	return forEachProfile(profilesRoot, func(profileDir string) error {
+		return InjectHooks(profileDir, hooksDir)
+	})
+}
+
+// InjectCompoundApproveHook adds the medusa-approve-compound PreToolUse hook
+// to a profile's settings.json. The hook auto-approves compound Bash commands
+// when every sub-command is individually allowed.
+func InjectCompoundApproveHook(profileDir string, hookBinaryPath string) error {
+	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
+		hooks, _ := settings["hooks"].(map[string]any)
+		if hooks == nil {
+			hooks = make(map[string]any)
+		}
+
+		// Build the desired hook entry
+		hookEntry := map[string]any{
+			"matcher": "Bash",
+			"hooks": []any{
+				map[string]any{
+					"type":    "command",
+					"command": hookBinaryPath,
+					"timeout": 3,
+				},
+			},
+		}
+
+		// Check existing PreToolUse entries to avoid duplicates
+		existing, _ := hooks["PreToolUse"].([]any)
+		for _, entry := range existing {
+			if m, ok := entry.(map[string]any); ok {
+				if innerHooks, ok := m["hooks"].([]any); ok {
+					for _, h := range innerHooks {
+						if hm, ok := h.(map[string]any); ok {
+							if cmd, _ := hm["command"].(string); cmd == hookBinaryPath {
+								return // Already installed
+							}
+						}
+					}
+				}
+			}
+		}
+
+		hooks["PreToolUse"] = append(existing, hookEntry)
+		settings["hooks"] = hooks
+	})
+}
+
+// RemoveCompoundApproveHook removes the medusa-approve-compound PreToolUse hook
+// from a profile's settings.json.
+func RemoveCompoundApproveHook(profileDir string, hookBinaryPath string) error {
+	settingsPath := filepath.Join(profileDir, "settings.json")
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		return nil
+	}
+	return readModifyWriteJSON(settingsPath, func(settings map[string]any) {
+		hooks, _ := settings["hooks"].(map[string]any)
+		if hooks == nil {
+			return
+		}
+		existing, _ := hooks["PreToolUse"].([]any)
+		var kept []any
+		for _, entry := range existing {
+			m, ok := entry.(map[string]any)
+			if !ok {
+				kept = append(kept, entry)
+				continue
+			}
+			innerHooks, ok := m["hooks"].([]any)
+			if !ok {
+				kept = append(kept, entry)
+				continue
+			}
+			isOurs := false
+			for _, h := range innerHooks {
+				if hm, ok := h.(map[string]any); ok {
+					if cmd, _ := hm["command"].(string); cmd == hookBinaryPath {
+						isOurs = true
+						break
+					}
+				}
+			}
+			if !isOurs {
+				kept = append(kept, entry)
+			}
+		}
+		if len(kept) > 0 {
+			hooks["PreToolUse"] = kept
+		} else {
+			delete(hooks, "PreToolUse")
+		}
+		if len(hooks) == 0 {
+			delete(settings, "hooks")
+		} else {
+			settings["hooks"] = hooks
+		}
+	})
+}
+
+// InjectCompoundApproveHookAllProfiles adds the hook to all profiles.
+func InjectCompoundApproveHookAllProfiles(profilesRoot, hookBinaryPath string) error {
+	return forEachProfile(profilesRoot, func(profileDir string) error {
+		return InjectCompoundApproveHook(profileDir, hookBinaryPath)
+	})
+}
+
+// RemoveCompoundApproveHookAllProfiles removes the hook from all profiles.
+func RemoveCompoundApproveHookAllProfiles(profilesRoot, hookBinaryPath string) error {
+	return forEachProfile(profilesRoot, func(profileDir string) error {
+		return RemoveCompoundApproveHook(profileDir, hookBinaryPath)
+	})
+}
+
+func forEachProfile(profilesRoot string, fn func(string) error) error {
 	entries, err := os.ReadDir(profilesRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -342,8 +509,7 @@ func InjectHooksIntoAllProfiles(profilesRoot, hooksDir string) error {
 		if !entry.IsDir() || entry.Name() == "shared" {
 			continue
 		}
-		profileDir := filepath.Join(profilesRoot, entry.Name())
-		if err := InjectHooks(profileDir, hooksDir); err != nil {
+		if err := fn(filepath.Join(profilesRoot, entry.Name())); err != nil {
 			return err
 		}
 	}

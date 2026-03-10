@@ -6,6 +6,7 @@ MAIN_PACKAGE := ./cmd/medusa
 
 build:
 	go build -o $(BINARY_NAME) $(MAIN_PACKAGE)
+	go build -o medusa-approve-compound ./cmd/medusa-approve-compound
 
 test:
 	go test -v ./...
@@ -29,7 +30,7 @@ vet:
 	go vet ./...
 
 clean:
-	rm -f $(BINARY_NAME)
+	rm -f $(BINARY_NAME) medusa-approve-compound
 
 run: build
 	./$(BINARY_NAME)

@@ -1038,6 +1038,7 @@ func (a *App) handleShowSettingsDialog() {
 		a.config.UI.AutoStartAgent,
 		a.config.UI.SyncProfilePlugins,
 		a.config.UI.GlobalPermissions,
+		a.config.UI.CompoundApprove,
 		a.config.UI.NotificationSound,
 		a.config.UI.TmuxPersistence,
 	)
@@ -1210,6 +1211,19 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 				sidebarCmds = append(sidebarCmds, a.requestGitStatus(a.activeWorkspace.PrimaryWorktreeRoot()))
 				if a.fileWatcher != nil {
 					_ = a.fileWatcher.Watch(a.activeWorkspace.PrimaryWorktreeRoot())
+				}
+			}
+		}
+
+		oldCompoundApprove := a.config.UI.CompoundApprove
+		a.config.UI.CompoundApprove = msg.CompoundApprove
+		if msg.CompoundApprove != oldCompoundApprove {
+			if exe, err := os.Executable(); err == nil {
+				hookBin := filepath.Join(filepath.Dir(exe), "medusa-approve-compound")
+				if msg.CompoundApprove {
+					_ = config.InjectCompoundApproveHookAllProfiles(a.config.Paths.ProfilesRoot, hookBin)
+				} else {
+					_ = config.RemoveCompoundApproveHookAllProfiles(a.config.Paths.ProfilesRoot, hookBin)
 				}
 			}
 		}

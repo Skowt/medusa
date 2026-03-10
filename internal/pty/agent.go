@@ -126,6 +126,15 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		if opts.AllowEdits {
 			_ = config.InjectAllowEdits(ws.Root())
 		}
+		// Inject compound command approval hook if enabled
+		if m.config.UI.CompoundApprove {
+			if exe, err := os.Executable(); err == nil {
+				hookBin := filepath.Join(filepath.Dir(exe), "medusa-approve-compound")
+				if _, err := os.Stat(hookBin); err == nil {
+					_ = config.InjectCompoundApproveHook(profileDir, hookBin)
+				}
+			}
+		}
 		agentCommand = fmt.Sprintf("CLAUDE_CONFIG_DIR=%s %s", shellutil.Quote(profileDir), agentCommand)
 	}
 

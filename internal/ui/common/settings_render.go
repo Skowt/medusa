@@ -123,6 +123,19 @@ func (s *SettingsDialog) renderLines() []string {
 	// ── Agents ───────────────────────────────────────────────
 	lines = append(lines, label.Render("Agents"))
 
+	checkbox = "[ ]"
+	if s.compoundApprove {
+		checkbox = "[" + Icons.Clean + "]"
+	}
+	style = lipgloss.NewStyle().Foreground(ColorForeground)
+	if s.focusedItem == settingsItemCompoundApprove {
+		style = style.Foreground(ColorPrimary)
+	}
+	y = len(lines)
+	lines = append(lines, style.Render(checkbox+" Auto-approve compound commands"))
+	s.addHit(settingsItemCompoundApprove, -1, y)
+	lines = append(lines, muted.Render("  Approve piped/chained Bash commands"))
+
 	// Notification sound link
 	soundLabel := "None"
 	if s.notificationSound != "" {

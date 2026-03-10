@@ -18,6 +18,7 @@ type SettingsResult struct {
 	AutoStartAgent     bool
 	SyncProfilePlugins bool
 	GlobalPermissions  bool
+	CompoundApprove    bool
 	NotificationSound  string
 	TmuxPersistence    bool
 }
@@ -42,7 +43,8 @@ const (
 	settingsItemSyncPlugins         // Shared Config section
 	settingsItemGlobalPerms
 	settingsItemEditPermissions
-	settingsItemNotificationSound   // Agents section
+	settingsItemCompoundApprove      // Agents section
+	settingsItemNotificationSound
 	settingsItemEditSandboxRules
 	settingsItemAutoStart           // Tmux section
 	settingsItemTmuxPersistence
@@ -66,6 +68,7 @@ type SettingsDialog struct {
 	autoStartAgent     bool
 	syncProfilePlugins bool
 	globalPerms        bool
+	compoundApprove    bool
 	notificationSound  string
 	tmuxPersistence    bool
 
@@ -89,7 +92,7 @@ type settingsHitRegion struct {
 }
 
 // NewSettingsDialog creates a new settings dialog with current values.
-func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent, syncProfilePlugins, globalPerms bool, notificationSound string, tmuxPersistence bool) *SettingsDialog {
+func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent, syncProfilePlugins, globalPerms, compoundApprove bool, notificationSound string, tmuxPersistence bool) *SettingsDialog {
 	return &SettingsDialog{
 		theme:              currentTheme,
 		showKeymapHints:    showKeymapHints,
@@ -98,6 +101,7 @@ func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideT
 		autoStartAgent:     autoStartAgent,
 		syncProfilePlugins: syncProfilePlugins,
 		globalPerms:        globalPerms,
+		compoundApprove:    compoundApprove,
 		notificationSound:  notificationSound,
 		tmuxPersistence:    tmuxPersistence,
 		focusedItem:        settingsItemKeymap,
@@ -203,6 +207,10 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		}
 		return s, nil
 
+	case settingsItemCompoundApprove:
+		s.compoundApprove = !s.compoundApprove
+		return s, nil
+
 	case settingsItemEditSandboxRules:
 		s.visible = false
 		return s, func() tea.Msg { return ShowSandboxRulesEditor{} }
@@ -223,6 +231,7 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 				AutoStartAgent:     s.autoStartAgent,
 				SyncProfilePlugins: s.syncProfilePlugins,
 				GlobalPermissions:  s.globalPerms,
+				CompoundApprove:    s.compoundApprove,
 				NotificationSound:  s.notificationSound,
 				TmuxPersistence:    s.tmuxPersistence,
 			}

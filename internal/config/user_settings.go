@@ -26,6 +26,7 @@ type UISettings struct {
 	TmuxPersistence    bool
 	NotificationSound  string // Sound name from /System/Library/Sounds (empty = none)
 	IDE                string // CLI command for IDE (e.g., "code", "cursor", "pycharm")
+	CompoundApprove    bool   // Auto-approve compound Bash commands via hook
 }
 
 func defaultUISettings() UISettings {
@@ -43,6 +44,7 @@ func defaultUISettings() UISettings {
 		TmuxSyncInterval:   "",
 		TmuxPersistence:    true,
 		NotificationSound:  "",
+		CompoundApprove:    true,
 	}
 }
 
@@ -72,6 +74,7 @@ func loadUISettings(path string) UISettings {
 			TmuxSyncInterval   *string `json:"tmux_sync_interval"`
 			TmuxPersistence    *bool   `json:"tmux_persistence"`
 			NotificationSound  *string `json:"notification_sound"`
+			CompoundApprove    *bool   `json:"compound_approve"`
 		} `json:"ui"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -128,6 +131,9 @@ func loadUISettings(path string) UISettings {
 	if raw.UI.NotificationSound != nil {
 		settings.NotificationSound = *raw.UI.NotificationSound
 	}
+	if raw.UI.CompoundApprove != nil {
+		settings.CompoundApprove = *raw.UI.CompoundApprove
+	}
 	return settings
 }
 
@@ -162,6 +168,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["tmux_sync_interval"] = settings.TmuxSyncInterval
 	ui["tmux_persistence"] = settings.TmuxPersistence
 	ui["notification_sound"] = settings.NotificationSound
+	ui["compound_approve"] = settings.CompoundApprove
 	payload["ui"] = ui
 
 	data, err := json.MarshalIndent(payload, "", "  ")
