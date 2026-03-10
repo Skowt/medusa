@@ -168,9 +168,10 @@ func (m *Model) rebuildRows() {
 		}
 		lastWs := groupWs[len(groupWs)-1]
 		m.rows = append(m.rows, Row{
-			Type:         RowQuickDuplicate,
-			GroupRepos:   lastWs.Repos,
-			GroupProfile: lastWs.Profile,
+			Type:             RowQuickDuplicate,
+			GroupRepos:       lastWs.Repos,
+			GroupProfile:     lastWs.Profile,
+			GroupCopyIgnored: lastWs.CopyIgnored,
 		})
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}

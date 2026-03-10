@@ -210,8 +210,9 @@ type ShowSettingsDialog struct{}
 
 // ShowQuickDuplicateDialog requests showing the quick duplicate dialog with pre-filled repos and profile.
 type ShowQuickDuplicateDialog struct {
-	Repos   []data.RepoRef
-	Profile string
+	Repos       []data.RepoRef
+	Profile     string
+	CopyIgnored bool
 }
 
 // ShowCreateWorkspaceDialog requests showing the create workspace dialog

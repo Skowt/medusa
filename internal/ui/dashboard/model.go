@@ -23,21 +23,22 @@ const spinnerInterval = 80 * time.Millisecond
 type RowType int
 
 const (
-	RowHome RowType = iota
-	RowWorkspace       // workspace entry
-	RowCreate          // "+ New Workspace"
+	RowHome      RowType = iota
+	RowWorkspace         // workspace entry
+	RowCreate            // "+ New Workspace"
 	RowSpacer
-	RowSectionHeader   // status group header
-	RowQuickDuplicate  // "+ Quick Duplicate"
+	RowSectionHeader  // status group header
+	RowQuickDuplicate // "+ Quick Duplicate"
 )
 
 // Row represents a single row in the dashboard
 type Row struct {
-	Type         RowType
-	Workspace    *data.Workspace
-	Label        string         // for RowSectionHeader
-	GroupRepos   []data.RepoRef // for RowQuickDuplicate
-	GroupProfile string         // for RowQuickDuplicate
+	Type             RowType
+	Workspace        *data.Workspace
+	Label            string         // for RowSectionHeader
+	GroupRepos       []data.RepoRef // for RowQuickDuplicate
+	GroupProfile     string         // for RowQuickDuplicate
+	GroupCopyIgnored bool           // for RowQuickDuplicate
 }
 
 // toolbarButtonKind identifies toolbar buttons
@@ -97,19 +98,19 @@ type Model struct {
 // New creates a new dashboard model
 func New() *Model {
 	return &Model{
-		workspaces:         []*data.Workspace{},
-		rows:               []Row{},
-		statusCache:        make(map[string]*git.StatusResult),
-		creatingWorkspaces: make(map[string]*data.Workspace),
-		deletingWorkspaces: make(map[string]bool),
+		workspaces:           []*data.Workspace{},
+		rows:                 []Row{},
+		statusCache:          make(map[string]*git.StatusResult),
+		creatingWorkspaces:   make(map[string]*data.Workspace),
+		deletingWorkspaces:   make(map[string]bool),
 		activeWorkspaceIDs:   make(map[string]bool),
 		workspaceAgentStates: make(map[string]int),
 		unreadWorkspaces:     make(map[string]bool),
 		confirmedActive:      make(map[string]bool),
 		hookStates:           make(map[string]string),
-		cursor:             0,
-		focused:            true,
-		styles:             common.DefaultStyles(),
+		cursor:               0,
+		focused:              true,
+		styles:               common.DefaultStyles(),
 	}
 }
 

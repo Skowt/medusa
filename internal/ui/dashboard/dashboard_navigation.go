@@ -239,10 +239,12 @@ func (m *Model) activateRow(viaClick bool) tea.Cmd {
 	case RowQuickDuplicate:
 		repos := row.GroupRepos
 		profile := row.GroupProfile
+		copyIgnored := row.GroupCopyIgnored
 		return func() tea.Msg {
 			return messages.ShowQuickDuplicateDialog{
-				Repos:   repos,
-				Profile: profile,
+				Repos:       repos,
+				Profile:     profile,
+				CopyIgnored: copyIgnored,
 			}
 		}
 	}
