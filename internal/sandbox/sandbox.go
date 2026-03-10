@@ -23,7 +23,7 @@ import (
 // The rules parameter supplies configurable path-based deny/allow rules.
 // Dynamic writes (workspace, git dirs, config dir) are still passed as explicit
 // parameters and are not part of the rules config.
-func GenerateSBPL(worktreeRoot string, gitDirs []string, claudeConfigDir string, rules []config.SandboxRule) string {
+func GenerateSBPL(worktreeRoot string, gitDirs []string, claudeConfigDir string, hooksDir string, rules []config.SandboxRule) string {
 	var b strings.Builder
 	b.WriteString("(version 1)\n")
 	b.WriteString("(deny default)\n\n")
@@ -82,6 +82,11 @@ func GenerateSBPL(worktreeRoot string, gitDirs []string, claudeConfigDir string,
 		sharedDir := filepath.Join(filepath.Dir(claudeConfigDir), "shared")
 		b.WriteString(";; File writes — shared plugins/skills (symlink target)\n")
 		fmt.Fprintf(&b, "(allow file-write* (subpath %q))\n\n", sharedDir)
+	}
+
+	if hooksDir != "" {
+		b.WriteString(";; File writes — Medusa hooks dir (event files for activity tracking)\n")
+		fmt.Fprintf(&b, "(allow file-write* (subpath %q))\n\n", hooksDir)
 	}
 
 	// ── File writes — configurable rules ───────────────────────
