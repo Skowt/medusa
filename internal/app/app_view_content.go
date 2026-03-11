@@ -127,6 +127,9 @@ func (a *App) renderWorkspaceInfo() string {
 	case data.StatusBlocked:
 		statusStr = "Blocked"
 		statusStyle = danger
+	case data.StatusReview:
+		statusStr = "Pending Review"
+		statusStyle = lipgloss.NewStyle().Foreground(common.ColorSecondary)
 	case data.StatusMerged:
 		statusStr = "Complete"
 		statusStyle = lipgloss.NewStyle().Foreground(common.ColorPrimary)

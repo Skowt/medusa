@@ -218,6 +218,9 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	case data.StatusBlocked:
 		indicator = common.Icons.Blocked
 		indicatorFg = common.ColorError
+	case data.StatusReview:
+		indicator = common.Icons.Pending
+		indicatorFg = common.ColorSecondary
 	case data.StatusMerged:
 		indicator = common.Icons.Completed
 		indicatorFg = common.ColorPrimary

@@ -25,11 +25,12 @@ const (
 type WorkspaceStatus string
 
 const (
-	StatusNone     WorkspaceStatus = ""         // default/no status set
-	StatusStarted  WorkspaceStatus = "started"
-	StatusBlocked  WorkspaceStatus = "blocked"
-	StatusMerged   WorkspaceStatus = "merged"
-	StatusArchived WorkspaceStatus = "archived"
+	StatusNone      WorkspaceStatus = ""         // default/no status set
+	StatusStarted   WorkspaceStatus = "started"
+	StatusBlocked   WorkspaceStatus = "blocked"
+	StatusReview    WorkspaceStatus = "review"
+	StatusMerged    WorkspaceStatus = "merged"
+	StatusArchived  WorkspaceStatus = "archived"
 )
 
 // RepoRef identifies a source git repository

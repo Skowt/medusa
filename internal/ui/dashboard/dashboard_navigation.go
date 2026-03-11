@@ -315,6 +315,8 @@ func (m *Model) handleToggleStatus() tea.Cmd {
 		case data.StatusNone, data.StatusStarted:
 			next = data.StatusBlocked
 		case data.StatusBlocked:
+			next = data.StatusReview
+		case data.StatusReview:
 			next = data.StatusMerged
 		case data.StatusMerged:
 			next = data.StatusNone
