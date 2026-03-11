@@ -19,6 +19,8 @@ const (
 	RestartAlways
 )
 
+const stopTimeout = 500 * time.Millisecond
+
 type options struct {
 	policy      RestartPolicy
 	maxRestarts int
@@ -78,7 +80,7 @@ func (s *Supervisor) Context() context.Context {
 }
 
 // Stop cancels all workers and waits for them to exit.
-// If workers don't exit within 3 seconds, Stop returns anyway to avoid
+// If workers don't exit within stopTimeout, Stop returns anyway to avoid
 // hanging the application on quit.
 func (s *Supervisor) Stop() {
 	if s == nil {
@@ -92,8 +94,8 @@ func (s *Supervisor) Stop() {
 	}()
 	select {
 	case <-done:
-	case <-time.After(3 * time.Second):
-		logging.Warn("supervisor: workers did not exit within timeout")
+	case <-time.After(stopTimeout):
+		logging.Warn("supervisor: workers did not exit within %s timeout", stopTimeout)
 	}
 }
 
@@ -150,7 +152,11 @@ func (s *Supervisor) Start(name string, fn func(context.Context) error, opts ...
 				return
 			}
 			if backoff > 0 {
-				time.Sleep(backoff)
+				select {
+				case <-time.After(backoff):
+				case <-s.ctx.Done():
+					return
+				}
 				if backoff < cfg.maxBackoff {
 					backoff *= 2
 					if backoff > cfg.maxBackoff {

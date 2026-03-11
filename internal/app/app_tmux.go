@@ -63,7 +63,7 @@ func (a *App) CleanupTmuxOnExit() {
 		return
 	}
 	opts := a.tmuxOptions
-	opts.CommandTimeout = 2 * time.Second
+	opts.CommandTimeout = 500 * time.Millisecond // Aggressive timeout on exit to avoid blocking shutdown
 	if cleaned, err := tmux.KillSessionsMatchingTags(map[string]string{"@medusa": "1"}, opts); err != nil {
 		logging.Warn("Failed to cleanup tmux sessions on exit by tag: %v", err)
 	} else if cleaned {
