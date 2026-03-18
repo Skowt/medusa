@@ -434,6 +434,9 @@ func (a *App) showRepoFilePicker() {
 		if !git.IsGitRepository(path) {
 			return "Not a git repository"
 		}
+		if git.IsWorktree(path) {
+			return "Worktrees cannot be used as workspace sources"
+		}
 		for _, p := range existing {
 			if p == path {
 				return "Already added"
@@ -492,6 +495,9 @@ func (a *App) showAddReposToWorkspaceFilePicker(ws *data.Workspace) {
 	a.filePicker.SetValidatePath(func(path string, existing []string) string {
 		if !git.IsGitRepository(path) {
 			return "Not a git repository"
+		}
+		if git.IsWorktree(path) {
+			return "Worktrees cannot be used as workspace sources"
 		}
 		if existingPaths[path] {
 			return "Already in this workspace"

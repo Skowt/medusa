@@ -95,6 +95,17 @@ func BranchExists(repoPath, branch string) bool {
 	return strings.TrimSpace(output) != ""
 }
 
+// IsWorktree returns true if the given path is a git worktree (not a main clone).
+// A worktree has a .git file (not directory) pointing to the main repo's .git/worktrees/.
+func IsWorktree(path string) bool {
+	gitPath := filepath.Join(path, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
 // ResolveWorktreeRepo resolves a worktree (or plain clone) directory back to
 // the path of the main repository that owns it.
 // It first tries git directly, then falls back to parsing the .git file
