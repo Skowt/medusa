@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/app"
+	"github.com/Skowt/medusa/internal/app"
 )
 
 type stats struct {

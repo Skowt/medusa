@@ -2,9 +2,9 @@
 set -e
 
 # medusa installer script
-# Usage: curl -fsSL https://raw.githubusercontent.com/andyrewlee/medusa/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | sh
 
-REPO="andyrewlee/medusa"
+REPO="Skowt/medusa"
 BINARY="medusa"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 

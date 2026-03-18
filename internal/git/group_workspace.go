@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // FetchStalenessThreshold is how old FETCH_HEAD can be before we re-fetch.

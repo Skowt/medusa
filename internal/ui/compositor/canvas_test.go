@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 func TestCanvasRenderDoubleBuffer(t *testing.T) {

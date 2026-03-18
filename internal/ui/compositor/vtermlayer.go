@@ -5,7 +5,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/andyrewlee/medusa/internal/vterm"
+	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // asciiStrings avoids allocations when converting ASCII runes to strings.

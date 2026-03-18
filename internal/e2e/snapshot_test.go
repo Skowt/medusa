@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/app"
+	"github.com/Skowt/medusa/internal/app"
 )
 
 const (

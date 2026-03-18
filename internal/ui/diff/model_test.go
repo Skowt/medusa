@@ -3,7 +3,7 @@ package diff
 import (
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/git"
 )
 
 func newModelWithDiff(height int, lines int, hunks []git.Hunk) *Model {

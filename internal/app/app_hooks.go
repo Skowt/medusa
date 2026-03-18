@@ -5,9 +5,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/hooks"
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/supervisor"
+	"github.com/Skowt/medusa/internal/hooks"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/supervisor"
 )
 
 // hookActivityEvent is a Bubble Tea message carrying a parsed hook event.

@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/data"
 )
 
 // workspaceNameExists returns true if any workspace in allWorkspaces has the

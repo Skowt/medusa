@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/andyrewlee/medusa/internal/approve"
+	"github.com/Skowt/medusa/internal/approve"
 )
 
 func main() {

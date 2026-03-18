@@ -6,8 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/logging"
-	"github.com/andyrewlee/medusa/internal/perf"
+	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/perf"
 )
 
 type tabEventKind int

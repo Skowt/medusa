@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/config"
-	"github.com/andyrewlee/medusa/internal/shellutil"
+	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/shellutil"
 )
 
 func TestGenerateSBPL(t *testing.T) {

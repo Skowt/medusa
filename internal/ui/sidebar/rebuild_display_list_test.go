@@ -3,7 +3,7 @@ package sidebar
 import (
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/git"
 )
 
 func TestRebuildDisplayListSeparatesSections(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/shellutil"
+	"github.com/Skowt/medusa/internal/shellutil"
 )
 
 type Options struct {

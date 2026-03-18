@@ -1,15 +1,13 @@
-<p align="center">
-  <img width="339" height="105" alt="Screenshot 2026-01-20 at 1 00 23 AM" src="https://github.com/user-attachments/assets/fdbefab9-9f7c-4e08-a423-a436dda3c496" />  
-</p>
+<h1 align="center">Medusa</h1>
 
 <p align="center">TUI for easily running parallel coding agents</p>
 
 <p align="center">
-  <a href="https://github.com/andyrewlee/medusa/releases">
-    <img src="https://img.shields.io/github/v/release/andyrewlee/medusa?style=flat-square" alt="Latest release" />
+  <a href="https://github.com/Skowt/medusa/releases">
+    <img src="https://img.shields.io/github/v/release/Skowt/medusa?style=flat-square" alt="Latest release" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/andyrewlee/medusa?style=flat-square" alt="License" />
+    <img src="https://img.shields.io/github/license/Skowt/medusa?style=flat-square" alt="License" />
   </a>
   <img src="https://img.shields.io/badge/Go-1.24.2-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go version" />
   <a href="https://discord.gg/Dswc7KFPxs">
@@ -20,11 +18,8 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="#features">Features</a> ·
-  <a href="#configuration">Configuration</a>
+  <a href="#features">Features</a>
 </p>
-
-![Medusa TUI preview](https://github.com/user-attachments/assets/f5c4647e-a6ee-4d62-b548-0fdd73714c90)
 
 ## What is Medusa?
 
@@ -37,16 +32,10 @@ Medusa requires [tmux](https://github.com/tmux/tmux). Each agent runs in its own
 ## Quick start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andyrewlee/medusa/main/install.sh | sh
+git clone https://github.com/Skowt/medusa.git
+cd medusa
+make run
 ```
-
-Or with Go:
-
-```bash
-go install github.com/andyrewlee/medusa/cmd/medusa@latest
-```
-
-Then run `medusa` to open the dashboard.
 
 ## How it works
 
@@ -55,29 +44,14 @@ Each worktree tracks a repo checkout and its metadata. For local workflows, work
 ## Features
 
 - **Parallel agents**: Launch multiple agents within main repo and within worktrees
-- **No wrappers**: Works with Claude Code, Codex, Gemini, Amp, OpenCode, and Droid
+- **No wrappers**: Works with Claude Code
 - **Keyboard + mouse**: Can be operated with just the keyboard or with a mouse
 - **All-in-one tool**: Run agents, view diffs, and access terminal
-
-## Configuration
-
-Create `.medusa/workspaces.json` in your project to run setup commands for new workspaces:
-
-```json
-{
-  "setup-workspace": [
-    "npm install",
-    "cp $ROOT_WORKSPACE_PATH/.env.local .env.local"
-  ]
-}
-```
-
-Worktree metadata is stored in `~/.medusa/workspaces/<workspace-id>/workspace.json` and local worktree directories live under `<repo>/.medusa/workspaces/`.
 
 ## Development
 
 ```bash
-git clone https://github.com/andyrewlee/medusa.git
+git clone https://github.com/Skowt/medusa.git
 cd medusa
 make run
 ```

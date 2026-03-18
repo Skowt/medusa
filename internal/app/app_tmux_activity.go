@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/tmux"
 )
 
 type tabSessionInfo struct {

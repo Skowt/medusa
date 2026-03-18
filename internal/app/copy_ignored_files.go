@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/andyrewlee/medusa/internal/git"
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // copyIgnoredFiles copies all gitignored files from the source repo into the

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // RestartPolicy controls when a worker should be restarted.

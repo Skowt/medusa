@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/data"
 )
 
 func writeWorkspaceConfig(t *testing.T, repoPath, content string) {

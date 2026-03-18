@@ -5,7 +5,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 // PendingPermission represents a permission detected from a workspace.

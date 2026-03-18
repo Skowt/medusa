@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/data"
 )
 
 func TestEnvBuilder_BuildEnv(t *testing.T) {

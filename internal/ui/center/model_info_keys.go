@@ -3,8 +3,8 @@ package center
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/andyrewlee/medusa/internal/data"
-	"github.com/andyrewlee/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/messages"
 )
 
 // Info tab cursor positions (settings only; Branch/Path are not selectable)

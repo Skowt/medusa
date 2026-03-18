@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andyrewlee/medusa/internal/shellutil"
+	"github.com/Skowt/medusa/internal/shellutil"
 )
 
 func TestSessionName(t *testing.T) {
