@@ -292,11 +292,6 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 
 			// Wait for .git file to exist
 			waitForGitFile(workspacePath)
-
-			// Copy gitignored files (secrets, .env, etc.)
-			if copyIgnored {
-				copyIgnoredFiles(repo.Path, workspacePath)
-			}
 		} else {
 			// Multi-repo workspace
 			specs := make([]git.RepoSpec, len(repos))
@@ -322,13 +317,6 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 			// Wait for .git files
 			for _, spec := range specs {
 				waitForGitFile(spec.WorkspacePath)
-			}
-
-			// Copy gitignored files (secrets, .env, etc.)
-			if copyIgnored {
-				for _, spec := range specs {
-					copyIgnoredFiles(spec.RepoPath, spec.WorkspacePath)
-				}
 			}
 
 			worktrees := make([]data.WorktreeRef, len(specs))
@@ -378,6 +366,26 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 		// Add to recents
 		a.recents.Add(repos)
 
+		// If gitignored files need copying, signal the overlay to advance first.
+		if copyIgnored {
+			return messages.WorkspaceWorktreeDone{Workspace: ws, Repos: repos}
+		}
+		return messages.WorkspaceCreated{Workspace: ws}
+	}
+}
+
+// copyIgnoredFilesCmd copies gitignored files from source repos into the workspace worktrees.
+func copyIgnoredFilesCmd(ws *data.Workspace, repos []data.RepoRef) tea.Cmd {
+	return func() tea.Msg {
+		if len(repos) == 1 {
+			copyIgnoredFiles(repos[0].Path, ws.PrimaryWorktreeRoot())
+		} else {
+			for i, repo := range repos {
+				if i < len(ws.Worktrees) {
+					copyIgnoredFiles(repo.Path, ws.Worktrees[i].Root)
+				}
+			}
+		}
 		return messages.WorkspaceCreated{Workspace: ws}
 	}
 }

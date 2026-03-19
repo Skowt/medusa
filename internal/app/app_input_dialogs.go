@@ -319,18 +319,20 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			copyIgnored := workspace.CopyIgnored
 			switch result.Index {
 			case 0: // Latest remote main
-				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
-					"Fetching latest changes",
-					"Creating worktree",
-				})
+				steps := []string{"Fetching latest changes", "Creating worktree"}
+				if copyIgnored {
+					steps = append(steps, "Copying gitignored files")
+				}
+				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
 				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
 				return a.fetchRemoteBase(repos, name, wsProfile, copyIgnored)
 			case 1: // Checked out branch
-				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
-					"Resolving checked out branch",
-					"Creating worktree",
-				})
+				steps := []string{"Resolving checked out branch", "Creating worktree"}
+				if copyIgnored {
+					steps = append(steps, "Copying gitignored files")
+				}
+				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
 				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
 				return a.fetchCheckedOutBase(repos, name, wsProfile, copyIgnored)
@@ -356,10 +358,11 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			repos := workspace.Repos
 			wsProfile := workspace.Profile
 			copyIgnored := workspace.CopyIgnored
-			a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{
-				"Resolving custom branch",
-				"Creating worktree",
-			})
+			steps := []string{"Resolving custom branch", "Creating worktree"}
+			if copyIgnored {
+				steps = append(steps, "Copying gitignored files")
+			}
+			a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
 			a.creationOverlay.SetStepDetail(repos[0].Name)
 			a.creationOverlay.SetSize(a.width, a.height)
 			return a.fetchCustomBase(repos, name, wsProfile, customBranch, copyIgnored)

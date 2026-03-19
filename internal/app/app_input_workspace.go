@@ -49,6 +49,14 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 	return cmds
 }
 
+// handleWorkspaceWorktreeDone handles the WorkspaceWorktreeDone message (worktree created, now copy gitignored files).
+func (a *App) handleWorkspaceWorktreeDone(msg messages.WorkspaceWorktreeDone) tea.Cmd {
+	if a.creationOverlay != nil {
+		a.creationOverlay.AdvanceStep()
+	}
+	return copyIgnoredFilesCmd(msg.Workspace, msg.Repos)
+}
+
 // handleRenameWorkspace handles the RenameWorkspace message.
 func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	if msg.Workspace == nil {

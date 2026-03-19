@@ -551,6 +551,11 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.WorkspaceFetchDone:
 		cmds = append(cmds, a.handleWorkspaceFetchDone(msg)...)
 
+	case messages.WorkspaceWorktreeDone:
+		if cmd := a.handleWorkspaceWorktreeDone(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
 	case messages.CreateWorkspace:
 		cmds = append(cmds, a.handleCreateWorkspace(msg)...)
 

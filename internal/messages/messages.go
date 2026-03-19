@@ -38,6 +38,12 @@ type WorkspaceCreated struct {
 	Workspace *data.Workspace
 }
 
+// WorkspaceWorktreeDone is sent after the worktree is created but before gitignored files are copied.
+type WorkspaceWorktreeDone struct {
+	Workspace *data.Workspace
+	Repos     []data.RepoRef
+}
+
 // WorkspaceSetupComplete is sent when async setup scripts finish
 type WorkspaceSetupComplete struct {
 	Workspace *data.Workspace
