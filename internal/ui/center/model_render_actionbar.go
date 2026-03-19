@@ -2,10 +2,8 @@ package center
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -13,47 +11,6 @@ import (
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
-
-type actionBarItem struct {
-	kind    actionBarButtonKind
-	label   string
-	enabled bool
-}
-
-// actionBarItems returns the visible action bar items based on workspace state.
-// Note: Copy button is handled separately (next to path), so not included here.
-func (m *Model) actionBarItems() []actionBarItem {
-	if m.workspace == nil {
-		return nil
-	}
-
-	// Check if we're on main branch
-	onMainBranch := m.workspace.IsMainBranch()
-	defaultBranch := m.getDefaultBranch()
-
-	return []actionBarItem{
-		{kind: actionBarCommit, label: "Commit", enabled: true},
-		{kind: actionBarMergeToMain, label: "Merge to " + defaultBranch + " (local)", enabled: !onMainBranch},
-	}
-}
-
-// getDefaultBranch returns the default branch name (main or master) for the repo.
-// This uses cached value to avoid running git commands on every render.
-func (m *Model) getDefaultBranch() string {
-	if m.workspace == nil {
-		return "main"
-	}
-
-	// If Base is set and not "HEAD", use it (cleaned up)
-	if m.workspace.Base() != "" && m.workspace.Base() != "HEAD" {
-		base := m.workspace.Base()
-		base = strings.TrimPrefix(base, "origin/")
-		return base
-	}
-
-	// Default fallback - actual detection is done async when workspace is set
-	return "main"
-}
 
 // getBaseBranchDisplay returns the base branch string for info bar display.
 // Shows origin/main for remote refs, or "branch (local)" for local branches.
@@ -72,7 +29,7 @@ func (m *Model) getBaseBranchDisplay() string {
 }
 
 // renderInfoBar renders the info bar with workspace details and action buttons.
-// Layout: [branch info] │ [path] [Copy] ... [action buttons]
+// Layout: [branch info] │ [path] [Copy] [IDE]
 // Also renders a subtle separator line below.
 func (m *Model) renderInfoBar(width int) string {
 	m.actionBarHits = m.actionBarHits[:0]
@@ -88,8 +45,6 @@ func (m *Model) renderInfoBar(width int) string {
 	branchStyle := lipgloss.NewStyle().Foreground(common.ColorInfo)
 	pathStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
 	separatorStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
-	buttonStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-	disabledButtonStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
 
 	// Build branch info: "origin/main ← feature-branch" or just "main" if on main
 	baseBranchDisplay := m.getBaseBranchDisplay()
@@ -100,41 +55,19 @@ func (m *Model) renderInfoBar(width int) string {
 		branchInfo = mutedStyle.Render(baseBranchDisplay) + mutedStyle.Render(" ← ") + branchStyle.Render(ws.Branch())
 	}
 
-	// Build action buttons (right side)
-	items := m.actionBarItems()
-	var buttonParts []string
-
-	for _, item := range items {
-		label := "[" + item.label + "]"
-		var style lipgloss.Style
-		if !item.enabled {
-			style = disabledButtonStyle
-		} else {
-			style = buttonStyle
-		}
-		rendered := style.Render(label)
-		buttonParts = append(buttonParts, rendered)
-	}
-
-	buttonsStr := strings.Join(buttonParts, " ")
-	buttonsWidth := lipgloss.Width(buttonsStr)
-
 	// Calculate left side content
 	separator := separatorStyle.Render(" │ ")
 	separatorWidth := lipgloss.Width(separator)
 
-	// Copy and IDE buttons (placed next to path)
-	copyBtn := buttonStyle.Render("[Copy]")
+	// Copy and IDE buttons (styled to match branch name)
+	copyBtn := branchStyle.Render("[Copy]")
 	copyBtnWidth := lipgloss.Width(copyBtn)
-	ideBtn := buttonStyle.Render("[IDE]")
+	ideBtn := branchStyle.Render("[IDE]")
 	ideBtnWidth := lipgloss.Width(ideBtn)
 
 	// Build path info (shortened)
-	// Reserve space for: branchInfo + separator + path + space + copyBtn + space + ideBtn + gap + buttons
-	minGap := 2
-	reservedForRight := buttonsWidth + minGap
 	reservedForLeft := lipgloss.Width(branchInfo) + separatorWidth + 1 + copyBtnWidth + 1 + ideBtnWidth // +1 for spaces
-	availableForPath := width - reservedForLeft - reservedForRight
+	availableForPath := width - reservedForLeft
 	if availableForPath < 10 {
 		availableForPath = 10
 	}
@@ -144,15 +77,8 @@ func (m *Model) renderInfoBar(width int) string {
 
 	// Left content: branch │ path [Copy] [IDE]
 	leftContent := branchInfo + separator + pathRendered + " " + copyBtn + " " + ideBtn
-	leftWidth := lipgloss.Width(leftContent)
 
-	// Calculate padding to right-align buttons
-	padding := width - leftWidth - buttonsWidth
-	if padding < minGap {
-		padding = minGap
-	}
-
-	// Track Copy button hit region (it's part of left content)
+	// Track Copy button hit region
 	copyBtnX := lipgloss.Width(branchInfo + separator + pathRendered + " ")
 	m.actionBarHits = append(m.actionBarHits, actionBarButton{
 		kind:  actionBarCopyDir,
@@ -178,33 +104,8 @@ func (m *Model) renderInfoBar(width int) string {
 		},
 	})
 
-	// Now calculate the actual X positions for action button hit regions
-	buttonStartX := leftWidth + padding
-	x := buttonStartX
-	for i, item := range items {
-		label := "[" + item.label + "]"
-		labelWidth := lipgloss.Width(label)
-
-		if item.enabled && labelWidth > 0 {
-			m.actionBarHits = append(m.actionBarHits, actionBarButton{
-				kind:  item.kind,
-				label: item.label,
-				region: common.HitRegion{
-					X:      x,
-					Y:      0,
-					Width:  labelWidth,
-					Height: 1,
-				},
-			})
-		}
-		x += labelWidth
-		if i < len(items)-1 {
-			x++ // space between buttons
-		}
-	}
-
 	// Build the main line
-	mainLine := leftContent + strings.Repeat(" ", padding) + buttonsStr
+	mainLine := leftContent
 
 	// Add a subtle separator line below (using dim box-drawing character)
 	separatorLine := separatorStyle.Render(strings.Repeat("─", width))
@@ -269,74 +170,8 @@ func (m *Model) actionBarCommand(kind actionBarButtonKind) tea.Cmd {
 		return func() tea.Msg {
 			return messages.ActionBarOpenIDE{WorkspaceRoot: ws.Root()}
 		}
-	case actionBarCommit:
-		// Send commit instruction to the agent (use \r for Enter key)
-		m.sendInputToActiveTab("commit changes related to what we're talking about\r")
-		return nil
-	case actionBarMergeToMain:
-		if ws.IsMainBranch() {
-			return nil
-		}
-		// Send merge instruction to the agent (use \r for Enter key)
-		// Format: git -C {repo path} merge {branch name}
-		instruction := "Merge this branch to the main branch by running git -C " + ws.PrimaryRepo().Path + " merge " + ws.Branch() + "\r"
-		m.sendInputToActiveTab(instruction)
-		return nil
 	}
 	return nil
-}
-
-// sendInputToActiveTab sends text input to the active tab's terminal using tmux send-keys.
-// This ensures Enter is properly sent as a keypress rather than a literal character.
-func (m *Model) sendInputToActiveTab(text string) {
-	tabs := m.getTabs()
-	activeIdx := m.getActiveTabIdx()
-	if activeIdx >= len(tabs) {
-		return
-	}
-	tab := tabs[activeIdx]
-	if tab == nil || tab.isClosed() {
-		return
-	}
-
-	// Get session name for tmux send-keys
-	sessionName := tab.SessionName
-	if sessionName == "" && tab.Agent != nil {
-		sessionName = tab.Agent.Session
-	}
-	if sessionName == "" {
-		return
-	}
-
-	// Use tmux send-keys which properly handles Enter as a key press
-	// Strip trailing \r since we'll send Enter separately via tmux
-	text = strings.TrimSuffix(text, "\r")
-	text = strings.TrimSuffix(text, "\n")
-
-	// Get tmux options for server name
-	opts := m.getTmuxOptions()
-	baseArgs := []string{}
-	if opts.ServerName != "" {
-		baseArgs = append(baseArgs, "-L", opts.ServerName)
-	}
-
-	// Execute tmux send-keys in background
-	// Send text first, then Enter separately with a small delay
-	// This prevents Claude from treating it as a single paste event
-	go func() {
-		// Send text with -l (literal) flag
-		textArgs := append(baseArgs, "send-keys", "-t", sessionName, "-l", text)
-		cmd := exec.Command("tmux", textArgs...)
-		_ = cmd.Run()
-
-		// Small delay to separate text from Enter
-		time.Sleep(50 * time.Millisecond)
-
-		// Send Enter key separately
-		enterArgs := append(baseArgs, "send-keys", "-t", sessionName, "Enter")
-		cmd = exec.Command("tmux", enterArgs...)
-		_ = cmd.Run()
-	}()
 }
 
 // infoBarHeight returns the height of the info bar (2 if visible: content + separator, 0 otherwise).
