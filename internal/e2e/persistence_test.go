@@ -134,6 +134,12 @@ func createAgentTab(t *testing.T, session *PTYSession) {
 
 func quitApp(t *testing.T, session *PTYSession) {
 	t.Helper()
+	// Dismiss any stray dialog (e.g. Set Note) that may have opened
+	// due to input timing before attempting to quit.
+	if err := session.SendBytes([]byte{0x1b}); err != nil { // Escape
+		t.Fatalf("send escape: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
 	sendPrefixCommand(t, session, "q")
 	waitForUIContains(t, session, "Quit MEDUSA", persistenceTimeout)
 	if err := session.SendString("\r"); err != nil {

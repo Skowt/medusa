@@ -218,8 +218,6 @@ type actionBarButtonKind int
 const (
 	actionBarCopyDir actionBarButtonKind = iota
 	actionBarOpenIDE
-	actionBarMergeToMain
-	actionBarCommit
 )
 
 // actionBarButton stores hit region info for an action bar button
