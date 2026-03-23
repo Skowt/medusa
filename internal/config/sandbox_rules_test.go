@@ -8,8 +8,8 @@ import (
 
 func TestDefaultSandboxRules_Count(t *testing.T) {
 	rules := DefaultSandboxRules()
-	if len(rules.Rules) != 8 {
-		t.Errorf("expected 8 default rules, got %d", len(rules.Rules))
+	if len(rules.Rules) != 6 {
+		t.Errorf("expected 6 default rules, got %d", len(rules.Rules))
 	}
 }
 
@@ -57,8 +57,8 @@ func TestLoadSandboxRules_MissingFileWritesDefaults(t *testing.T) {
 	}
 
 	// Should return defaults
-	if len(rules.Rules) != 8 {
-		t.Errorf("expected 8 default rules, got %d", len(rules.Rules))
+	if len(rules.Rules) != 6 {
+		t.Errorf("expected 6 default rules, got %d", len(rules.Rules))
 	}
 
 	// File should now exist
@@ -111,11 +111,11 @@ func TestDefaultSandboxRules_ActionTypes(t *testing.T) {
 		}
 	}
 
-	if denyRead != 5 {
-		t.Errorf("expected 5 deny-read rules, got %d", denyRead)
+	if denyRead != 4 {
+		t.Errorf("expected 4 deny-read rules, got %d", denyRead)
 	}
-	if allowRead != 1 {
-		t.Errorf("expected 1 allow-read rule, got %d", allowRead)
+	if allowRead != 0 {
+		t.Errorf("expected 0 allow-read rules, got %d", allowRead)
 	}
 	if allowWrite != 2 {
 		t.Errorf("expected 2 allow-write rules, got %d", allowWrite)
@@ -139,11 +139,11 @@ func TestDefaultSandboxRules_PathTypes(t *testing.T) {
 		}
 	}
 
-	if subpath != 7 {
-		t.Errorf("expected 7 subpath rules, got %d", subpath)
+	if subpath != 6 {
+		t.Errorf("expected 6 subpath rules, got %d", subpath)
 	}
-	if literal != 1 {
-		t.Errorf("expected 1 literal rule, got %d", literal)
+	if literal != 0 {
+		t.Errorf("expected 0 literal rules, got %d", literal)
 	}
 	if regex != 0 {
 		t.Errorf("expected 0 regex rules, got %d", regex)

@@ -32,7 +32,7 @@ func TestGenerateSBPL(t *testing.T) {
 	})
 
 	t.Run("sensitive_reads_denied", func(t *testing.T) {
-		for _, dir := range []string{".ssh", ".gnupg", ".aws", ".docker", ".kube"} {
+		for _, dir := range []string{".gnupg", ".aws", ".docker", ".kube"} {
 			expected := `(deny file-read* (subpath "` + home + "/" + dir + `"))`
 			if !strings.Contains(sbpl, expected) {
 				t.Errorf("profile should deny reads to %s, want:\n  %s", dir, expected)
@@ -40,10 +40,11 @@ func TestGenerateSBPL(t *testing.T) {
 		}
 	})
 
-	t.Run("ssh_known_hosts_readable", func(t *testing.T) {
-		expected := `(allow file-read* (literal "` + home + `/.ssh/known_hosts"))`
-		if !strings.Contains(sbpl, expected) {
-			t.Errorf("profile should allow reads to known_hosts, want:\n  %s", expected)
+	t.Run("ssh_readable", func(t *testing.T) {
+		// ~/.ssh should NOT be deny-read so git push over SSH works
+		denySSH := `(deny file-read* (subpath "` + home + `/.ssh"))`
+		if strings.Contains(sbpl, denySSH) {
+			t.Error("profile should NOT deny reads to ~/.ssh (needed for git push over SSH)")
 		}
 	})
 

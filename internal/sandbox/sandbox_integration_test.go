@@ -311,7 +311,7 @@ func TestSandbox_WriteOutsideBlocked(t *testing.T) {
 	}
 }
 
-func TestSandbox_ReadSensitiveSSH(t *testing.T) {
+func TestSandbox_ReadSSHAllowed(t *testing.T) {
 	skipIfNoSandboxExec(t)
 	env := newSandboxEnv(t)
 
@@ -322,8 +322,8 @@ func TestSandbox_ReadSensitiveSSH(t *testing.T) {
 	}
 
 	_, err := runSandboxed(t, env.SBPLPath, "ls "+sshDir)
-	if err == nil {
-		t.Error("reading ~/.ssh should be blocked")
+	if err != nil {
+		t.Errorf("reading ~/.ssh should be allowed (needed for git push over SSH): %v", err)
 	}
 }
 

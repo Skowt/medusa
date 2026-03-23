@@ -44,12 +44,10 @@ type SandboxRules struct {
 func DefaultSandboxRules() *SandboxRules {
 	return &SandboxRules{
 		Rules: []SandboxRule{
-			{Path: "~/.ssh", Action: SandboxDenyRead, PathType: SandboxSubpath, Comment: "SSH keys"},
 			{Path: "~/.gnupg", Action: SandboxDenyRead, PathType: SandboxSubpath, Comment: "GPG keys"},
 			{Path: "~/.aws", Action: SandboxDenyRead, PathType: SandboxSubpath, Comment: "AWS credentials"},
 			{Path: "~/.docker", Action: SandboxDenyRead, PathType: SandboxSubpath, Comment: "Docker config"},
 			{Path: "~/.kube", Action: SandboxDenyRead, PathType: SandboxSubpath, Comment: "Kubernetes config"},
-			{Path: "~/.ssh/known_hosts", Action: SandboxAllowRead, PathType: SandboxLiteral, Comment: "SSH host verification"},
 			{Path: "~/.local/state/claude", Action: SandboxAllowWrite, PathType: SandboxSubpath, Comment: "Claude version locks"},
 			{Path: "~/.npm", Action: SandboxAllowWrite, PathType: SandboxSubpath, Comment: "npm cache (MCP servers)"},
 		},
