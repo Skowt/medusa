@@ -437,7 +437,7 @@ func (a *App) deleteWorkspace(ws *data.Workspace) tea.Cmd {
 				RepoPath:      repo.Path,
 				RepoName:      repo.Name,
 				WorkspacePath: ws.Worktrees[i].Root,
-				Branch:        ws.Name,
+				Branch:        ws.Worktrees[i].Branch,
 			}
 		}
 		_, branchErrs := git.RemoveGroupWorkspace(specs)
