@@ -349,20 +349,22 @@ func InjectCompoundApproveHook(profileDir string, hookBinaryPath string) error {
 				map[string]any{
 					"type":    "command",
 					"command": hookBinaryPath,
-					"timeout": 3,
+					"timeout": 3000,
 				},
 			},
 		}
 
-		// Dedup: check if already installed
+		// Replace any existing medusa-approve-compound entry (path may have
+		// changed between builds/branches) and dedup by binary name.
 		existing, _ := hooks["PreToolUse"].([]any)
+		var kept []any
 		for _, entry := range existing {
-			if m, ok := entry.(map[string]any); ok && hookRuleHasCommand(m, hookBinaryPath) {
-				return
+			if m, ok := entry.(map[string]any); ok && hookRuleHasCommandSuffix(m, "medusa-approve-compound") {
+				continue // Remove stale entry; will be replaced below
 			}
+			kept = append(kept, entry)
 		}
-
-		hooks["PreToolUse"] = append(existing, hookEntry)
+		hooks["PreToolUse"] = append(kept, hookEntry)
 		settings["hooks"] = hooks
 	})
 }

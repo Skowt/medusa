@@ -46,3 +46,16 @@ func hookRuleHasCommandPrefix(rule map[string]any, prefix string) bool {
 	}
 	return false
 }
+
+// hookRuleHasCommandSuffix returns true if any command in the rule ends with suffix.
+func hookRuleHasCommandSuffix(rule map[string]any, suffix string) bool {
+	innerHooks, _ := rule["hooks"].([]any)
+	for _, h := range innerHooks {
+		if hm, ok := h.(map[string]any); ok {
+			if c, _ := hm["command"].(string); strings.HasSuffix(c, suffix) {
+				return true
+			}
+		}
+	}
+	return false
+}
