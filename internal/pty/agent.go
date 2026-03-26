@@ -160,6 +160,11 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		_ = config.InjectSkipPermissionPrompt(profileDir)
 	}
 
+	// Enable auto mode so it's available via Shift+Tab mode cycling.
+	if agentType == AgentClaude {
+		agentCommand += " --enable-auto-mode"
+	}
+
 	// Create terminal with agent command, falling back to shell on exit
 	shell := os.Getenv("SHELL")
 	if shell == "" {
