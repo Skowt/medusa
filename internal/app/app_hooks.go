@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -15,6 +16,7 @@ type hookActivityEvent struct {
 	SessionName string
 	Event       hooks.EventType
 	Timestamp   time.Time
+	Message     string
 }
 
 // initHooksWatcher creates and registers the hooks directory watcher.
@@ -32,6 +34,7 @@ func (a *App) initHooksWatcher() {
 			SessionName: he.SessionName,
 			Event:       he.Event,
 			Timestamp:   he.Timestamp,
+			Message:     he.Message,
 		})
 	})
 	if err != nil {
@@ -58,13 +61,24 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	// responding and went idle, so any prior notification (permission/question)
 	// has been resolved. Delete the state so the '!' indicator disappears.
 	switch msg.Event {
-	case hooks.EventStop, hooks.EventNotificationIdle:
+	case hooks.EventStop, hooks.EventStopFailure, hooks.EventNotificationIdle:
 		delete(a.hookWorkspaceStates, wsID)
 	default:
 		a.hookWorkspaceStates[wsID] = msg.Event
 	}
 
 	var cmds []tea.Cmd
+	// Show a toast for notification events that carry a message.
+	if msg.Message != "" {
+		switch msg.Event {
+		case hooks.EventNotificationPermission, hooks.EventNotificationElicitation:
+			wsName := wsID
+			if ws := a.findWorkspaceByID(wsID); ws != nil {
+				wsName = ws.Name
+			}
+			cmds = append(cmds, a.toast.ShowInfo(fmt.Sprintf("[%s] %s", wsName, msg.Message)))
+		}
+	}
 	// Persist the hook state change to the workspace JSON.
 	if cmd := a.persistHookState(wsID); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -106,7 +120,7 @@ func (a *App) hookActiveIDs() map[string]bool {
 	active := make(map[string]bool)
 	for wsID, evt := range a.hookWorkspaceStates {
 		switch evt {
-		case hooks.EventPreToolUse, hooks.EventPostToolUse, hooks.EventSubagentStop, hooks.EventUserPromptSubmit:
+		case hooks.EventPreToolUse, hooks.EventPostToolUse, hooks.EventUserPromptSubmit:
 			active[wsID] = true
 		}
 	}
