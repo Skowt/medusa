@@ -2,6 +2,7 @@ package common
 
 import (
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
@@ -9,6 +10,14 @@ import (
 
 	"github.com/Skowt/medusa/internal/logging"
 )
+
+// validationDebounceMsg is sent after a short delay to trigger input validation.
+// The seq field ensures stale debounce ticks are ignored when the user is still typing.
+type validationDebounceMsg struct {
+	seq int
+}
+
+const validationDebounceDelay = 100 * time.Millisecond
 
 // DialogType identifies the type of dialog
 type DialogType int
@@ -57,6 +66,7 @@ type Dialog struct {
 	inputTransform InputTransformFunc
 	inputValidate  InputValidateFunc
 	validationErr  string
+	validationSeq  int // incremented on input change; debounce tick only fires if seq matches
 
 	// Fuzzy filter state
 	filterEnabled   bool
@@ -385,6 +395,12 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case validationDebounceMsg:
+		if d.dtype == DialogInput && d.inputValidate != nil && msg.seq == d.validationSeq {
+			d.validationErr = d.inputValidate(d.input.Value())
+		}
+		return d, nil
+
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
 			if cmd := d.handleClick(msg); cmd != nil {
@@ -597,12 +613,19 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			msg = d.transformInputMsg(msg)
 		}
 
+		oldVal := d.input.Value()
 		var cmd tea.Cmd
 		d.input, cmd = d.input.Update(msg)
 
-		// Run validation if validator is set
-		if d.inputValidate != nil {
-			d.validationErr = d.inputValidate(d.input.Value())
+		// Debounce validation: only schedule when the value actually changes,
+		// and wait briefly so rapid keystrokes don't each spawn git processes.
+		if d.inputValidate != nil && d.input.Value() != oldVal {
+			d.validationSeq++
+			seq := d.validationSeq
+			debounceCmd := tea.Tick(validationDebounceDelay, func(time.Time) tea.Msg {
+				return validationDebounceMsg{seq: seq}
+			})
+			return d, tea.Batch(cmd, debounceCmd)
 		}
 
 		return d, cmd
