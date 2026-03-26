@@ -411,8 +411,10 @@ func (a *App) runSetupAsync(ws *data.Workspace) tea.Cmd {
 	}
 }
 
-// deleteWorkspace deletes a workspace
-func (a *App) deleteWorkspace(ws *data.Workspace) tea.Cmd {
+// deleteWorkspace deletes a workspace.
+// If silent is true, branch warnings are suppressed (used for auto-pruned archived workspaces).
+func (a *App) deleteWorkspace(ws *data.Workspace, silent ...bool) tea.Cmd {
+	isSilent := len(silent) > 0 && silent[0]
 	if ws == nil {
 		return func() tea.Msg {
 			return messages.WorkspaceDeleteFailed{
@@ -457,6 +459,7 @@ func (a *App) deleteWorkspace(ws *data.Workspace) tea.Cmd {
 		return messages.WorkspaceDeleted{
 			Workspace:     ws,
 			BranchWarning: branchWarning,
+			Silent:        isSilent,
 		}
 	}
 }

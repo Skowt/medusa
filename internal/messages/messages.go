@@ -60,6 +60,7 @@ type WorkspaceCreateFailed struct {
 type WorkspaceDeleted struct {
 	Workspace     *data.Workspace
 	BranchWarning string // non-empty if branch cleanup failed
+	Silent        bool   // suppress user-facing warnings (e.g. auto-pruned archived workspaces)
 }
 
 // WorkspaceDeleteFailed is sent when a workspace deletion fails

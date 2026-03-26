@@ -320,7 +320,7 @@ func (a *App) pruneArchivedWorkspaces() []tea.Cmd {
 	for i := 0; i < excess; i++ {
 		ws := archived[i]
 		a.center.CleanupWorkspace(ws)
-		cmds = append(cmds, a.deleteWorkspace(ws))
+		cmds = append(cmds, a.deleteWorkspace(ws, true))
 	}
 	return cmds
 }
@@ -423,7 +423,7 @@ func (a *App) handleWorkspaceDeleted(msg messages.WorkspaceDeleted) []tea.Cmd {
 			a.goHome()
 		}
 	}
-	if msg.BranchWarning != "" {
+	if msg.BranchWarning != "" && !msg.Silent {
 		cmds = append(cmds, a.toast.ShowWarning(msg.BranchWarning))
 	}
 	cmds = append(cmds, a.loadWorkspaces())
