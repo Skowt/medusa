@@ -17,6 +17,7 @@ type EventType string
 
 const (
 	EventStop                       EventType = "Stop"
+	EventStopFailure                EventType = "StopFailure"
 	EventSubagentStop               EventType = "SubagentStop"
 	EventNotificationIdle           EventType = "NotificationIdle"
 	EventNotificationPermission     EventType = "NotificationPermission"
@@ -37,6 +38,7 @@ type HookEvent struct {
 	SessionName string
 	Event       EventType
 	Timestamp   time.Time
+	Message     string // Optional message (e.g. from Notification hooks)
 }
 
 // Watcher monitors a directory for JSON hook event files written by
@@ -121,8 +123,9 @@ func (w *Watcher) processFile(path, sessionName string) {
 		return
 	}
 	var raw struct {
-		Event string `json:"event"`
-		TS    int64  `json:"ts"`
+		Event   string `json:"event"`
+		TS      int64  `json:"ts"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return
@@ -134,6 +137,7 @@ func (w *Watcher) processFile(path, sessionName string) {
 		SessionName: sessionName,
 		Event:       EventType(raw.Event),
 		Timestamp:   time.Unix(raw.TS, 0),
+		Message:     raw.Message,
 	}
 	if w.onEvent != nil {
 		w.onEvent(he)

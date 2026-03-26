@@ -261,12 +261,19 @@ func InjectHooks(profileDir, hooksDir string) error {
 			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then printf '{"event":"` + eventName + `","ts":%s}\n' "$(date +%s)" > ` + hooksDir + `/"$MEDUSA_SESSION_NAME".json; fi`
 		}
 
+		// makeNotificationCommand reads stdin (JSON from Claude Code) to extract
+		// the "message" field and include it in the event file.
+		makeNotificationCommand := func(eventName string) string {
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); MSG=$(echo "$INPUT" | grep -o '"message":"[^"]*"' | head -1 | sed 's/"message":"//;s/"$//'); printf '{"event":"` + eventName + `","ts":%s,"message":"%s"}\n' "$(date +%s)" "$MSG" > ` + hooksDir + `/"$MEDUSA_SESSION_NAME".json; fi`
+		}
+
 		type hookDef struct {
 			event   string
 			matcher string
 		}
 		defs := []hookDef{
 			{event: "Stop"},
+			{event: "StopFailure"},
 			{event: "SubagentStop"},
 			{event: "PreToolUse"},
 			{event: "PostToolUse"},
@@ -309,7 +316,7 @@ func InjectHooks(profileDir, hooksDir string) error {
 			}
 		}
 		for _, def := range notificationDefs {
-			cmd := makeCommand(def.event)
+			cmd := makeNotificationCommand(def.event)
 			rule := map[string]any{
 				"hooks": []any{
 					map[string]any{
