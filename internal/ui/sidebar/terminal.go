@@ -61,7 +61,10 @@ type TerminalState struct {
 	flushPendingSince time.Time
 
 	// Selection state
-	Selection SelectionState
+	Selection     SelectionState
+	lastClickTime time.Time // for double-click detection
+	lastClickX    int
+	lastClickLine int
 
 	// Snapshot cache for VTermLayer - avoid recreating snapshot when terminal unchanged
 	cachedSnap       *compositor.VTermSnapshot

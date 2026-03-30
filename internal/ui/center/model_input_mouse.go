@@ -2,6 +2,7 @@ package center
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -11,6 +12,8 @@ import (
 	"github.com/Skowt/medusa/internal/ui/common"
 	"github.com/Skowt/medusa/internal/ui/diff"
 )
+
+const doubleClickTimeout = 400 * time.Millisecond
 
 // updateMouseClick handles tea.MouseClickMsg in the Update switch.
 func (m *Model) updateMouseClick(msg tea.MouseClickMsg) (*Model, tea.Cmd) {
@@ -56,6 +59,60 @@ func (m *Model) updateMouseClick(msg tea.MouseClickMsg) (*Model, tea.Cmd) {
 	// Convert screen coordinates to terminal coordinates
 	termX, termY, inBounds := m.screenToTerminal(msg.X, msg.Y)
 
+	// Detect double-click: same position within timeout
+	now := time.Now()
+	var absLine int
+	tab.mu.Lock()
+	if inBounds && tab.Terminal != nil {
+		absLine = tab.Terminal.ScreenYToAbsoluteLine(termY)
+	}
+	isDoubleClick := inBounds &&
+		now.Sub(tab.lastClickTime) < doubleClickTimeout &&
+		tab.lastClickX == termX &&
+		tab.lastClickLine == absLine
+	tab.lastClickTime = now
+	tab.lastClickX = termX
+	tab.lastClickLine = absLine
+	tab.mu.Unlock()
+
+	if isDoubleClick {
+		// Double-click: select word at cursor
+		if m.isTabActorReady() {
+			if m.sendTabEvent(tabEvent{
+				tab:         tab,
+				workspaceID: m.workspaceID(),
+				tabID:       tab.ID,
+				kind:        tabEventSelectionWord,
+				termX:       termX,
+				termY:       termY,
+				inBounds:    inBounds,
+			}) {
+				return m, common.SafeBatch(cmds...)
+			}
+		}
+		tab.mu.Lock()
+		if tab.Terminal != nil {
+			wordStart, wordEnd := tab.Terminal.WordBoundsAt(termX, absLine)
+			tab.Selection = SelectionState{
+				Active:    false,
+				StartX:    wordStart,
+				StartLine: absLine,
+				EndX:      wordEnd,
+				EndLine:   absLine,
+			}
+			tab.Terminal.SetSelection(wordStart, absLine, wordEnd, absLine, true, false)
+			// Copy the selected word
+			text := tab.Terminal.GetSelectedText(wordStart, absLine, wordEnd, absLine)
+			if text != "" {
+				if err := common.CopyToClipboard(text); err != nil {
+					logging.Error("Failed to copy word to clipboard: %v", err)
+				}
+			}
+		}
+		tab.mu.Unlock()
+		return m, common.SafeBatch(cmds...)
+	}
+
 	if m.isTabActorReady() {
 		if m.sendTabEvent(tabEvent{
 			tab:         tab,
@@ -75,7 +132,8 @@ func (m *Model) updateMouseClick(msg tea.MouseClickMsg) (*Model, tea.Cmd) {
 	}
 	tab.Selection = SelectionState{}
 	if inBounds && tab.Terminal != nil {
-		absLine := tab.Terminal.ScreenYToAbsoluteLine(termY)
+		// Store anchor for potential drag, but don't set VTerm selection yet.
+		// Visual highlighting only appears once the user drags (motion event).
 		tab.Selection = SelectionState{
 			Active:    true,
 			StartX:    termX,
@@ -83,7 +141,6 @@ func (m *Model) updateMouseClick(msg tea.MouseClickMsg) (*Model, tea.Cmd) {
 			EndX:      termX,
 			EndLine:   absLine,
 		}
-		tab.Terminal.SetSelection(termX, absLine, termX, absLine, true, false)
 	}
 	tab.mu.Unlock()
 	return m, common.SafeBatch(cmds...)

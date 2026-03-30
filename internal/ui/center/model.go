@@ -73,6 +73,9 @@ type Tab struct {
 	selectionGen          uint64
 	selectionScrollDir    int
 	selectionScrollActive bool
+	lastClickTime         time.Time // for double-click detection
+	lastClickX            int
+	lastClickLine         int
 
 	ptyTraceFile      *os.File
 	ptyTraceBytes     int

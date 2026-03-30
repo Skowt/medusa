@@ -17,6 +17,7 @@ const (
 	tabEventSelectionStart
 	tabEventSelectionUpdate
 	tabEventSelectionFinish
+	tabEventSelectionWord
 	tabEventScrollBy
 	tabEventSelectionClearAndNotify
 	tabEventSelectionScrollTick
@@ -209,6 +210,8 @@ func (m *Model) handleTabEvent(ev tabEvent) {
 		tab.selectionScrollActive = false
 		if ev.inBounds && tab.Terminal != nil {
 			absLine := tab.Terminal.ScreenYToAbsoluteLine(ev.termY)
+			// Store anchor for potential drag, but don't set VTerm selection yet.
+			// Visual highlighting only appears once the user drags (motion event).
 			tab.Selection = SelectionState{
 				Active:    true,
 				StartX:    ev.termX,
@@ -216,7 +219,6 @@ func (m *Model) handleTabEvent(ev tabEvent) {
 				EndX:      ev.termX,
 				EndLine:   absLine,
 			}
-			tab.Terminal.SetSelection(ev.termX, absLine, ev.termX, absLine, true, false)
 		}
 		tab.mu.Unlock()
 	case tabEventSelectionUpdate:
@@ -270,6 +272,28 @@ func (m *Model) handleTabEvent(ev tabEvent) {
 				gen:         tab.selectionGen,
 			})
 		}
+	case tabEventSelectionWord:
+		tab.mu.Lock()
+		if tab.Terminal != nil && ev.inBounds {
+			absLine := tab.Terminal.ScreenYToAbsoluteLine(ev.termY)
+			wordStart, wordEnd := tab.Terminal.WordBoundsAt(ev.termX, absLine)
+			tab.Selection = SelectionState{
+				Active:    false,
+				StartX:    wordStart,
+				StartLine: absLine,
+				EndX:      wordEnd,
+				EndLine:   absLine,
+			}
+			tab.Terminal.SetSelection(wordStart, absLine, wordEnd, absLine, true, false)
+			tab.selectionGen++
+			if wordStart != wordEnd {
+				text := tab.Terminal.GetSelectedText(wordStart, absLine, wordEnd, absLine)
+				if text != "" && m.msgSink != nil {
+					m.msgSink(tabSelectionResult{workspaceID: ev.workspaceID, tabID: ev.tabID, clipboard: text})
+				}
+			}
+		}
+		tab.mu.Unlock()
 	case tabEventSelectionFinish:
 		tab.mu.Lock()
 		defer tab.mu.Unlock()

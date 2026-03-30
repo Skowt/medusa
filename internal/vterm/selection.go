@@ -14,6 +14,11 @@ func (v *VTerm) IsInSelection(x, screenY int) bool {
 		return false
 	}
 
+	// Don't highlight a zero-width selection (single click, no drag yet)
+	if v.selStartX == v.selEndX && v.selStartLine == v.selEndLine {
+		return false
+	}
+
 	// Convert screenY to absolute line number
 	absLine := v.ScreenYToAbsoluteLine(screenY)
 
@@ -243,6 +248,43 @@ func (v *VTerm) GetTextRange(startX, startLine, endX, endLine int) string {
 		lines[i] = strings.TrimRight(line, " ")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// WordBoundsAt returns the start and end X coordinates of the word at position
+// (x, absLine). A "word" is a contiguous run of non-separator characters.
+// Returns (x, x) if no word is found (e.g. clicking on whitespace).
+func (v *VTerm) WordBoundsAt(x, absLine int) (startX, endX int) {
+	row := v.LineCells(absLine)
+	if len(row) == 0 || x < 0 || x >= len(row) {
+		return x, x
+	}
+
+	isWordChar := func(r rune) bool {
+		if r == 0 || r == ' ' {
+			return false
+		}
+		// Treat common path/URL separators as word characters for better UX
+		switch r {
+		case '/', '.', '-', '_', '~', ':':
+			return true
+		}
+		return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r > 127 // unicode letters
+	}
+
+	if !isWordChar(row[x].Rune) {
+		return x, x
+	}
+
+	startX = x
+	for startX > 0 && isWordChar(row[startX-1].Rune) {
+		startX--
+	}
+	endX = x
+	for endX < len(row)-1 && isWordChar(row[endX+1].Rune) {
+		endX++
+	}
+	return startX, endX
 }
 
 // LineCells returns the cell slice for an absolute line index in scrollback+screen.

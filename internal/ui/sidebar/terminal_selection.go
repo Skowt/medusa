@@ -1,11 +1,15 @@
 package sidebar
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
+
+const sidebarDoubleClickTimeout = 400 * time.Millisecond
 
 // handleTabBarClick handles mouse click events on the tab bar
 func (m *TerminalModel) handleTabBarClick(msg tea.MouseClickMsg) (*TerminalModel, tea.Cmd) {
@@ -113,22 +117,55 @@ func (m *TerminalModel) handleMouseClick(msg tea.MouseClickMsg) (*TerminalModel,
 		termX, termY, inBounds := m.screenToTerminal(msg.X, msg.Y)
 
 		ts.mu.Lock()
-		if ts.VTerm != nil {
-			ts.VTerm.ClearSelection()
-		}
+		now := time.Now()
+		var absLine int
 		if inBounds && ts.VTerm != nil {
-			// Convert screen Y to absolute line number
-			absLine := ts.VTerm.ScreenYToAbsoluteLine(termY)
+			absLine = ts.VTerm.ScreenYToAbsoluteLine(termY)
+		}
+
+		isDoubleClick := inBounds &&
+			now.Sub(ts.lastClickTime) < sidebarDoubleClickTimeout &&
+			ts.lastClickX == termX &&
+			ts.lastClickLine == absLine
+		ts.lastClickTime = now
+		ts.lastClickX = termX
+		ts.lastClickLine = absLine
+
+		if isDoubleClick && ts.VTerm != nil {
+			// Double-click: select word at cursor
+			wordStart, wordEnd := ts.VTerm.WordBoundsAt(termX, absLine)
 			ts.Selection = SelectionState{
-				Active:    true,
-				StartX:    termX,
+				Active:    false,
+				StartX:    wordStart,
 				StartLine: absLine,
-				EndX:      termX,
+				EndX:      wordEnd,
 				EndLine:   absLine,
 			}
-			ts.VTerm.SetSelection(termX, absLine, termX, absLine, true, false)
+			ts.VTerm.SetSelection(wordStart, absLine, wordEnd, absLine, true, false)
+			// Copy the selected word
+			text := ts.VTerm.GetSelectedText(wordStart, absLine, wordEnd, absLine)
+			if text != "" {
+				if err := common.CopyToClipboard(text); err != nil {
+					logging.Error("Failed to copy word to clipboard: %v", err)
+				}
+			}
 		} else {
-			ts.Selection = SelectionState{}
+			if ts.VTerm != nil {
+				ts.VTerm.ClearSelection()
+			}
+			if inBounds && ts.VTerm != nil {
+				// Store anchor for potential drag, but don't set VTerm selection yet.
+				// Visual highlighting only appears once the user drags (motion event).
+				ts.Selection = SelectionState{
+					Active:    true,
+					StartX:    termX,
+					StartLine: absLine,
+					EndX:      termX,
+					EndLine:   absLine,
+				}
+			} else {
+				ts.Selection = SelectionState{}
+			}
 		}
 		ts.mu.Unlock()
 	}
