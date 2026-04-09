@@ -1018,17 +1018,23 @@ func (a *App) handleShowCleanupTmuxDialog() {
 	a.dialog.Show()
 }
 
-// showCloseTabConfirmation shows a confirmation dialog before closing an agent tab.
-func (a *App) showCloseTabConfirmation() {
+// showCloseTabDialog shows the tab-actions dialog: close, restart, or
+// cancel. Restart tears down the current tmux + agent process and spawns
+// a fresh one using the same Claude session ID via `claude --resume`,
+// which is useful for picking up a newer claude binary without losing
+// the conversation.
+func (a *App) showCloseTabDialog() {
 	if a.dialog != nil && a.dialog.Visible() {
 		return
 	}
-	a.dialog = common.NewConfirmDialog(
+	a.dialog = common.NewSelectDialog(
 		DialogCloseTab,
-		"Close Tab",
-		"Close this agent tab? The running agent will be terminated.",
+		"Tab Actions",
+		"Restart launches a fresh claude process using the same session "+
+			"(useful after upgrading claude). Close ends the session.",
+		[]string{"Close", "Restart", "Cancel"},
 	)
-	a.dialog.SetDefaultConfirm(true)
+	a.dialog.SetVerticalLayout(true)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()

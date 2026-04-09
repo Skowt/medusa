@@ -299,8 +299,17 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 
 	case DialogCloseTab:
 		idx := a.dialogCloseTabIdx
-		return func() tea.Msg {
-			return messages.ConfirmCloseTab{Index: idx}
+		switch result.Index {
+		case 0: // Close
+			return func() tea.Msg {
+				return messages.ConfirmCloseTab{Index: idx}
+			}
+		case 1: // Restart
+			return func() tea.Msg {
+				return messages.ConfirmRestartTab{Index: idx}
+			}
+		default: // Cancel
+			return nil
 		}
 
 	case DialogDeleteProfile:
