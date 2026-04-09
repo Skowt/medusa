@@ -395,6 +395,14 @@ type ConfirmCloseTab struct {
 	Index int // -1 means close active tab
 }
 
+// ConfirmRestartTab is sent after the user chooses "Restart" in the
+// close-tab dialog. The existing ClaudeSessionID is preserved so the
+// conversation resumes via `claude --resume`. Index -1 means restart the
+// active tab.
+type ConfirmRestartTab struct {
+	Index int
+}
+
 // ShowCleanupTmuxDialog requests confirmation before cleaning tmux sessions.
 type ShowCleanupTmuxDialog struct{}
 

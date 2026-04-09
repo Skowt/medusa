@@ -582,17 +582,24 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case messages.CloseTab:
 		a.dialogCloseTabIdx = -1
-		a.showCloseTabConfirmation()
+		a.showCloseTabDialog()
 
 	case messages.CloseTabAt:
 		a.dialogCloseTabIdx = msg.Index
-		a.showCloseTabConfirmation()
+		a.showCloseTabDialog()
 
 	case messages.ConfirmCloseTab:
 		if msg.Index == -1 {
 			cmds = append(cmds, a.center.CloseActiveTab())
 		} else {
 			cmds = append(cmds, a.center.CloseTabAtIndex(msg.Index))
+		}
+
+	case messages.ConfirmRestartTab:
+		if msg.Index == -1 {
+			cmds = append(cmds, a.center.RestartActiveTab())
+		} else {
+			cmds = append(cmds, a.center.RestartTabAtIndex(msg.Index))
 		}
 
 	case messages.LaunchAgent:
