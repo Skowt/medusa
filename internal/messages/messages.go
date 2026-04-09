@@ -488,6 +488,12 @@ type OpenFileInVim struct {
 	Workspace *data.Workspace
 }
 
+// AgentInterrupted is sent when Ctrl+C is forwarded to a workspace terminal,
+// signaling that the agent's activity spinner should be cleared.
+type AgentInterrupted struct {
+	WorkspaceID string
+}
+
 // PermissionWatcherEvent is sent when a watched settings.local.json changes
 type PermissionWatcherEvent struct {
 	Root     string

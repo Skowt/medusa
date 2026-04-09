@@ -114,6 +114,24 @@ func (a *App) restoreHookStatesFromWorkspaces() {
 	}
 }
 
+// handleAgentInterrupted clears the hook state for a workspace whose agent was
+// interrupted via Ctrl+C. Claude Code's Stop hook does not fire on user
+// interrupts, so the spinner would otherwise keep running indefinitely.
+func (a *App) handleAgentInterrupted(wsID string) []tea.Cmd {
+	if _, ok := a.hookWorkspaceStates[wsID]; !ok {
+		return nil
+	}
+	delete(a.hookWorkspaceStates, wsID)
+	var cmds []tea.Cmd
+	if cmd := a.persistHookState(wsID); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	if cmd := a.syncActiveWorkspacesToDashboard(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return cmds
+}
+
 // hookActiveIDs returns the set of workspace IDs that are currently active
 // based on hook state (PreToolUse or UserPromptSubmit = agent actively working).
 func (a *App) hookActiveIDs() map[string]bool {

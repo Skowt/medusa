@@ -662,6 +662,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case center.TabInputFailed:
 		cmds = append(cmds, a.handleTabInputFailed(msg)...)
 
+	case messages.AgentInterrupted:
+		cmds = append(cmds, a.handleAgentInterrupted(msg.WorkspaceID)...)
+
 	case messages.Toast:
 		switch msg.Level {
 		case messages.ToastSuccess:
