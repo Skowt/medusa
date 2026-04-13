@@ -115,6 +115,17 @@ func GenerateSBPL(worktreeRoot string, gitDirs []string, claudeConfigDir string,
 	if err == nil && home != "" {
 		b.WriteString(";; File writes — macOS Keychain (OAuth token storage)\n")
 		fmt.Fprintf(&b, "(allow file-write* (subpath %q))\n\n", filepath.Join(home, "Library/Keychains"))
+
+		// Claude Code's auto-updater writes the new binary + version manifests
+		// to its install location. The exact path depends on the installer used:
+		//   - Native installer:    ~/.local/share/claude (versions) + ~/.local/bin (launcher)
+		//   - Legacy migrate-installer: ~/.claude/local
+		// Without these, the updater silently fails and the CLI can never
+		// upgrade itself from inside the sandbox.
+		b.WriteString(";; File writes — Claude Code auto-updater install dirs\n")
+		fmt.Fprintf(&b, "(allow file-write* (subpath %q))\n", filepath.Join(home, ".local/share/claude"))
+		fmt.Fprintf(&b, "(allow file-write* (subpath %q))\n", filepath.Join(home, ".local/bin"))
+		fmt.Fprintf(&b, "(allow file-write* (subpath %q))\n\n", filepath.Join(home, ".claude/local"))
 	}
 
 	// ── Process execution ───────────────────────────────────────
