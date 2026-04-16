@@ -429,7 +429,7 @@ func (a *App) showNameWorkspaceDialog(repos []data.RepoRef) {
 		}
 		return ""
 	})
-	a.dialog.SetCheckbox("Copy gitignore'd files", true)
+	a.dialog.SetCheckbox("Copy gitignored files", true)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()
