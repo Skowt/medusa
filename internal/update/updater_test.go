@@ -90,102 +90,109 @@ func TestCanWrite(t *testing.T) {
 	}
 }
 
-func TestExtractBinary(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a test tar.gz archive with an medusa binary
-	archivePath := filepath.Join(tmpDir, "test.tar.gz")
-	binaryContent := []byte("#!/bin/sh\necho hello\n")
-
+// writeTarGz creates a tar.gz at archivePath containing the given name→content entries.
+func writeTarGz(t *testing.T, archivePath string, entries map[string][]byte) {
+	t.Helper()
 	f, err := os.Create(archivePath)
 	if err != nil {
-		t.Fatalf("Failed to create archive file: %v", err)
+		t.Fatalf("create archive: %v", err)
 	}
-
 	gzw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gzw)
-
-	// Add the medusa binary to the archive
-	hdr := &tar.Header{
-		Name: "medusa",
-		Mode: 0755,
-		Size: int64(len(binaryContent)),
+	for name, content := range entries {
+		hdr := &tar.Header{Name: name, Mode: 0755, Size: int64(len(content))}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("write header: %v", err)
+		}
+		if _, err := tw.Write(content); err != nil {
+			t.Fatalf("write content: %v", err)
+		}
 	}
-	if err := tw.WriteHeader(hdr); err != nil {
-		t.Fatalf("Failed to write tar header: %v", err)
-	}
-	if _, err := tw.Write(binaryContent); err != nil {
-		t.Fatalf("Failed to write tar content: %v", err)
-	}
-
 	tw.Close()
 	gzw.Close()
 	f.Close()
+}
 
-	// Extract the binary
+func TestExtractBinaries_BothPresent(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivePath := filepath.Join(tmpDir, "test.tar.gz")
+	medusaContent := []byte("#!/bin/sh\necho medusa\n")
+	approveContent := []byte("#!/bin/sh\necho approve\n")
+	writeTarGz(t, archivePath, map[string][]byte{
+		"medusa":                  medusaContent,
+		"medusa-approve-compound": approveContent,
+	})
+
 	destDir := filepath.Join(tmpDir, "extracted")
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		t.Fatalf("Failed to create dest dir: %v", err)
+		t.Fatalf("mkdir: %v", err)
 	}
 
-	extractedPath, err := ExtractBinary(archivePath, destDir)
+	got, err := ExtractBinaries(archivePath, destDir, []string{"medusa", "medusa-approve-compound"})
 	if err != nil {
-		t.Fatalf("ExtractBinary() error = %v", err)
+		t.Fatalf("ExtractBinaries: %v", err)
 	}
-
-	// Verify the extracted file
-	if extractedPath != filepath.Join(destDir, "medusa") {
-		t.Errorf("Expected path %s, got %s", filepath.Join(destDir, "medusa"), extractedPath)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 binaries, got %d: %v", len(got), got)
 	}
-
-	content, err := os.ReadFile(extractedPath)
-	if err != nil {
-		t.Fatalf("Failed to read extracted file: %v", err)
-	}
-
-	if string(content) != string(binaryContent) {
-		t.Errorf("Extracted content mismatch")
+	for name, content := range map[string][]byte{"medusa": medusaContent, "medusa-approve-compound": approveContent} {
+		path, ok := got[name]
+		if !ok {
+			t.Fatalf("missing %s in result", name)
+		}
+		if path != filepath.Join(destDir, name) {
+			t.Errorf("%s: expected path %s, got %s", name, filepath.Join(destDir, name), path)
+		}
+		read, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if string(read) != string(content) {
+			t.Errorf("%s content mismatch", name)
+		}
 	}
 }
 
-func TestExtractBinaryMissing(t *testing.T) {
+func TestExtractBinaries_OptionalMissing(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create an archive without an medusa binary
 	archivePath := filepath.Join(tmpDir, "test.tar.gz")
-	f, err := os.Create(archivePath)
-	if err != nil {
-		t.Fatalf("Failed to create archive file: %v", err)
-	}
-
-	gzw := gzip.NewWriter(f)
-	tw := tar.NewWriter(gzw)
-
-	// Add a different file
-	hdr := &tar.Header{
-		Name: "other-file",
-		Mode: 0644,
-		Size: 5,
-	}
-	if err := tw.WriteHeader(hdr); err != nil {
-		t.Fatalf("Failed to write tar header: %v", err)
-	}
-	if _, err := tw.Write([]byte("hello")); err != nil {
-		t.Fatalf("Failed to write tar content: %v", err)
-	}
-
-	tw.Close()
-	gzw.Close()
-	f.Close()
+	writeTarGz(t, archivePath, map[string][]byte{
+		"medusa": []byte("medusa"),
+	})
 
 	destDir := filepath.Join(tmpDir, "extracted")
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		t.Fatalf("Failed to create dest dir: %v", err)
+		t.Fatalf("mkdir: %v", err)
 	}
 
-	_, err = ExtractBinary(archivePath, destDir)
-	if err == nil {
-		t.Error("ExtractBinary() should fail when medusa binary not found")
+	got, err := ExtractBinaries(archivePath, destDir, []string{"medusa", "medusa-approve-compound"})
+	if err != nil {
+		t.Fatalf("ExtractBinaries: %v", err)
+	}
+	if _, ok := got["medusa"]; !ok {
+		t.Errorf("expected medusa to be extracted")
+	}
+	if _, ok := got["medusa-approve-compound"]; ok {
+		t.Errorf("medusa-approve-compound should not be in result when absent from archive")
+	}
+}
+
+func TestExtractBinaries_NoneMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivePath := filepath.Join(tmpDir, "test.tar.gz")
+	writeTarGz(t, archivePath, map[string][]byte{"other-file": []byte("hello")})
+
+	destDir := filepath.Join(tmpDir, "extracted")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	got, err := ExtractBinaries(archivePath, destDir, []string{"medusa"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty result when archive has no requested binaries, got %v", got)
 	}
 }
 

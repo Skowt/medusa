@@ -140,17 +140,36 @@ func (u *Updater) Upgrade(release *Release) error {
 		return fmt.Errorf("checksum verification failed: %w", err)
 	}
 
-	// Extract binary
-	logging.Info("Extracting binary")
-	newBinary, err := ExtractBinary(archivePath, tmpDir)
+	// Extract binaries. The secondary "medusa-approve-compound" binary is
+	// optional — older releases or custom builds may omit it.
+	logging.Info("Extracting binaries")
+	extracted, err := ExtractBinaries(archivePath, tmpDir, []string{"medusa", "medusa-approve-compound"})
 	if err != nil {
-		return fmt.Errorf("extracting binary: %w", err)
+		return fmt.Errorf("extracting binaries: %w", err)
+	}
+	newMedusa, ok := extracted["medusa"]
+	if !ok {
+		return fmt.Errorf("medusa binary not found in archive")
 	}
 
-	// Install binary
-	logging.Info("Installing to %s", currentBinary)
-	if err := InstallBinary(newBinary, currentBinary); err != nil {
-		return fmt.Errorf("installing binary: %w", err)
+	// Install the primary binary. Its atomic swap with rollback is handled
+	// inside InstallBinary.
+	logging.Info("Installing medusa to %s", currentBinary)
+	if err := InstallBinary(newMedusa, currentBinary); err != nil {
+		return fmt.Errorf("installing medusa: %w", err)
+	}
+
+	// Install the approve-compound hook alongside medusa (best-effort).
+	// A failure here doesn't roll back the primary update; we log and
+	// continue so the user isn't stuck between versions.
+	if newApprove, ok := extracted["medusa-approve-compound"]; ok {
+		approveTarget := filepath.Join(filepath.Dir(currentBinary), "medusa-approve-compound")
+		logging.Info("Installing medusa-approve-compound to %s", approveTarget)
+		if err := InstallBinary(newApprove, approveTarget); err != nil {
+			logging.Warn("Failed to install medusa-approve-compound: %v (medusa itself was updated successfully)", err)
+		}
+	} else {
+		logging.Info("medusa-approve-compound not in archive; skipping")
 	}
 
 	logging.Info("Upgrade complete: %s", release.TagName)

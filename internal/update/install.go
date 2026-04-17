@@ -10,23 +10,31 @@ import (
 	"strings"
 )
 
-// ExtractBinary extracts the medusa binary from a tar.gz archive.
-// Returns the path to the extracted binary.
-func ExtractBinary(archivePath string, destDir string) (string, error) {
+// ExtractBinaries extracts the named binaries from a tar.gz archive into destDir.
+// Returns a map of binary name to extracted path for every requested binary that
+// was found in the archive. Binaries not present in the archive are simply omitted
+// from the result map (not an error). An error is returned only for archive-level
+// I/O failures. Callers should check the map for presence of required binaries.
+func ExtractBinaries(archivePath string, destDir string, names []string) (map[string]string, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
-		return "", fmt.Errorf("opening archive: %w", err)
+		return nil, fmt.Errorf("opening archive: %w", err)
 	}
 	defer f.Close()
 
 	gzr, err := gzip.NewReader(f)
 	if err != nil {
-		return "", fmt.Errorf("creating gzip reader: %w", err)
+		return nil, fmt.Errorf("creating gzip reader: %w", err)
 	}
 	defer gzr.Close()
 
+	wanted := make(map[string]bool, len(names))
+	for _, n := range names {
+		wanted[n] = true
+	}
+
+	result := make(map[string]string)
 	tr := tar.NewReader(gzr)
-	var binaryPath string
 
 	for {
 		header, err := tr.Next()
@@ -34,38 +42,40 @@ func ExtractBinary(archivePath string, destDir string) (string, error) {
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("reading tar: %w", err)
-		}
-
-		// Only extract the medusa binary
-		name := filepath.Base(header.Name)
-		if name != "medusa" {
-			continue
+			return nil, fmt.Errorf("reading tar: %w", err)
 		}
 
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
 
-		binaryPath = filepath.Join(destDir, "medusa")
-		outFile, err := os.OpenFile(binaryPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		name := filepath.Base(header.Name)
+		if !wanted[name] {
+			continue
+		}
+		if _, already := result[name]; already {
+			continue
+		}
+
+		outPath := filepath.Join(destDir, name)
+		outFile, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 		if err != nil {
-			return "", fmt.Errorf("creating output file: %w", err)
+			return nil, fmt.Errorf("creating output file %s: %w", name, err)
 		}
 
 		if _, err := io.Copy(outFile, tr); err != nil {
 			outFile.Close()
-			return "", fmt.Errorf("extracting binary: %w", err)
+			return nil, fmt.Errorf("extracting %s: %w", name, err)
 		}
 		outFile.Close()
-		break
+		result[name] = outPath
+
+		if len(result) == len(wanted) {
+			break
+		}
 	}
 
-	if binaryPath == "" {
-		return "", fmt.Errorf("medusa binary not found in archive")
-	}
-
-	return binaryPath, nil
+	return result, nil
 }
 
 // InstallBinary performs an atomic replacement of the current binary.
@@ -84,9 +94,10 @@ func InstallBinary(newBinaryPath string, currentBinaryPath string) error {
 	}
 
 	// Stage the new binary in the same directory as the target to avoid
-	// cross-filesystem rename failures (EXDEV)
+	// cross-filesystem rename failures (EXDEV). Use a per-binary staging
+	// name so installing multiple binaries in the same directory is safe.
 	targetDir := filepath.Dir(currentBinaryPath)
-	stagedPath := filepath.Join(targetDir, ".medusa-upgrade-new")
+	stagedPath := filepath.Join(targetDir, "."+filepath.Base(currentBinaryPath)+".upgrade-new")
 
 	if err := copyFile(newBinaryPath, stagedPath); err != nil {
 		return fmt.Errorf("staging new binary: %w", err)
