@@ -104,21 +104,30 @@ func InstallBinary(newBinaryPath string, currentBinaryPath string) error {
 	}
 	defer os.Remove(stagedPath) // Clean up on failure
 
-	// Create backup of current binary
+	// Back up the current binary if it exists. A missing target is valid:
+	// it means this is a fresh install of a secondary binary (e.g. a user
+	// whose prior install.sh never laid down medusa-approve-compound).
 	backupPath := currentBinaryPath + ".bak"
+	hasBackup := false
 	if err := os.Rename(currentBinaryPath, backupPath); err != nil {
-		return fmt.Errorf("backing up current binary: %w", err)
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("backing up current binary: %w", err)
+		}
+	} else {
+		hasBackup = true
 	}
 
 	// Atomically replace with staged binary (same filesystem, so rename works)
 	if err := os.Rename(stagedPath, currentBinaryPath); err != nil {
-		// Try to restore backup
-		_ = os.Rename(backupPath, currentBinaryPath)
+		if hasBackup {
+			_ = os.Rename(backupPath, currentBinaryPath)
+		}
 		return fmt.Errorf("installing new binary: %w", err)
 	}
 
-	// Remove backup
-	_ = os.Remove(backupPath)
+	if hasBackup {
+		_ = os.Remove(backupPath)
+	}
 
 	return nil
 }

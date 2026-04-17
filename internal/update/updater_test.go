@@ -231,8 +231,39 @@ func TestInstallBinary(t *testing.T) {
 	}
 
 	// Verify staged file was cleaned up
-	if _, err := os.Stat(filepath.Join(tmpDir, ".medusa-upgrade-new")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmpDir, ".medusa.upgrade-new")); !os.IsNotExist(err) {
 		t.Error("Staged file should have been removed")
+	}
+}
+
+// TestInstallBinary_NoExistingTarget covers the case where the target binary
+// doesn't exist yet — e.g., installing medusa-approve-compound on a system
+// where a prior install.sh only laid down medusa.
+func TestInstallBinary_NoExistingTarget(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	srcPath := filepath.Join(tmpDir, "new-approve")
+	if err := os.WriteFile(srcPath, []byte("approve binary"), 0755); err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+
+	destPath := filepath.Join(tmpDir, "medusa-approve-compound")
+	// Intentionally do NOT create destPath.
+
+	if err := InstallBinary(srcPath, destPath); err != nil {
+		t.Fatalf("InstallBinary with no existing target: %v", err)
+	}
+
+	content, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("read installed binary: %v", err)
+	}
+	if string(content) != "approve binary" {
+		t.Errorf("content mismatch, got %q", string(content))
+	}
+
+	if _, err := os.Stat(destPath + ".bak"); !os.IsNotExist(err) {
+		t.Error("no .bak should exist when there was no prior binary")
 	}
 }
 
