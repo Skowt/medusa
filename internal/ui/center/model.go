@@ -208,9 +208,7 @@ const (
 	tabHitTab tabHitKind = iota
 	tabHitClose
 	tabHitPlus
-	tabHitPlusSelect
 	tabHitInfo
-	tabHitModeIcon
 	tabHitPrev
 	tabHitNext
 )
@@ -233,7 +231,6 @@ type actionBarButton struct {
 type tabHit struct {
 	kind   tabHitKind
 	index  int
-	label  string // tooltip text for mode icon clicks
 	region common.HitRegion
 }
 
