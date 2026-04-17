@@ -48,6 +48,55 @@ Each worktree tracks a repo checkout and its metadata. For local workflows, work
 - **Keyboard + mouse**: Can be operated with just the keyboard or with a mouse
 - **All-in-one tool**: Run agents, view diffs, and access terminal
 
+## Workspace Scripts
+
+You can configure setup and run scripts per repository by creating a `.medusa/workspaces.json` file in your repo root.
+
+### Configuration
+
+```json
+{
+  "setup-workspace": [
+    "uv venv && uv sync",
+    "cd client && npm i"
+  ],
+  "run": [
+    {"name": "backend", "command": "python server.py"},
+    {"name": "frontend", "command": "cd client && npm start"}
+  ],
+  "archive": "echo done"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `setup-workspace` | `string[]` | Commands run sequentially when a workspace is created |
+| `run` | `string` or `object[]` | Dev server commands — launched in visible tabs after setup completes |
+| `archive` | `string` | Command run when archiving a workspace |
+
+The `run` field supports two formats:
+- **String**: `"run": "npm start"` — opens a single "dev server" tab
+- **Array**: `"run": [{"name": "...", "command": "..."}]` — opens a named tab per entry
+
+### Environment Variables
+
+The following variables are injected into all script environments:
+
+| Variable | Example | Description |
+|---|---|---|
+| `WORKSPACE_PORT` | `6200` | Base port allocated for this workspace |
+| `WORKSPACE_PORT_RANGE` | `6200-6209` | Full port range (10 ports per workspace) |
+| `MEDUSA_WORKSPACE_NAME` | `my-feature` | Workspace name |
+| `MEDUSA_WORKSPACE_ROOT` | `/path/to/worktree` | Worktree root directory |
+| `MEDUSA_WORKSPACE_BRANCH` | `my-feature` | Git branch name |
+| `ROOT_WORKSPACE_PATH` | `/path/to/source/repo` | Source repository path |
+
+Each workspace gets a unique port range starting from 6200 (configurable), incremented by 10 per workspace. Use `WORKSPACE_PORT` in your scripts to avoid port collisions when running multiple workspaces simultaneously.
+
+### Manual Trigger
+
+Press **Ctrl-a r** to launch (or restart) the run scripts for the active workspace. This closes any existing script tabs before starting fresh ones.
+
 ## Development
 
 ```bash
