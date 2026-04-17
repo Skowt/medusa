@@ -1,8 +1,6 @@
 package common
 
 import (
-	"strings"
-
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -324,18 +322,17 @@ func (s *SettingsDialog) handlePrev() (*SettingsDialog, tea.Cmd) {
 }
 
 func (s *SettingsDialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
-	lines := s.renderLines()
-	contentHeight := len(lines)
-	if contentHeight == 0 {
+	b := s.build()
+	dialogW, dialogH := b.Size()
+	if dialogW == 0 || dialogH == 0 {
 		return nil
 	}
-
-	dialogX, dialogY, dialogW, dialogH := s.dialogBounds(contentHeight)
+	dialogX, dialogY := centerOrigin(s.width, s.height, dialogW, dialogH)
 	if msg.X < dialogX || msg.X >= dialogX+dialogW || msg.Y < dialogY || msg.Y >= dialogY+dialogH {
 		return nil
 	}
 
-	_, _, contentOffsetX, contentOffsetY := s.dialogFrame()
+	contentOffsetX, contentOffsetY := b.ContentOffset()
 	localX := msg.X - dialogX - contentOffsetX
 	localY := msg.Y - dialogY - contentOffsetY
 	if localX < 0 || localY < 0 {
@@ -356,7 +353,7 @@ func (s *SettingsDialog) View() string {
 	if !s.visible {
 		return ""
 	}
-	return s.dialogStyle().Render(strings.Join(s.renderLines(), "\n"))
+	return s.build().View()
 }
 
 func (s *SettingsDialog) dialogContentWidth() int {

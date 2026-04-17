@@ -291,42 +291,40 @@ func (a *App) monitorExitHit(x, y int) bool {
 	if y != 0 {
 		return false
 	}
-	header := a.monitorHeaderText()
-	exitText := "[Exit]"
-	headerStripped := ansi.Strip(header)
-	idx := strings.Index(headerStripped, exitText)
-	if idx < 0 {
-		return false
-	}
-	start := idx
-	end := start + len(exitText)
-	return x >= start && x < end
+	headerStripped := ansi.Strip(a.monitorHeaderText())
+	return headerButtonHit(headerStripped, "[Exit]", x)
 }
 
 func (a *App) monitorFilterHit(x, y int) (string, bool) {
 	if y != 0 {
 		return "", false
 	}
-	header := a.monitorHeaderText()
-	headerStripped := ansi.Strip(header)
+	headerStripped := ansi.Strip(a.monitorHeaderText())
 
-	// Check "All" button
-	allText := "[All]"
-	allIdx := strings.Index(headerStripped, allText)
-	if allIdx >= 0 && x >= allIdx && x < allIdx+len(allText) {
+	if headerButtonHit(headerStripped, "[All]", x) {
 		return "", true
 	}
-
-	// Check project buttons
-	filters := a.monitorProjectFilters()
-	for _, filter := range filters {
-		btnText := "[" + filter.Label + "]"
-		idx := strings.Index(headerStripped, btnText)
-		if idx >= 0 && x >= idx && x < idx+len(btnText) {
+	for _, filter := range a.monitorProjectFilters() {
+		if headerButtonHit(headerStripped, "["+filter.Label+"]", x) {
 			return filter.Key, true
 		}
 	}
 	return "", false
+}
+
+// headerButtonHit reports whether display column x falls within label's
+// rendered position in stripped. Both the start column and the label's width
+// are measured through lipgloss so user-provided project labels containing
+// multi-byte runes do not desynchronise the hit region from the visible
+// button.
+func headerButtonHit(stripped, label string, x int) bool {
+	idx := strings.Index(stripped, label)
+	if idx < 0 {
+		return false
+	}
+	start := lipgloss.Width(stripped[:idx])
+	end := start + lipgloss.Width(label)
+	return x >= start && x < end
 }
 
 func (a *App) selectMonitorTile(paneX, paneY int) (int, bool) {

@@ -3,6 +3,7 @@ package common
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -148,18 +149,17 @@ func (p *SoundPicker) handlePrev() (*SoundPicker, tea.Cmd) {
 }
 
 func (p *SoundPicker) handleClick(msg tea.MouseClickMsg) tea.Cmd {
-	lines := p.renderLines()
-	contentHeight := len(lines)
-	if contentHeight == 0 {
+	b := p.build()
+	dialogW, dialogH := b.Size()
+	if dialogW == 0 || dialogH == 0 {
 		return nil
 	}
-
-	dialogX, dialogY, dialogW, dialogH := p.dialogBounds(contentHeight)
+	dialogX, dialogY := centerOrigin(p.width, p.height, dialogW, dialogH)
 	if msg.X < dialogX || msg.X >= dialogX+dialogW || msg.Y < dialogY || msg.Y >= dialogY+dialogH {
 		return nil
 	}
 
-	_, _, contentOffsetX, contentOffsetY := p.dialogFrame()
+	contentOffsetX, contentOffsetY := b.ContentOffset()
 	localX := msg.X - dialogX - contentOffsetX
 	localY := msg.Y - dialogY - contentOffsetY
 	if localX < 0 || localY < 0 {
@@ -183,7 +183,7 @@ func (p *SoundPicker) View() string {
 	if !p.visible {
 		return ""
 	}
-	return p.dialogStyle().Render(strings.Join(p.renderLines(), "\n"))
+	return p.build().View()
 }
 
 func (p *SoundPicker) dialogContentWidth() int {
@@ -201,42 +201,16 @@ func (p *SoundPicker) dialogStyle() lipgloss.Style {
 		Width(p.dialogContentWidth())
 }
 
-func (p *SoundPicker) dialogFrame() (frameX, frameY, offsetX, offsetY int) {
-	frameX, frameY = p.dialogStyle().GetFrameSize()
-	return frameX, frameY, frameX / 2, frameY / 2
-}
-
-func (p *SoundPicker) dialogBounds(contentHeight int) (x, y, w, h int) {
-	contentWidth := p.dialogContentWidth()
-	frameX, frameY, _, _ := p.dialogFrame()
-	w, h = contentWidth+frameX, contentHeight+frameY
-	x, y = (p.width-w)/2, (p.height-h)/2
-	if x < 0 {
-		x = 0
-	}
-	if y < 0 {
-		y = 0
-	}
-	return
-}
-
-func (p *SoundPicker) addHit(index, y int) {
-	p.hitRegions = append(p.hitRegions, soundHitRegion{
-		index:  index,
-		region: HitRegion{X: 0, Y: y, Width: p.dialogContentWidth(), Height: 1},
-	})
-}
-
-func (p *SoundPicker) renderLines() []string {
+func (p *SoundPicker) build() *LineBuilder {
+	b := NewLineBuilder(p.dialogStyle(), p.dialogContentWidth())
 	p.hitRegions = p.hitRegions[:0]
-	var lines []string
 
 	title := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary)
 	muted := lipgloss.NewStyle().Foreground(ColorMuted)
 
-	lines = append(lines, title.Render("Notification Sound"))
-	lines = append(lines, muted.Render("Play a sound when an agent needs input"))
-	lines = append(lines, "")
+	b.Append("", title.Render("Notification Sound"))
+	b.Append("", muted.Render("Play a sound when an agent needs input"))
+	b.Blank()
 
 	for i, s := range p.sounds {
 		style, prefix := muted, "  "
@@ -244,17 +218,18 @@ func (p *SoundPicker) renderLines() []string {
 			style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 			prefix = Icons.Cursor + " "
 		}
-		y := len(lines)
-		lines = append(lines, prefix+style.Render(s))
-		p.addHit(i, y)
+		id := strconv.Itoa(i)
+		b.Append(id, prefix+style.Render(s))
+		if r, ok := b.RegionByID(id); ok {
+			p.hitRegions = append(p.hitRegions, soundHitRegion{index: i, region: r})
+		}
 	}
-	lines = append(lines, "")
-
-	lines = append(lines, muted.Render("[Enter] Save • [Esc] Cancel"))
+	b.Blank()
+	b.Append("", muted.Render("[Enter] Save • [Esc] Cancel"))
 
 	if p.showKeymapHintsUI {
-		lines = append(lines, "", muted.Render("↑/↓ navigate"))
+		b.Blank()
+		b.Append("", muted.Render("↑/↓ navigate"))
 	}
-
-	return lines
+	return b
 }

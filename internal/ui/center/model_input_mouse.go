@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Skowt/medusa/internal/logging"
@@ -451,10 +452,14 @@ func (m *Model) handleInfoContentClick(msg tea.MouseClickMsg) tea.Cmd {
 		if idx < 0 {
 			continue
 		}
+		// Byte-offset → column. The branch name or displayed path preceding
+		// the button can contain multi-byte runes (accented chars, CJK,
+		// emoji), so idx is a byte index and must be converted to display
+		// columns through lipgloss.Width before comparing against localX.
 		region := common.HitRegion{
-			X:      idx,
+			X:      lipgloss.Width(stripped[:idx]),
 			Y:      infoY,
-			Width:  len(btn.text),
+			Width:  lipgloss.Width(btn.text),
 			Height: 1,
 		}
 		if region.Contains(localX, infoY) {

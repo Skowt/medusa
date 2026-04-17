@@ -11,6 +11,15 @@ import (
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
+// Welcome-screen button labels. The render path (welcomeContent) and the
+// click handler (handleWelcomeClick) share these constants so the two cannot
+// drift apart — an earlier mismatch ("[Add workspace]" vs "[+ Add Workspace]")
+// made the Add-Workspace button completely unclickable.
+const (
+	welcomeAddWorkspaceLabel = "[+ Add Workspace]"
+	welcomeSettingsLabel     = "[Settings]"
+)
+
 func (a *App) handleCenterPaneClick(msg tea.MouseClickMsg) tea.Cmd {
 	if msg.Button != tea.MouseLeft {
 		return nil
@@ -60,32 +69,36 @@ func (a *App) handleWelcomeClick(localX, localY int) tea.Cmd {
 		lineWidth := lipgloss.Width(line)
 		lineOffsetX := centerOffset(placeWidth, lineWidth)
 
-		settingsText := "[Settings]"
-		if idx := strings.Index(strippedLine, settingsText); idx >= 0 {
-			region := common.HitRegion{
-				X:      idx + lineOffsetX,
-				Y:      i + offsetY,
-				Width:  len(settingsText),
-				Height: 1,
-			}
-			if region.Contains(localX, localY) {
+		if r, ok := markerRegion(strippedLine, welcomeSettingsLabel, i+offsetY, lineOffsetX); ok {
+			if r.Contains(localX, localY) {
 				return func() tea.Msg { return messages.ShowSettingsDialog{} }
 			}
 		}
-
-		addWorkspaceText := "[Add workspace]"
-		if idx := strings.Index(strippedLine, addWorkspaceText); idx >= 0 {
-			region := common.HitRegion{
-				X:      idx + lineOffsetX,
-				Y:      i + offsetY,
-				Width:  len(addWorkspaceText),
-				Height: 1,
-			}
-			if region.Contains(localX, localY) {
+		if r, ok := markerRegion(strippedLine, welcomeAddWorkspaceLabel, i+offsetY, lineOffsetX); ok {
+			if r.Contains(localX, localY) {
 				return func() tea.Msg { return messages.ShowCreateWorkspaceDialog{} }
 			}
 		}
 	}
 
 	return nil
+}
+
+// markerRegion finds label inside stripped (a pre-ANSI-stripped line) and
+// returns a HitRegion whose X and Width are measured in display columns —
+// never in bytes. strings.Index returns a byte offset, so callers that treat
+// that offset as a column miscompute hit regions whenever the prefix contains
+// multi-byte runes. markerRegion shields against that by re-measuring the
+// prefix width through lipgloss.
+func markerRegion(stripped, label string, y, offsetX int) (common.HitRegion, bool) {
+	idx := strings.Index(stripped, label)
+	if idx < 0 {
+		return common.HitRegion{}, false
+	}
+	return common.HitRegion{
+		X:      lipgloss.Width(stripped[:idx]) + offsetX,
+		Y:      y,
+		Width:  lipgloss.Width(label),
+		Height: 1,
+	}, true
 }

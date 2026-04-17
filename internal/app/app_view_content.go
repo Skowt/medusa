@@ -221,8 +221,8 @@ func (a *App) welcomeContent() string {
 			settingsStyle = activeStyle
 		}
 	}
-	addProject := addProjectStyle.Render("[+ Add Workspace]")
-	settingsBtn := settingsStyle.Render("[Settings]")
+	addProject := addProjectStyle.Render(welcomeAddWorkspaceLabel)
+	settingsBtn := settingsStyle.Render(welcomeSettingsLabel)
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Left, addProject, "  ", settingsBtn))
 	b.WriteString("\n")
 	if a.config.UI.ShowKeymapHints {
