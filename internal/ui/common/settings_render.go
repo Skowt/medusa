@@ -208,6 +208,27 @@ func (s *SettingsDialog) renderLines() []string {
 	s.addHit(settingsItemEditTheme, -1, y)
 	lines = append(lines, "")
 
+	// ── About ────────────────────────────────────────────────
+	lines = append(lines, label.Render("About"))
+
+	versionText := s.currentVersion
+	if versionText == "" {
+		versionText = "dev"
+	}
+	lines = append(lines, muted.Render("Version: "+versionText))
+
+	if s.updateAvailable {
+		lines = append(lines, muted.Render("Update available → "+s.latestVersion))
+		style = muted
+		if s.focusedItem == settingsItemUpgrade {
+			style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+		}
+		y = len(lines)
+		lines = append(lines, style.Render("[Install update]"))
+		s.addHit(settingsItemUpgrade, -1, y)
+	}
+	lines = append(lines, "")
+
 	style = muted
 	if s.focusedItem == settingsItemSave {
 		style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)

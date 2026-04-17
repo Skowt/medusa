@@ -525,6 +525,11 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.ShowThemeEditor:
 		a.handleShowThemeEditor()
 
+	case common.TriggerUpgradeRequest:
+		if cmd := a.handleTriggerUpgrade(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
 	case common.ThemeResult:
 		if cmd := a.handleThemeResult(msg); cmd != nil {
 			cmds = append(cmds, cmd)

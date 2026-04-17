@@ -29,6 +29,10 @@ type ShowPermissionsEditor struct{}
 // ShowSandboxRulesEditor is sent when the user clicks "Edit Sandbox Path Rules".
 type ShowSandboxRulesEditor struct{}
 
+// TriggerUpgradeRequest is sent when the user clicks "Install update" in settings.
+// The app handler translates this into messages.TriggerUpgrade{}.
+type TriggerUpgradeRequest struct{}
+
 // ThemePreview is sent when user navigates through themes for live preview.
 type ThemePreview struct {
 	Theme ThemeID
@@ -50,6 +54,7 @@ const (
 	settingsItemTmuxPersistence
 	settingsItemManageProfiles
 	settingsItemEditTheme
+	settingsItemUpgrade // About section - only selectable when updateAvailable
 	settingsItemSave
 	settingsItemClose
 )
@@ -215,6 +220,13 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		s.visible = false
 		return s, func() tea.Msg { return ShowSandboxRulesEditor{} }
 
+	case settingsItemUpgrade:
+		if !s.updateAvailable {
+			return s, nil
+		}
+		s.visible = false
+		return s, func() tea.Msg { return TriggerUpgradeRequest{} }
+
 	case settingsItemTmuxPersistence:
 		s.tmuxPersistence = !s.tmuxPersistence
 		return s, nil
@@ -269,12 +281,20 @@ func (s *SettingsDialog) skipDisabledForward() {
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemNotificationSound
 	}
+	// Skip upgrade item when no update is available
+	if !s.updateAvailable && s.focusedItem == settingsItemUpgrade {
+		s.focusedItem = settingsItemSave
+	}
 }
 
 func (s *SettingsDialog) skipDisabledBackward() {
 	// Skip edit permissions when global perms is off
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemGlobalPerms
+	}
+	// Skip upgrade item when no update is available
+	if !s.updateAvailable && s.focusedItem == settingsItemUpgrade {
+		s.focusedItem = settingsItemEditTheme
 	}
 	// Wrap around from before first item to last
 	if s.focusedItem < 0 {
