@@ -226,6 +226,8 @@ func (s *SettingsDialog) renderLines() []string {
 		y = len(lines)
 		lines = append(lines, style.Render("[Install update]"))
 		s.addHit(settingsItemUpgrade, -1, y)
+	} else {
+		lines = append(lines, muted.Render("No new updates"))
 	}
 	lines = append(lines, "")
 
