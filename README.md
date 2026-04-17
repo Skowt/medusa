@@ -5,16 +5,8 @@
 <p align="center">TUI for easily running parallel coding agents</p>
 
 <p align="center">
-  <a href="https://github.com/Skowt/medusa/releases">
-    <img src="https://img.shields.io/github/v/release/Skowt/medusa?style=flat-square" alt="Latest release" />
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/Skowt/medusa?style=flat-square" alt="License" />
-  </a>
-  <img src="https://img.shields.io/badge/Go-1.24.2-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go version" />
-  <a href="https://discord.gg/Dswc7KFPxs">
-    <img src="https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" />
-  </a>
+  <a href="https://github.com/Skowt/medusa/releases"><img src="https://img.shields.io/github/v/release/Skowt/medusa?style=flat-square" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Skowt/medusa?style=flat-square" alt="License" /></a>
 </p>
 
 <p align="center">
@@ -28,7 +20,7 @@
 
 ## What is Medusa?
 
-Medusa is a terminal UI for running multiple coding agents in parallel with a worktree-first model that can import git worktrees.
+Medusa is a terminal UI for [Claude Code](https://claude.com/claude-code). Run multiple agents in parallel — each in its own git worktree on its own branch — and use the monitor view to see which agents are working, idle, or waiting on your input, so you can juggle several tasks at once without losing track of what needs attention.
 
 ## Prerequisites
 
