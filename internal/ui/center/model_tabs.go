@@ -12,6 +12,7 @@ import (
 	"github.com/Skowt/medusa/internal/messages"
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/ui/common"
 	"github.com/Skowt/medusa/internal/vterm"
 )
 
@@ -556,5 +557,21 @@ func (m *Model) HasDiffViewer() bool {
 	tab.mu.Lock()
 	defer tab.mu.Unlock()
 	return tab.DiffViewer != nil
+}
+
+// CloseScriptTabs closes all script tabs for the given workspace and returns
+// a batched command that kills their tmux sessions.
+func (m *Model) CloseScriptTabs(wsID string) tea.Cmd {
+	tabs := m.tabsByWorkspace[wsID]
+	var cmds []tea.Cmd
+	// Collect indices in reverse so removals don't shift later indices.
+	for i := len(tabs) - 1; i >= 0; i-- {
+		if tabs[i] != nil && tabs[i].Assistant == "script" {
+			if cmd := m.closeTabAt(i); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+	return common.SafeBatch(cmds...)
 }
 

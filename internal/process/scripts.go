@@ -24,11 +24,18 @@ const (
 
 const configFilename = "workspaces.json"
 
+// RunCommand is a named command for a run script tab.
+type RunCommand struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
 // WorkspaceConfig holds per-project workspace configuration
 type WorkspaceConfig struct {
-	SetupWorkspace []string `json:"setup-workspace"`
-	RunScript      string   `json:"run"`
-	ArchiveScript  string   `json:"archive"`
+	SetupWorkspace []string     `json:"setup-workspace"`
+	RunCommands    []RunCommand `json:"-"` // parsed from "run" (string or array)
+	RunScript      string       `json:"-"` // kept for RunScript() backward compat
+	ArchiveScript  string       `json:"archive"`
 }
 
 // ScriptRunner manages script execution for workspaces
@@ -61,11 +68,39 @@ func (r *ScriptRunner) LoadConfig(repoPath string) (*WorkspaceConfig, error) {
 		return nil, err
 	}
 
-	var config WorkspaceConfig
-	if err := json.Unmarshal(fileData, &config); err != nil {
+	// Parse with raw "run" field to handle string or array
+	var raw struct {
+		SetupWorkspace []string        `json:"setup-workspace"`
+		Run            json.RawMessage `json:"run"`
+		Archive        string          `json:"archive"`
+	}
+	if err := json.Unmarshal(fileData, &raw); err != nil {
 		return nil, err
 	}
-	return &config, nil
+
+	config := &WorkspaceConfig{
+		SetupWorkspace: raw.SetupWorkspace,
+		ArchiveScript:  raw.Archive,
+	}
+
+	// "run" can be a string or an array of {name, command} objects
+	if len(raw.Run) > 0 {
+		var single string
+		if err := json.Unmarshal(raw.Run, &single); err == nil {
+			config.RunScript = single
+			config.RunCommands = []RunCommand{{Name: "dev server", Command: single}}
+		} else {
+			var multi []RunCommand
+			if err := json.Unmarshal(raw.Run, &multi); err == nil {
+				config.RunCommands = multi
+				if len(multi) == 1 {
+					config.RunScript = multi[0].Command
+				}
+			}
+		}
+	}
+
+	return config, nil
 }
 
 // RunSetup runs the setup scripts for a workspace
@@ -148,6 +183,24 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 	})
 
 	return cmd, nil
+}
+
+// GetRunCommands returns the run commands and environment map for a workspace.
+// Falls back to ws.Scripts.Run if no config file commands are defined.
+func (r *ScriptRunner) GetRunCommands(ws *data.Workspace) ([]RunCommand, map[string]string, error) {
+	config, err := r.LoadConfig(ws.PrimaryRepo().Path)
+	if err != nil {
+		return nil, nil, err
+	}
+	cmds := config.RunCommands
+	if len(cmds) == 0 && ws.Scripts.Run != "" {
+		cmds = []RunCommand{{Name: "dev server", Command: ws.Scripts.Run}}
+	}
+	if len(cmds) == 0 {
+		return nil, nil, fmt.Errorf("no run script configured")
+	}
+	envMap := r.envBuilder.BuildEnvMap(ws)
+	return cmds, envMap, nil
 }
 
 // Stop stops the running script for a workspace

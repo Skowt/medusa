@@ -298,11 +298,14 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		if tab.Assistant == "" {
 			continue
 		}
-		if m.config == nil || m.config.Assistants == nil {
-			continue
-		}
-		if _, ok := m.config.Assistants[tab.Assistant]; !ok {
-			continue
+		isScript := tab.Assistant == "script"
+		if !isScript {
+			if m.config == nil || m.config.Assistants == nil {
+				continue
+			}
+			if _, ok := m.config.Assistants[tab.Assistant]; !ok {
+				continue
+			}
 		}
 		status := strings.ToLower(strings.TrimSpace(tab.Status))
 		if i <= activeIdx {
@@ -312,6 +315,18 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		tabAllowEdits := tab.AllowEdits
 		if !tab.AllowEdits && !tab.Isolated && !tab.SkipPermissions {
 			tabAllowEdits = true // Default for migrated tabs
+		}
+		// Script tabs always reattach to their existing tmux session.
+		if isScript {
+			info := tab
+			m.addPlaceholderTab(ws, info, true)
+			restoreCount++
+			tabs := m.tabsByWorkspace[wsID]
+			if len(tabs) > 0 {
+				lastTab := tabs[len(tabs)-1]
+				cmds = append(cmds, m.ReattachTabByID(wsID, lastTab.ID))
+			}
+			continue
 		}
 		if status == "stopped" {
 			info := tab

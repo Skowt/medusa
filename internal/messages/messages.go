@@ -372,6 +372,14 @@ type LaunchAgent struct {
 	SkipPermissions bool
 }
 
+// LaunchScript requests running a shell command in a new visible tab
+type LaunchScript struct {
+	Workspace   *data.Workspace
+	Command     string
+	DisplayName string
+	Env         map[string]string
+}
+
 // OpenDiff requests opening a diff viewer for a file
 type OpenDiff struct {
 	File       string

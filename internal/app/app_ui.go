@@ -216,6 +216,20 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 		return true, nil
 
+	case key.Matches(msg, a.keymap.RunScript):
+		if a.activeWorkspace != nil {
+			ws := a.activeWorkspace
+			cmds, env, err := a.scripts.GetRunCommands(ws)
+			if err != nil {
+				return true, a.toast.ShowWarning("No run script configured")
+			}
+			// Close existing script tabs (kills their tmux sessions) before launching new ones.
+			closeCmd := a.center.CloseScriptTabs(string(ws.ID()))
+			launchCmd := a.launchScriptCmds(ws, cmds, env)
+			return true, tea.Batch(closeCmd, launchCmd)
+		}
+		return true, nil
+
 	case key.Matches(msg, a.keymap.CloseTab):
 		if a.focusedPane == messages.PaneTerminal {
 			return true, a.sidebarTerminal.CloseActiveTab()

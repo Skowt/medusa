@@ -35,8 +35,8 @@ func (b *EnvBuilder) BuildEnv(ws *data.Workspace) []string {
 	if b.portAllocator != nil {
 		port, rangeEnd := b.portAllocator.PortRange(ws.Root())
 		env = append(env,
-			fmt.Sprintf("MEDUSA_PORT=%d", port),
-			fmt.Sprintf("MEDUSA_PORT_RANGE=%d-%d", port, rangeEnd),
+			fmt.Sprintf("WORKSPACE_PORT=%d", port),
+			fmt.Sprintf("WORKSPACE_PORT_RANGE=%d-%d", port, rangeEnd),
 		)
 	}
 
@@ -59,8 +59,8 @@ func (b *EnvBuilder) BuildEnvMap(ws *data.Workspace) map[string]string {
 
 	if b.portAllocator != nil {
 		port, rangeEnd := b.portAllocator.PortRange(ws.Root())
-		envMap["MEDUSA_PORT"] = fmt.Sprintf("%d", port)
-		envMap["MEDUSA_PORT_RANGE"] = fmt.Sprintf("%d-%d", port, rangeEnd)
+		envMap["WORKSPACE_PORT"] = fmt.Sprintf("%d", port)
+		envMap["WORKSPACE_PORT_RANGE"] = fmt.Sprintf("%d-%d", port, rangeEnd)
 	}
 
 	for k, v := range ws.Env {

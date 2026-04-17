@@ -353,6 +353,9 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	case messages.LaunchAgent:
 		return m.updateLaunchAgent(msg)
 
+	case messages.LaunchScript:
+		return m.updateLaunchScript(msg)
+
 	case messages.OpenFileInVim:
 		return m.updateOpenFileInVim(msg)
 
