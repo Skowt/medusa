@@ -92,11 +92,12 @@ type App struct {
 	monitorCanvas    *compositor.Canvas
 
 	// Update state
-	updateAvailable *update.CheckResult // nil if no update or dismissed
-	version         string
-	commit          string
-	buildDate       string
-	upgradeRunning  bool
+	updateAvailable  *update.CheckResult // nil if no update or dismissed
+	version          string
+	commit           string
+	buildDate        string
+	upgradeRunning   bool
+	updateToastShown bool // guards against re-emitting the update-available toast
 
 	// Button focus state for welcome/workspace info screens
 	centerBtnFocused bool

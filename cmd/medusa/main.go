@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -29,7 +30,36 @@ var (
 	date    = "unknown"
 )
 
+// populateVersionFromBuildInfo fills in version/commit/date from runtime/debug
+// when ldflags weren't applied (e.g. `go install`).
+func populateVersionFromBuildInfo() {
+	if version != "dev" {
+		return
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			if commit == "none" && len(s.Value) >= 7 {
+				commit = s.Value[:7]
+			}
+		case "vcs.time":
+			if date == "unknown" {
+				date = s.Value
+			}
+		}
+	}
+}
+
 func main() {
+	populateVersionFromBuildInfo()
+
 	// Handle --version flag
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
 		fmt.Printf("medusa %s (commit: %s, built: %s)\n", version, commit, date)

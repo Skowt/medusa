@@ -485,6 +485,11 @@ func (a *App) handleUpdateCheckComplete(msg messages.UpdateCheckComplete) tea.Cm
 	if a.settingsDialog != nil && a.settingsDialog.Visible() {
 		a.settingsDialog.SetUpdateInfo(msg.CurrentVersion, msg.LatestVersion, true)
 	}
+	// One-time toast on discovery so users don't miss the upgrade.
+	if !a.updateToastShown {
+		a.updateToastShown = true
+		return a.toast.ShowInfo(fmt.Sprintf("Update available: %s → %s · open Settings to install", msg.CurrentVersion, msg.LatestVersion))
+	}
 	return nil
 }
 

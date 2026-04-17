@@ -49,6 +49,7 @@ checksum:
 
 changelog:
   sort: asc
+  use: git
   filters:
     exclude:
       - "^docs:"
