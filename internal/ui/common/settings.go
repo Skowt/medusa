@@ -54,10 +54,15 @@ const (
 	settingsItemTmuxPersistence
 	settingsItemManageProfiles
 	settingsItemEditTheme
-	settingsItemUpgrade // About section - only selectable when updateAvailable
+	settingsItemReleases // About section - only selectable when updateAvailable
+	settingsItemUpgrade  // About section - only selectable when updateAvailable
 	settingsItemSave
 	settingsItemClose
 )
+
+// medusaReleasesURL is the GitHub releases page — linked from the Settings
+// About section when an update is available so users can review the changelog.
+const medusaReleasesURL = "https://github.com/Skowt/medusa/releases/"
 
 // SettingsDialog is a modal dialog for application settings.
 type SettingsDialog struct {
@@ -220,6 +225,12 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		s.visible = false
 		return s, func() tea.Msg { return ShowSandboxRulesEditor{} }
 
+	case settingsItemReleases:
+		if !s.updateAvailable {
+			return s, nil
+		}
+		return s, openURL(medusaReleasesURL)
+
 	case settingsItemUpgrade:
 		if !s.updateAvailable {
 			return s, nil
@@ -281,8 +292,8 @@ func (s *SettingsDialog) skipDisabledForward() {
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemNotificationSound
 	}
-	// Skip upgrade item when no update is available
-	if !s.updateAvailable && s.focusedItem == settingsItemUpgrade {
+	// Skip About-update items when no update is available
+	if !s.updateAvailable && (s.focusedItem == settingsItemReleases || s.focusedItem == settingsItemUpgrade) {
 		s.focusedItem = settingsItemSave
 	}
 }
@@ -292,8 +303,8 @@ func (s *SettingsDialog) skipDisabledBackward() {
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemGlobalPerms
 	}
-	// Skip upgrade item when no update is available
-	if !s.updateAvailable && s.focusedItem == settingsItemUpgrade {
+	// Skip About-update items when no update is available
+	if !s.updateAvailable && (s.focusedItem == settingsItemReleases || s.focusedItem == settingsItemUpgrade) {
 		s.focusedItem = settingsItemEditTheme
 	}
 	// Wrap around from before first item to last

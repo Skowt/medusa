@@ -219,6 +219,15 @@ func (s *SettingsDialog) renderLines() []string {
 
 	if s.updateAvailable {
 		lines = append(lines, muted.Render("Update available → "+s.latestVersion))
+
+		style = muted
+		if s.focusedItem == settingsItemReleases {
+			style = lipgloss.NewStyle().Foreground(ColorPrimary)
+		}
+		y = len(lines)
+		lines = append(lines, style.Render("[View changes]"))
+		s.addHit(settingsItemReleases, -1, y)
+
 		style = muted
 		if s.focusedItem == settingsItemUpgrade {
 			style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
