@@ -492,4 +492,3 @@ func sanitize(value string) string {
 	}
 	return strings.Trim(b.String(), "-")
 }
-

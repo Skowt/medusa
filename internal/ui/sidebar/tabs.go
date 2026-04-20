@@ -332,4 +332,3 @@ func (m *TabbedSidebar) PrevTab() {
 	}
 	m.updateFocus()
 }
-

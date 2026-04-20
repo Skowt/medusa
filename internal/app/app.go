@@ -31,28 +31,28 @@ import (
 
 // DialogID constants
 const (
-	DialogCreateWorkspace = "create_workspace"
-	DialogDeleteWorkspace = "delete_workspace"
-	DialogCustomizeTab    = "customize_tab"
-	DialogQuit            = "quit"
-	DialogCleanupTmux     = "cleanup_tmux"
-	DialogSetProfile      = "set_profile"
-	DialogRenameWorkspace = "rename_workspace"
-	DialogRenameProfile   = "rename_profile"
-	DialogCreateProfile   = "create_profile"
-	DialogDeleteProfile   = "delete_profile"
-	DialogCommit          = "commit"
-	DialogSelectBranchMode = "select_branch_mode"
-	DialogCustomBranch     = "custom_branch"
-	DialogAddRepos              = "add_repos"
-	DialogAddReposToWorkspace   = "add_repos_to_workspace"
-	DialogSelectRecentRepos     = "select_recent_repos"
-	DialogCloseTab              = "close_tab"
-	DialogSetProfileForCreate   = "set_profile_for_create"
-	DialogQuickDuplicate        = "quick_duplicate"
-	DialogArchiveWorkspace      = "archive_workspace"
-	DialogArchivedWorkspace     = "archived_workspace"
-	DialogSetNote               = "set_note"
+	DialogCreateWorkspace     = "create_workspace"
+	DialogDeleteWorkspace     = "delete_workspace"
+	DialogCustomizeTab        = "customize_tab"
+	DialogQuit                = "quit"
+	DialogCleanupTmux         = "cleanup_tmux"
+	DialogSetProfile          = "set_profile"
+	DialogRenameWorkspace     = "rename_workspace"
+	DialogRenameProfile       = "rename_profile"
+	DialogCreateProfile       = "create_profile"
+	DialogDeleteProfile       = "delete_profile"
+	DialogCommit              = "commit"
+	DialogSelectBranchMode    = "select_branch_mode"
+	DialogCustomBranch        = "custom_branch"
+	DialogAddRepos            = "add_repos"
+	DialogAddReposToWorkspace = "add_repos_to_workspace"
+	DialogSelectRecentRepos   = "select_recent_repos"
+	DialogCloseTab            = "close_tab"
+	DialogSetProfileForCreate = "set_profile_for_create"
+	DialogQuickDuplicate      = "quick_duplicate"
+	DialogArchiveWorkspace    = "archive_workspace"
+	DialogArchivedWorkspace   = "archived_workspace"
+	DialogSetNote             = "set_note"
 )
 
 // Prefix mode constants
@@ -124,9 +124,9 @@ type App struct {
 	// Dialog context
 	dialogWorkspace     *data.Workspace
 	dialogDefaultName   string
-	dialogWorkspaceRoot string            // For commit dialog
-	dialogProfile       string            // For rename/delete profile dialogs
-	dialogCloseTabIdx   int               // For close tab confirmation
+	dialogWorkspaceRoot string             // For commit dialog
+	dialogProfile       string             // For rename/delete profile dialogs
+	dialogCloseTabIdx   int                // For close tab confirmation
 	dialogRecents       []data.RecentEntry // Snapshot of recents for select dialog
 
 	// Process management
@@ -139,12 +139,12 @@ type App struct {
 	fileWatcherErr error
 
 	// Permission watcher
-	permissionWatcher    *permissions.PermissionWatcher
-	permWatcherCh        chan messages.PermissionWatcherEvent
-	pendingPermissions   []common.PendingPermission
-	permissionsDialog    *common.PermissionsDialog
-	permissionsEditor    *common.PermissionsEditor
-	sandboxRulesEditor   *common.SandboxRulesEditor
+	permissionWatcher  *permissions.PermissionWatcher
+	permWatcherCh      chan messages.PermissionWatcherEvent
+	pendingPermissions []common.PendingPermission
+	permissionsDialog  *common.PermissionsDialog
+	permissionsEditor  *common.PermissionsEditor
+	sandboxRulesEditor *common.SandboxRulesEditor
 
 	// Layout
 	width, height int
@@ -195,25 +195,25 @@ type App struct {
 	pendingInputLatency bool
 
 	// Chrome caches for layer-based rendering
-	dashboardChrome      *compositor.ChromeCache
-	centerChrome         *compositor.ChromeCache
-	sidebarChrome        *compositor.ChromeCache
-	dashboardContent     drawableCache
-	dashboardBorders     borderCache
-	sidebarTabBar        drawableCache
-	sidebarContent       drawableCache
-	sidebarBorders       borderCache
-	terminalTabBar       drawableCache
-	terminalStatus       drawableCache
-	terminalHelp         drawableCache
-	terminalBorders      borderCache
-	terminalToggleX      int // X position of terminal collapse/expand toggle button
-	terminalToggleY      int // Y position of terminal collapse/expand toggle button
-	centerTabBar         drawableCache
-	centerStatus         drawableCache
-	centerActionBar      drawableCache
-	centerHelp           drawableCache
-	centerBorders        borderCache
+	dashboardChrome  *compositor.ChromeCache
+	centerChrome     *compositor.ChromeCache
+	sidebarChrome    *compositor.ChromeCache
+	dashboardContent drawableCache
+	dashboardBorders borderCache
+	sidebarTabBar    drawableCache
+	sidebarContent   drawableCache
+	sidebarBorders   borderCache
+	terminalTabBar   drawableCache
+	terminalStatus   drawableCache
+	terminalHelp     drawableCache
+	terminalBorders  borderCache
+	terminalToggleX  int // X position of terminal collapse/expand toggle button
+	terminalToggleY  int // Y position of terminal collapse/expand toggle button
+	centerTabBar     drawableCache
+	centerStatus     drawableCache
+	centerActionBar  drawableCache
+	centerHelp       drawableCache
+	centerBorders    borderCache
 
 	// External message pump (for PTY readers)
 	externalMsgs     chan tea.Msg
@@ -320,38 +320,38 @@ func New(version, commit, date string) (*App, error) {
 
 	ctx := context.Background()
 	app := &App{
-		config:                 cfg,
-		registry:               registry,
-		workspaces:             workspaces,
-		recents:                recents,
-		scripts:                scripts,
-		statusManager:          statusManager,
-		fileWatcher:            fileWatcher,
-		fileWatcherCh:          fileWatcherCh,
-		fileWatcherErr:         fileWatcherErr,
-		permWatcherCh:          permWatcherCh,
-		layout:                 layout.NewManager(),
-		dashboard:              dashboard.New(),
-		center:                 center.New(cfg),
-		sidebar:                sidebar.NewTabbedSidebar(),
-		sidebarTerminal:        sidebar.NewTerminalModel(),
-		helpOverlay:            common.NewHelpOverlay(),
-		toast:                  common.NewToastModel(),
-		focusedPane:            messages.PaneDashboard,
-		showWelcome:            true,
-		keymap:                 DefaultKeyMap(),
-		dashboardChrome:        &compositor.ChromeCache{},
-		centerChrome:           &compositor.ChromeCache{},
-		sidebarChrome:          &compositor.ChromeCache{},
-		version:                version,
-		commit:                 commit,
-		buildDate:              date,
-		externalMsgs:           make(chan tea.Msg, 4096),
-		externalCritical:       make(chan tea.Msg, 512),
-		ctx:                    ctx,
-		tmuxOptions:            tmuxOpts,
-		hookWorkspaceStates:    make(map[string]hooks.EventType),
-		dirtyWorkspaces:        make(map[string]bool),
+		config:              cfg,
+		registry:            registry,
+		workspaces:          workspaces,
+		recents:             recents,
+		scripts:             scripts,
+		statusManager:       statusManager,
+		fileWatcher:         fileWatcher,
+		fileWatcherCh:       fileWatcherCh,
+		fileWatcherErr:      fileWatcherErr,
+		permWatcherCh:       permWatcherCh,
+		layout:              layout.NewManager(),
+		dashboard:           dashboard.New(),
+		center:              center.New(cfg),
+		sidebar:             sidebar.NewTabbedSidebar(),
+		sidebarTerminal:     sidebar.NewTerminalModel(),
+		helpOverlay:         common.NewHelpOverlay(),
+		toast:               common.NewToastModel(),
+		focusedPane:         messages.PaneDashboard,
+		showWelcome:         true,
+		keymap:              DefaultKeyMap(),
+		dashboardChrome:     &compositor.ChromeCache{},
+		centerChrome:        &compositor.ChromeCache{},
+		sidebarChrome:       &compositor.ChromeCache{},
+		version:             version,
+		commit:              commit,
+		buildDate:           date,
+		externalMsgs:        make(chan tea.Msg, 4096),
+		externalCritical:    make(chan tea.Msg, 512),
+		ctx:                 ctx,
+		tmuxOptions:         tmuxOpts,
+		hookWorkspaceStates: make(map[string]hooks.EventType),
+		dirtyWorkspaces:     make(map[string]bool),
 	}
 	app.supervisor = supervisor.New(ctx)
 	app.installSupervisorErrorHandler()

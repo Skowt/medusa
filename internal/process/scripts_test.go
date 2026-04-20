@@ -218,10 +218,10 @@ func TestScriptRunnerStop(t *testing.T) {
 
 func TestNormalizeRunCommandNames(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      []RunCommand
-		wantNames  []string
-		wantWarns  int
+		name      string
+		input     []RunCommand
+		wantNames []string
+		wantWarns int
 	}{
 		{
 			name:      "empty name derived from short command",

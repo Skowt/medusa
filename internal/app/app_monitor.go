@@ -215,4 +215,3 @@ func (a *App) handleMonitorInput(msg tea.KeyPressMsg) tea.Cmd {
 	idx := a.center.MonitorSelectedIndex(len(tabs))
 	return a.center.HandleMonitorInput(tabs[idx].ID, msg)
 }
-

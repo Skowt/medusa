@@ -31,11 +31,11 @@ const (
 
 // DialogResult is sent when a dialog is completed
 type DialogResult struct {
-	ID            string
-	Confirmed     bool
-	Value         string
-	Values        []string // Multi-select results (e.g. file picker multi-select)
-	Index         int
+	ID             string
+	Confirmed      bool
+	Value          string
+	Values         []string // Multi-select results (e.g. file picker multi-select)
+	Index          int
 	CheckboxValue  bool // Value of checkbox if dialog had one
 	Checkbox2Value bool // Value of second checkbox if dialog had one
 	Checkbox3Value bool // Value of third checkbox if dialog had one

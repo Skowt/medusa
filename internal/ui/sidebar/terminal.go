@@ -46,9 +46,9 @@ type TerminalTab struct {
 // TerminalState holds the terminal state for a workspace
 type TerminalState struct {
 	Terminal *pty.Terminal
-	VTerm   *vterm.VTerm
-	Running bool
-	mu      sync.Mutex
+	VTerm    *vterm.VTerm
+	Running  bool
+	mu       sync.Mutex
 
 	// Track last size to avoid unnecessary resizes
 	lastWidth  int
@@ -120,7 +120,6 @@ type TerminalModel struct {
 
 	// PTY message sink
 	msgSink func(tea.Msg)
-
 }
 
 // NewTerminalModel creates a new sidebar terminal model

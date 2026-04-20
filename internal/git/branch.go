@@ -10,8 +10,8 @@ type BranchMode int
 
 const (
 	BranchModeRemoteMain BranchMode = iota // Fetch latest origin/<main>
-	BranchModeCheckedOut                    // Use current local branch, no fetch
-	BranchModeCustom                        // Resolve specific branch locally then remote
+	BranchModeCheckedOut                   // Use current local branch, no fetch
+	BranchModeCustom                       // Resolve specific branch locally then remote
 )
 
 // GetBaseBranch returns the base branch (main, master, or the default branch)

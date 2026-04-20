@@ -1472,4 +1472,3 @@ func (a *App) handleActionBarOpenMR(msg messages.ActionBarOpenMR) tea.Cmd {
 		return messages.Toast{Message: "Opened in browser", Level: messages.ToastSuccess}
 	}
 }
-

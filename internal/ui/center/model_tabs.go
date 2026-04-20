@@ -574,4 +574,3 @@ func (m *Model) CloseScriptTabs(wsID string) tea.Cmd {
 	}
 	return common.SafeBatch(cmds...)
 }
-

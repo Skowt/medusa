@@ -260,9 +260,9 @@ func TestSyncPropagatesEnabledPlugins(t *testing.T) {
 	registry := map[string]any{
 		"version": 2,
 		"plugins": map[string]any{
-			"context7@official":  []any{map[string]any{"scope": "user"}},
-			"github@official":    []any{map[string]any{"scope": "user"}},
-			"my-skill@official":  []any{map[string]any{"scope": "user"}},
+			"context7@official": []any{map[string]any{"scope": "user"}},
+			"github@official":   []any{map[string]any{"scope": "user"}},
+			"my-skill@official": []any{map[string]any{"scope": "user"}},
 		},
 	}
 	data, _ := json.Marshal(registry)

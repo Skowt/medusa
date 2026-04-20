@@ -350,7 +350,6 @@ func (m *AgentManager) CloseWorkspaceAgents(ws *data.Workspace) {
 	}
 }
 
-
 // SendInterrupt sends an interrupt to an agent
 func (m *AgentManager) SendInterrupt(agent *Agent) error {
 	if agent.Terminal == nil {

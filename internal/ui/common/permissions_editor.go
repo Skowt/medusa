@@ -23,9 +23,9 @@ type PermissionsEditor struct {
 	cursor       int
 	scrollOffset int
 	addingNew    bool
-	editing    bool
-	editIndex  int
-	input      textinput.Model
+	editing      bool
+	editIndex    int
+	input        textinput.Model
 }
 
 // NewPermissionsEditor creates a new permissions editor.

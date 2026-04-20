@@ -347,4 +347,3 @@ func (m *Model) handleRename() tea.Cmd {
 	}
 	return nil
 }
-

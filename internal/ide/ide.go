@@ -8,17 +8,17 @@ import (
 // SupportedIDEs lists CLI commands for supported IDEs in priority order.
 // The first available IDE will be used if no preference is configured.
 var SupportedIDEs = []string{
-	"cursor",  // Cursor (VS Code fork)
-	"code",    // VS Code
-	"zed",     // Zed
-	"pycharm", // PyCharm
-	"idea",    // IntelliJ IDEA
+	"cursor",   // Cursor (VS Code fork)
+	"code",     // VS Code
+	"zed",      // Zed
+	"pycharm",  // PyCharm
+	"idea",     // IntelliJ IDEA
 	"webstorm", // WebStorm
-	"goland",  // GoLand
-	"subl",    // Sublime Text
-	"atom",    // Atom
-	"nvim",    // Neovim
-	"vim",     // Vim
+	"goland",   // GoLand
+	"subl",     // Sublime Text
+	"atom",     // Atom
+	"nvim",     // Neovim
+	"vim",      // Vim
 }
 
 // Detect returns the CLI command for the first available IDE found in PATH.

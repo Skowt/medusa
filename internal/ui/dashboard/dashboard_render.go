@@ -39,7 +39,7 @@ func (m *Model) renderRow(row Row, selected bool) string {
 		if selected {
 			style = m.styles.SelectedRow
 		}
-		return "\n" + style.Render(" " + common.Icons.Add + " Quick Duplicate ")
+		return "\n" + style.Render(" "+common.Icons.Add+" Quick Duplicate ")
 
 	case RowSectionHeader:
 		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
@@ -347,7 +347,6 @@ func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentW
 	sep := mutedStyle.Render(" · ")
 	return indent + strings.Join(parts, sep)
 }
-
 
 func (m *Model) helpItem(key, desc string) string {
 	return common.RenderHelpItem(m.styles, key, desc)

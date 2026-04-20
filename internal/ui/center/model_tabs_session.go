@@ -490,4 +490,3 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 	wsID := string(ws.ID())
 	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)
 }
-

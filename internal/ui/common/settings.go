@@ -42,13 +42,13 @@ const (
 	settingsItemKeymap settingsItem = iota
 	settingsItemHideSidebar
 	settingsItemHideTerminal
-	settingsItemSyncPlugins         // Shared Config section
+	settingsItemSyncPlugins // Shared Config section
 	settingsItemGlobalPerms
 	settingsItemEditPermissions
-	settingsItemCompoundApprove      // Agents section
+	settingsItemCompoundApprove // Agents section
 	settingsItemNotificationSound
 	settingsItemEditSandboxRules
-	settingsItemAutoStart           // Tmux section
+	settingsItemAutoStart // Tmux section
 	settingsItemTmuxPersistence
 	settingsItemManageProfiles
 	settingsItemEditTheme
@@ -116,13 +116,13 @@ func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideT
 	}
 }
 
-func (s *SettingsDialog) Show()                        { s.visible = true }
-func (s *SettingsDialog) Hide()                        { s.visible = false }
-func (s *SettingsDialog) Visible() bool                { return s.visible }
-func (s *SettingsDialog) SetSize(w, h int)             { s.width, s.height = w, h }
-func (s *SettingsDialog) SetShowKeymapHints(show bool) { s.showKeymapHintsUI = show }
-func (s *SettingsDialog) Cursor() *tea.Cursor          { return nil }
-func (s *SettingsDialog) SetTheme(theme ThemeID)       { s.theme = theme }
+func (s *SettingsDialog) Show()                             { s.visible = true }
+func (s *SettingsDialog) Hide()                             { s.visible = false }
+func (s *SettingsDialog) Visible() bool                     { return s.visible }
+func (s *SettingsDialog) SetSize(w, h int)                  { s.width, s.height = w, h }
+func (s *SettingsDialog) SetShowKeymapHints(show bool)      { s.showKeymapHintsUI = show }
+func (s *SettingsDialog) Cursor() *tea.Cursor               { return nil }
+func (s *SettingsDialog) SetTheme(theme ThemeID)            { s.theme = theme }
 func (s *SettingsDialog) SetNotificationSound(sound string) { s.notificationSound = sound }
 
 // SetUpdateInfo sets version information for the updates section.
