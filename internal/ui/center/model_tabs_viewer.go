@@ -113,14 +113,15 @@ func (m *Model) createScriptTab(command, displayName string, env map[string]stri
 		}
 
 		return ptyTabCreateResult{
-			Workspace:   ws,
-			Assistant:   "script",
-			DisplayName: displayName,
-			Agent:       agent,
-			TabID:       tabID,
-			Activate:    false,
-			Rows:        termHeight,
-			Cols:        termWidth,
+			Workspace:     ws,
+			Assistant:     "script",
+			DisplayName:   displayName,
+			Agent:         agent,
+			TabID:         tabID,
+			Activate:      false,
+			Rows:          termHeight,
+			Cols:          termWidth,
+			ScriptFullCmd: fullCmd,
 		}
 	}
 }

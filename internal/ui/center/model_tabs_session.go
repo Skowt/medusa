@@ -3,7 +3,6 @@ package center
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -150,129 +149,6 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 		}
 		// Best-effort capture of existing scrollback from the tmux pane.
 		scrollback, _ := tmux.CapturePane(sessionName, opts)
-		return ptyTabReattachResult{
-			WorkspaceID:       string(ws.ID()),
-			TabID:             tabID,
-			Agent:             agent,
-			Rows:              termHeight,
-			Cols:              termWidth,
-			ScrollbackCapture: scrollback,
-			ClaudeSessionID:   claudeSessionID,
-		}
-	}
-}
-
-// RestartActiveTab restarts the active agent tab. Works on running tabs
-// too — restart is non-destructive because the existing ClaudeSessionID
-// is reused via `claude --resume`.
-func (m *Model) RestartActiveTab() tea.Cmd {
-	return m.restartTab(m.getActiveTabIdx())
-}
-
-// RestartTabAtIndex restarts a specific tab by index. Used by the
-// close-tab dialog when launched from a tab-bar click, which may target
-// a tab other than the active one.
-func (m *Model) RestartTabAtIndex(index int) tea.Cmd {
-	return m.restartTab(index)
-}
-
-// restartTab tears down the agent + tmux session for a tab and spawns
-// a fresh one, reusing the tab's ClaudeSessionID (via `--resume`) so the
-// conversation continues. Diff tabs and non-assistant tabs are rejected
-// with a toast.
-func (m *Model) restartTab(index int) tea.Cmd {
-	tabs := m.getTabs()
-	if index < 0 || index >= len(tabs) {
-		return nil
-	}
-	tab := tabs[index]
-	if tab == nil || tab.Workspace == nil {
-		return nil
-	}
-	if tab.DiffViewer != nil {
-		return func() tea.Msg {
-			return messages.Toast{
-				Message: "Diff tabs cannot be restarted",
-				Level:   messages.ToastInfo,
-			}
-		}
-	}
-	if m.config == nil || m.config.Assistants == nil {
-		return nil
-	}
-	if _, ok := m.config.Assistants[tab.Assistant]; !ok {
-		return nil
-	}
-
-	tab.mu.Lock()
-	sessionName := tab.SessionName
-	if sessionName == "" && tab.Agent != nil {
-		sessionName = tab.Agent.Session
-	}
-	claudeSessionID := tab.ClaudeSessionID
-	tabAllowEdits := tab.AllowEdits
-	tabIsolated := tab.Isolated
-	tabSkipPerms := tab.SkipPermissions
-	tab.mu.Unlock()
-
-	ws := tab.Workspace
-	tabID := tab.ID
-	if sessionName == "" {
-		sessionName = tmux.SessionName("medusa", ws.Name, "1")
-	}
-
-	// Tear down the existing agent (if any) before spawning a new one.
-	m.stopPTYReader(tab)
-	tab.mu.Lock()
-	existingAgent := tab.Agent
-	tab.Agent = nil
-	tab.Running = false
-	tab.autoRestartAttempt = 0
-	tab.mu.Unlock()
-	if existingAgent != nil {
-		_ = m.agentManager.CloseAgent(existingAgent)
-	}
-	tmuxOpts := m.getTmuxOptions()
-
-	tm := m.terminalMetrics()
-	termWidth := tm.Width
-	termHeight := tm.Height
-	assistant := tab.Assistant
-
-	return func() tea.Msg {
-		_ = tmux.KillSession(sessionName, tmuxOpts)
-
-		// Build agent options: resume the Claude conversation if we have a session ID,
-		// and use the tab's per-tab settings.
-		agentOpts := appPty.AgentOptions{
-			AllowEdits:      tabAllowEdits,
-			Isolated:        tabIsolated,
-			SkipPermissions: tabSkipPerms,
-		}
-		if claudeSessionID != "" {
-			agentOpts.ClaudeSessionID = claudeSessionID
-			agentOpts.Resume = true
-		}
-
-		tags := tmux.SessionTags{
-			WorkspaceID: string(ws.ID()),
-			TabID:       string(tabID),
-			Type:        "agent",
-			Assistant:   assistant,
-			CreatedAt:   time.Now().Unix(),
-		}
-		agent, err := m.agentManager.CreateAgentWithTags(ws, appPty.AgentType(assistant), sessionName, uint16(termHeight), uint16(termWidth), tags, agentOpts)
-		if err != nil {
-			return ptyTabReattachFailed{
-				WorkspaceID: string(ws.ID()),
-				TabID:       tabID,
-				Err:         err,
-				Stopped:     true,
-				Action:      "restart",
-			}
-		}
-		// Best-effort capture of scrollback (empty for fresh sessions, which is fine).
-		scrollback, _ := tmux.CapturePane(sessionName, tmuxOpts)
 		return ptyTabReattachResult{
 			WorkspaceID:       string(ws.ID()),
 			TabID:             tabID,

@@ -59,6 +59,7 @@ type ptyTabCreateResult struct {
 	AllowEdits        bool
 	Isolated          bool
 	SkipPermissions   bool
+	ScriptFullCmd     string // Only set for script tabs; enables in-place Restart.
 }
 
 type ptyTabReattachResult struct {
@@ -214,6 +215,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		AllowEdits:      msg.AllowEdits,
 		Isolated:        msg.Isolated,
 		SkipPermissions: msg.SkipPermissions,
+		ScriptFullCmd:   msg.ScriptFullCmd,
 	}
 
 	// Set up response writer for terminal queries (DSR, DA, etc.)
