@@ -92,7 +92,7 @@ You can configure setup and run scripts per repository by creating a `.medusa/wo
 | Field | Type | Description |
 |---|---|---|
 | `setup-workspace` | `string[]` | Commands run sequentially when a workspace is created |
-| `run` | `string` or `object[]` | Dev server commands — launched in visible tabs after setup completes |
+| `run` | `string` or `object[]` | Dev server commands — one visible tab per entry. Launched automatically once `setup-workspace` finishes, or manually via Ctrl-a r |
 | `archive` | `string` | Command run when archiving a workspace |
 
 The `run` field supports two formats:
@@ -114,9 +114,11 @@ The following variables are injected into all script environments:
 
 Each workspace gets a unique port range starting from 6200 (configurable), incremented by 10 per workspace. Use `WORKSPACE_PORT` in your scripts to avoid port collisions when running multiple workspaces simultaneously.
 
-### Manual Trigger
+### When run commands fire
 
-Press **Ctrl-a r** to launch (or restart) the run scripts for the active workspace. This closes any existing script tabs before starting fresh ones.
+Run commands fire once, automatically, as soon as `setup-workspace` finishes for a newly created workspace — each entry opens in its own visible tab. They're independent of agent tabs: setup-complete and agent-tab creation aren't ordered relative to each other, and a workspace can have any mix of agent tabs and script tabs (or none).
+
+Press **Ctrl-a r** at any time to relaunch the run scripts for the active workspace. This closes existing script tabs first (killing their tmux sessions) and starts fresh ones — also the way to pick up edits to `workspaces.json`.
 
 ### Notes
 
