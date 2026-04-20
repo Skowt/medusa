@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/safego"
@@ -88,7 +90,7 @@ func (r *ScriptRunner) LoadConfig(repoPath string) (*WorkspaceConfig, error) {
 		var single string
 		if err := json.Unmarshal(raw.Run, &single); err == nil {
 			config.RunScript = single
-			config.RunCommands = []RunCommand{{Name: "dev server", Command: single}}
+			config.RunCommands = []RunCommand{{Command: single}}
 		} else {
 			var multi []RunCommand
 			if err := json.Unmarshal(raw.Run, &multi); err == nil {
@@ -185,22 +187,73 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 	return cmd, nil
 }
 
-// GetRunCommands returns the run commands and environment map for a workspace.
-// Falls back to ws.Scripts.Run if no config file commands are defined.
-func (r *ScriptRunner) GetRunCommands(ws *data.Workspace) ([]RunCommand, map[string]string, error) {
+// GetRunCommands returns the run commands, environment map, and any warnings
+// produced while normalizing tab names for a workspace. Falls back to
+// ws.Scripts.Run if no config file commands are defined.
+func (r *ScriptRunner) GetRunCommands(ws *data.Workspace) ([]RunCommand, map[string]string, []string, error) {
 	config, err := r.LoadConfig(ws.PrimaryRepo().Path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	cmds := config.RunCommands
 	if len(cmds) == 0 && ws.Scripts.Run != "" {
-		cmds = []RunCommand{{Name: "dev server", Command: ws.Scripts.Run}}
+		cmds = []RunCommand{{Command: ws.Scripts.Run}}
 	}
 	if len(cmds) == 0 {
-		return nil, nil, fmt.Errorf("no run script configured")
+		return nil, nil, nil, fmt.Errorf("no run script configured")
 	}
+	cmds, warnings := normalizeRunCommandNames(cmds)
 	envMap := r.envBuilder.BuildEnvMap(ws)
-	return cmds, envMap, nil
+	return cmds, envMap, warnings, nil
+}
+
+// deriveScriptTabName returns a display name for a run-script tab: the
+// caller-supplied name when set, otherwise the command (trimmed, and truncated
+// with an ellipsis if longer than 24 runes). Falls back to "dev server" only
+// when neither is available.
+func deriveScriptTabName(rc RunCommand) string {
+	if name := strings.TrimSpace(rc.Name); name != "" {
+		return name
+	}
+	cmd := strings.TrimSpace(rc.Command)
+	if cmd == "" {
+		return "dev server"
+	}
+	const maxLen = 24
+	const truncTo = 21
+	if utf8.RuneCountInString(cmd) <= maxLen {
+		return cmd
+	}
+	return string([]rune(cmd)[:truncTo]) + "…"
+}
+
+// normalizeRunCommandNames fills in empty names from the command and appends
+// " (N)" suffixes to any duplicates. Returns the updated list and a list of
+// human-readable warnings describing the renamings.
+func normalizeRunCommandNames(cmds []RunCommand) ([]RunCommand, []string) {
+	if len(cmds) == 0 {
+		return cmds, nil
+	}
+	taken := make(map[string]struct{}, len(cmds))
+	out := make([]RunCommand, len(cmds))
+	var warnings []string
+	for i, rc := range cmds {
+		base := deriveScriptTabName(rc)
+		final := base
+		for n := 2; ; n++ {
+			if _, clash := taken[final]; !clash {
+				break
+			}
+			final = fmt.Sprintf("%s (%d)", base, n)
+		}
+		if final != base {
+			warnings = append(warnings, fmt.Sprintf("run script name %q already used; renamed to %q", base, final))
+		}
+		taken[final] = struct{}{}
+		rc.Name = final
+		out[i] = rc
+	}
+	return out, warnings
 }
 
 // Stop stops the running script for a workspace

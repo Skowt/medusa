@@ -216,6 +216,81 @@ func TestScriptRunnerStop(t *testing.T) {
 	}
 }
 
+func TestNormalizeRunCommandNames(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      []RunCommand
+		wantNames  []string
+		wantWarns  int
+	}{
+		{
+			name:      "empty name derived from short command",
+			input:     []RunCommand{{Command: "npm start"}},
+			wantNames: []string{"npm start"},
+		},
+		{
+			name:      "empty name truncated for long command",
+			input:     []RunCommand{{Command: "python manage.py runserver 0.0.0.0:8000"}},
+			wantNames: []string{"python manage.py runs…"},
+		},
+		{
+			name:      "explicit name preserved",
+			input:     []RunCommand{{Name: "api", Command: "anything"}},
+			wantNames: []string{"api"},
+		},
+		{
+			name:      "empty name and empty command falls back to dev server",
+			input:     []RunCommand{{}},
+			wantNames: []string{"dev server"},
+		},
+		{
+			name: "duplicate explicit names get numeric suffixes",
+			input: []RunCommand{
+				{Name: "backend", Command: "a"},
+				{Name: "backend", Command: "b"},
+				{Name: "backend", Command: "c"},
+			},
+			wantNames: []string{"backend", "backend (2)", "backend (3)"},
+			wantWarns: 2,
+		},
+		{
+			name: "pre-existing suffix is respected when de-duping",
+			input: []RunCommand{
+				{Name: "backend", Command: "a"},
+				{Name: "backend (2)", Command: "b"},
+				{Name: "backend", Command: "c"},
+			},
+			wantNames: []string{"backend", "backend (2)", "backend (3)"},
+			wantWarns: 1,
+		},
+		{
+			name: "duplicate derived names also de-duped",
+			input: []RunCommand{
+				{Command: "npm start"},
+				{Command: "npm start"},
+			},
+			wantNames: []string{"npm start", "npm start (2)"},
+			wantWarns: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, warns := normalizeRunCommandNames(tt.input)
+			if len(got) != len(tt.wantNames) {
+				t.Fatalf("got %d commands, want %d", len(got), len(tt.wantNames))
+			}
+			for i, want := range tt.wantNames {
+				if got[i].Name != want {
+					t.Errorf("name[%d] = %q, want %q", i, got[i].Name, want)
+				}
+			}
+			if len(warns) != tt.wantWarns {
+				t.Errorf("warnings = %d, want %d (%v)", len(warns), tt.wantWarns, warns)
+			}
+		})
+	}
+}
+
 func waitForFile(path string, timeout time.Duration) error {
 	deadline := time.After(timeout)
 	for {

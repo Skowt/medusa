@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -219,13 +220,16 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	case key.Matches(msg, a.keymap.RunScript):
 		if a.activeWorkspace != nil {
 			ws := a.activeWorkspace
-			cmds, env, err := a.scripts.GetRunCommands(ws)
+			cmds, env, warnings, err := a.scripts.GetRunCommands(ws)
 			if err != nil {
 				return true, a.toast.ShowWarning("No run script configured")
 			}
 			// Close existing script tabs (kills their tmux sessions) before launching new ones.
 			closeCmd := a.center.CloseScriptTabs(string(ws.ID()))
 			launchCmd := a.launchScriptCmds(ws, cmds, env)
+			if len(warnings) > 0 {
+				return true, tea.Batch(a.toast.ShowWarning(strings.Join(warnings, "\n")), closeCmd, launchCmd)
+			}
 			return true, tea.Batch(closeCmd, launchCmd)
 		}
 		return true, nil

@@ -389,10 +389,14 @@ func (a *App) handleWorkspaceSetupComplete(msg messages.WorkspaceSetupComplete) 
 	}
 	// Auto-start the "run" scripts (dev servers) in visible tabs if configured.
 	if msg.Workspace != nil {
-		cmds, env, err := a.scripts.GetRunCommands(msg.Workspace)
+		cmds, env, warnings, err := a.scripts.GetRunCommands(msg.Workspace)
 		if err == nil {
 			ws := msg.Workspace
-			return a.launchScriptCmds(ws, cmds, env)
+			launch := a.launchScriptCmds(ws, cmds, env)
+			if len(warnings) > 0 {
+				return tea.Batch(a.toast.ShowWarning(strings.Join(warnings, "\n")), launch)
+			}
+			return launch
 		}
 	}
 	return nil
