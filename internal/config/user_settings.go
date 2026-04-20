@@ -8,25 +8,25 @@ import (
 
 // UISettings stores user-facing display preferences.
 type UISettings struct {
-	ShowKeymapHints    bool
-	HideSidebar        bool
-	HideTerminal       bool
-	AutoStartAgent     bool
-	SyncProfilePlugins bool
-	GlobalPermissions  bool
-	AutoAddPermissions bool
-	LastProfile        string // Most recently selected profile name
-	LastAllowEdits     bool   // Last state of "allow edits" checkbox for new workspaces
-	LastIsolated       bool   // Last state of "run isolated" checkbox for new workspaces
-	LastSkipPermissions bool  // Last state of "skip permissions" checkbox for new workspaces
-	Theme              string // Theme ID, defaults to "gruvbox"
-	TmuxServer         string
-	TmuxConfigPath     string
-	TmuxSyncInterval   string
-	TmuxPersistence    bool
-	NotificationSound  string // Sound name from /System/Library/Sounds (empty = none)
-	IDE                string // CLI command for IDE (e.g., "code", "cursor", "pycharm")
-	CompoundApprove    bool   // Auto-approve compound Bash commands via hook
+	ShowKeymapHints     bool
+	HideSidebar         bool
+	HideTerminal        bool
+	AutoStartAgent      bool
+	SyncProfilePlugins  bool
+	GlobalPermissions   bool
+	AutoAddPermissions  bool
+	LastProfile         string // Most recently selected profile name
+	LastAllowEdits      bool   // Last state of "allow edits" checkbox for new workspaces
+	LastIsolated        bool   // Last state of "run isolated" checkbox for new workspaces
+	LastSkipPermissions bool   // Last state of "skip permissions" checkbox for new workspaces
+	Theme               string // Theme ID, defaults to "gruvbox"
+	TmuxServer          string
+	TmuxConfigPath      string
+	TmuxSyncInterval    string
+	TmuxPersistence     bool
+	NotificationSound   string // Sound name from /System/Library/Sounds (empty = none)
+	IDE                 string // CLI command for IDE (e.g., "code", "cursor", "pycharm")
+	CompoundApprove     bool   // Auto-approve compound Bash commands via hook
 }
 
 func defaultUISettings() UISettings {
@@ -57,24 +57,24 @@ func loadUISettings(path string) UISettings {
 
 	var raw struct {
 		UI struct {
-			ShowKeymapHints    *bool   `json:"show_keymap_hints"`
-			HideSidebar        *bool   `json:"hide_sidebar"`
-			HideTerminal       *bool   `json:"hide_terminal"`
-			AutoStartAgent     *bool   `json:"auto_start_agent"`
-			SyncProfilePlugins *bool   `json:"sync_profile_plugins"`
-			GlobalPermissions  *bool   `json:"global_permissions"`
-			AutoAddPermissions *bool   `json:"auto_add_permissions"`
-			LastProfile        *string `json:"last_profile"`
+			ShowKeymapHints     *bool   `json:"show_keymap_hints"`
+			HideSidebar         *bool   `json:"hide_sidebar"`
+			HideTerminal        *bool   `json:"hide_terminal"`
+			AutoStartAgent      *bool   `json:"auto_start_agent"`
+			SyncProfilePlugins  *bool   `json:"sync_profile_plugins"`
+			GlobalPermissions   *bool   `json:"global_permissions"`
+			AutoAddPermissions  *bool   `json:"auto_add_permissions"`
+			LastProfile         *string `json:"last_profile"`
 			LastAllowEdits      *bool   `json:"last_allow_edits"`
 			LastIsolated        *bool   `json:"last_isolated"`
 			LastSkipPermissions *bool   `json:"last_skip_permissions"`
-			Theme              *string `json:"theme"`
-			TmuxServer         *string `json:"tmux_server"`
-			TmuxConfigPath     *string `json:"tmux_config"`
-			TmuxSyncInterval   *string `json:"tmux_sync_interval"`
-			TmuxPersistence    *bool   `json:"tmux_persistence"`
-			NotificationSound  *string `json:"notification_sound"`
-			CompoundApprove    *bool   `json:"compound_approve"`
+			Theme               *string `json:"theme"`
+			TmuxServer          *string `json:"tmux_server"`
+			TmuxConfigPath      *string `json:"tmux_config"`
+			TmuxSyncInterval    *string `json:"tmux_sync_interval"`
+			TmuxPersistence     *bool   `json:"tmux_persistence"`
+			NotificationSound   *string `json:"notification_sound"`
+			CompoundApprove     *bool   `json:"compound_approve"`
 		} `json:"ui"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {

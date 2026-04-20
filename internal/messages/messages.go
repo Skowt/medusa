@@ -287,7 +287,6 @@ type SetWorkspaceStatus struct {
 	Status    data.WorkspaceStatus
 }
 
-
 // ShowSetWorkspaceNoteDialog requests showing the note input dialog for a workspace
 type ShowSetWorkspaceNoteDialog struct {
 	Workspace *data.Workspace

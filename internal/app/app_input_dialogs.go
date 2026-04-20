@@ -11,9 +11,9 @@ import (
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/ui/sidebar"
 	"github.com/Skowt/medusa/internal/update"
 	"github.com/Skowt/medusa/internal/validation"
-	"github.com/Skowt/medusa/internal/ui/sidebar"
 )
 
 // handleDialogResult handles dialog completion

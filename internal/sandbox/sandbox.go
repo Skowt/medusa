@@ -190,4 +190,3 @@ func WriteTempProfile(sbpl string) (path string, cleanup func(), err error) {
 	}
 	return f.Name(), func() { os.Remove(f.Name()) }, nil
 }
-

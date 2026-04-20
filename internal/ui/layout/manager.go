@@ -19,7 +19,7 @@ type Manager struct {
 	dashboardWidth  int
 	centerWidth     int
 	sidebarWidth    int
-	terminalHeight  int  // Height of terminal pane below center (when expanded)
+	terminalHeight  int // Height of terminal pane below center (when expanded)
 	gapX            int
 	baseOuterGutter int
 	// Some terminals effectively reserve the rightmost column (cursor/scrollbar),

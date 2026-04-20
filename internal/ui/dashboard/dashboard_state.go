@@ -128,8 +128,8 @@ func (m *Model) rebuildRows() {
 	// Group workspaces by repo name(s): single-repo by repo name,
 	// multi-repo by sorted comma-joined repo names (truncated to 15 chars).
 	repoGroups := make(map[string][]*data.Workspace) // group key -> workspaces
-	groupLabels := make(map[string]string)            // group key -> display label
-	var groupOrder []string                           // first-seen order of keys
+	groupLabels := make(map[string]string)           // group key -> display label
+	var groupOrder []string                          // first-seen order of keys
 
 	for _, ws := range all {
 		var key, label string

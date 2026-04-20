@@ -16,16 +16,16 @@ import (
 type EventType string
 
 const (
-	EventStop                       EventType = "Stop"
-	EventStopFailure                EventType = "StopFailure"
-	EventSubagentStop               EventType = "SubagentStop"
-	EventNotificationIdle           EventType = "NotificationIdle"
-	EventNotificationPermission     EventType = "NotificationPermission"
-	EventNotificationElicitation    EventType = "NotificationElicitation"
-	EventPermissionRequest          EventType = "PermissionRequest"
-	EventPreToolUse                 EventType = "PreToolUse"
-	EventPostToolUse                EventType = "PostToolUse"
-	EventUserPromptSubmit           EventType = "UserPromptSubmit"
+	EventStop                    EventType = "Stop"
+	EventStopFailure             EventType = "StopFailure"
+	EventSubagentStop            EventType = "SubagentStop"
+	EventNotificationIdle        EventType = "NotificationIdle"
+	EventNotificationPermission  EventType = "NotificationPermission"
+	EventNotificationElicitation EventType = "NotificationElicitation"
+	EventPermissionRequest       EventType = "PermissionRequest"
+	EventPreToolUse              EventType = "PreToolUse"
+	EventPostToolUse             EventType = "PostToolUse"
+	EventUserPromptSubmit        EventType = "UserPromptSubmit"
 )
 
 // debounceWindow is the quiet period before processing a file change.

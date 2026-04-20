@@ -557,4 +557,3 @@ func (m *Model) HasDiffViewer() bool {
 	defer tab.mu.Unlock()
 	return tab.DiffViewer != nil
 }
-

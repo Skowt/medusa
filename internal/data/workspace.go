@@ -25,12 +25,12 @@ const (
 type WorkspaceStatus string
 
 const (
-	StatusNone      WorkspaceStatus = ""         // default/no status set
-	StatusStarted   WorkspaceStatus = "started"
-	StatusBlocked   WorkspaceStatus = "blocked"
-	StatusReview    WorkspaceStatus = "review"
-	StatusMerged    WorkspaceStatus = "merged"
-	StatusArchived  WorkspaceStatus = "archived"
+	StatusNone     WorkspaceStatus = "" // default/no status set
+	StatusStarted  WorkspaceStatus = "started"
+	StatusBlocked  WorkspaceStatus = "blocked"
+	StatusReview   WorkspaceStatus = "review"
+	StatusMerged   WorkspaceStatus = "merged"
+	StatusArchived WorkspaceStatus = "archived"
 )
 
 // RepoRef identifies a source git repository
@@ -73,15 +73,15 @@ type Workspace struct {
 	storeID WorkspaceID
 
 	// Repos and worktrees (parallel slices, same length)
-	Repos     []RepoRef    `json:"repos"`
+	Repos     []RepoRef     `json:"repos"`
 	Worktrees []WorktreeRef `json:"worktrees"`
 
 	// Execution
 	Runtime string `json:"runtime"` // local-worktree, local-checkout, cloud-sandbox
 
 	// Agent config
-	Assistant string          `json:"assistant"` // claude, codex, gemini
-	Profile   string          `json:"profile"`   // Named profile (stored directly)
+	Assistant string `json:"assistant"` // claude, codex, gemini
+	Profile   string `json:"profile"`   // Named profile (stored directly)
 
 	// Scripts
 	Scripts    ScriptsConfig `json:"scripts"`

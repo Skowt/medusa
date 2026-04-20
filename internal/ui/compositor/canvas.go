@@ -363,4 +363,3 @@ func HexColor(hex string) vterm.Color {
 	}
 	return vterm.Color{Type: vterm.ColorRGB, Value: uint32(value)}
 }
-

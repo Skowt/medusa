@@ -210,4 +210,3 @@ func ResolveWorktreeGitDir(worktreePath string) (string, error) {
 
 	return "", fmt.Errorf("could not resolve .git dir for worktree %s", worktreePath)
 }
-

@@ -386,4 +386,3 @@ func (a *App) setKeymapHintsEnabled(enabled bool) {
 		a.filePicker.SetShowKeymapHints(enabled)
 	}
 }
-
