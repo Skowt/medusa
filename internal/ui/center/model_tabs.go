@@ -256,10 +256,9 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		m.resizePTY(tab, rows, cols)
 	}
 
-	// Add tab to the workspace's tab list
+	// Add tab to the workspace's tab list (script tabs are kept at the end).
 	wsID := string(msg.Workspace.ID())
-	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)
-	createdIdx := len(m.tabsByWorkspace[wsID]) - 1
+	createdIdx := m.appendTabOrdered(wsID, tab)
 	if msg.Activate {
 		m.activeTabByWorkspace[wsID] = createdIdx
 		m.infoTabActive = false

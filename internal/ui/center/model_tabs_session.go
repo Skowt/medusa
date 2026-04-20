@@ -338,12 +338,10 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		// Script tabs always reattach to their existing tmux session.
 		if isScript {
 			info := tab
-			m.addPlaceholderTab(ws, info, true)
+			placeholder := m.addPlaceholderTab(ws, info, true)
 			restoreCount++
-			tabs := m.tabsByWorkspace[wsID]
-			if len(tabs) > 0 {
-				lastTab := tabs[len(tabs)-1]
-				cmds = append(cmds, m.ReattachTabByID(wsID, lastTab.ID))
+			if placeholder != nil {
+				cmds = append(cmds, m.ReattachTabByID(wsID, placeholder.ID))
 			}
 			continue
 		}
@@ -357,13 +355,10 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		if status == "detached" {
 			info := tab
 			info.AllowEdits = tabAllowEdits
-			m.addPlaceholderTab(ws, info, true)
+			placeholder := m.addPlaceholderTab(ws, info, true)
 			restoreCount++
-			// Auto-reattach: find the tab we just added and trigger reattach
-			tabs := m.tabsByWorkspace[wsID]
-			if len(tabs) > 0 {
-				lastTab := tabs[len(tabs)-1]
-				cmds = append(cmds, m.ReattachTabByID(wsID, lastTab.ID))
+			if placeholder != nil {
+				cmds = append(cmds, m.ReattachTabByID(wsID, placeholder.ID))
 			}
 			continue
 		}
@@ -454,7 +449,7 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 // addPlaceholderTab adds a stopped or detached tab placeholder so it remains visible
 // in the UI and can be restarted or reattached. If detached is true, the tab will
 // attempt reattachment to its tmux session; otherwise it will create a fresh session.
-func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detached bool) {
+func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detached bool) *Tab {
 	tm := m.terminalMetrics()
 	termWidth := tm.Width
 	termHeight := tm.Height
@@ -488,5 +483,6 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		SkipPermissions: info.SkipPermissions,
 	}
 	wsID := string(ws.ID())
-	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)
+	m.appendTabOrdered(wsID, tab)
+	return tab
 }
