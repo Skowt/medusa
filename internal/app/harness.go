@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -17,6 +18,12 @@ import (
 	"github.com/Skowt/medusa/internal/ui/sidebar"
 	"github.com/Skowt/medusa/internal/vterm"
 )
+
+// harnessFixedTime is a fixed timestamp used for workspace Created fields so
+// snapshot tests don't drift with real time (e.g. dashboard renders the
+// weekday from Created, which would fail every day that wasn't Thursday).
+// 2024-01-04 is a Thursday, matching the day baked into existing snapshots.
+var harnessFixedTime = time.Date(2024, 1, 4, 12, 0, 0, 0, time.UTC)
 
 // HarnessOptions configures the headless UI harness.
 type HarnessOptions struct {
@@ -104,6 +111,7 @@ func newMonitorHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 			repoPath,
 			wsPath,
 		)
+		ws.Created = harnessFixedTime
 		term := vterm.New(80, 24)
 		tab := &center.Tab{
 			ID:        center.TabID(fmt.Sprintf("tab-%d", i)),
@@ -158,6 +166,7 @@ func newCenterHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 	layoutMgr.Resize(opts.Width, opts.Height)
 
 	ws := data.NewWorkspace("primary", "primary", "main", "/repo/primary", "/repo/primary/ws")
+	ws.Created = harnessFixedTime
 
 	tabs := make([]*center.Tab, 0, opts.Tabs)
 	for i := 0; i < opts.Tabs; i++ {
@@ -229,6 +238,7 @@ func newSidebarHarness(cfg *config.Config, opts HarnessOptions) *Harness {
 	layoutMgr.Resize(opts.Width, opts.Height)
 
 	ws := data.NewWorkspace("primary", "primary", "main", "/repo/primary", "/repo/primary/ws")
+	ws.Created = harnessFixedTime
 
 	dash.SetWorkspaces([]*data.Workspace{ws})
 

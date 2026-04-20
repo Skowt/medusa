@@ -1,7 +1,7 @@
 package common
 
 import (
-	"strings"
+	"strconv"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -139,18 +139,17 @@ func (d *ThemeDialog) handlePrev() (*ThemeDialog, tea.Cmd) {
 }
 
 func (d *ThemeDialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
-	lines := d.renderLines()
-	contentHeight := len(lines)
-	if contentHeight == 0 {
+	b := d.build()
+	dialogW, dialogH := b.Size()
+	if dialogW == 0 || dialogH == 0 {
 		return nil
 	}
-
-	dialogX, dialogY, dialogW, dialogH := d.dialogBounds(contentHeight)
+	dialogX, dialogY := centerOrigin(d.width, d.height, dialogW, dialogH)
 	if msg.X < dialogX || msg.X >= dialogX+dialogW || msg.Y < dialogY || msg.Y >= dialogY+dialogH {
 		return nil
 	}
 
-	_, _, contentOffsetX, contentOffsetY := d.dialogFrame()
+	contentOffsetX, contentOffsetY := b.ContentOffset()
 	localX := msg.X - dialogX - contentOffsetX
 	localY := msg.Y - dialogY - contentOffsetY
 	if localX < 0 || localY < 0 {
@@ -171,7 +170,7 @@ func (d *ThemeDialog) View() string {
 	if !d.visible {
 		return ""
 	}
-	return d.dialogStyle().Render(strings.Join(d.renderLines(), "\n"))
+	return d.build().View()
 }
 
 func (d *ThemeDialog) dialogContentWidth() int {
@@ -189,40 +188,15 @@ func (d *ThemeDialog) dialogStyle() lipgloss.Style {
 		Width(d.dialogContentWidth())
 }
 
-func (d *ThemeDialog) dialogFrame() (frameX, frameY, offsetX, offsetY int) {
-	frameX, frameY = d.dialogStyle().GetFrameSize()
-	return frameX, frameY, frameX / 2, frameY / 2
-}
-
-func (d *ThemeDialog) dialogBounds(contentHeight int) (x, y, w, h int) {
-	contentWidth := d.dialogContentWidth()
-	frameX, frameY, _, _ := d.dialogFrame()
-	w, h = contentWidth+frameX, contentHeight+frameY
-	x, y = (d.width-w)/2, (d.height-h)/2
-	if x < 0 {
-		x = 0
-	}
-	if y < 0 {
-		y = 0
-	}
-	return
-}
-
-func (d *ThemeDialog) addHit(index, y int) {
-	d.hitRegions = append(d.hitRegions, themeHitRegion{
-		index:  index,
-		region: HitRegion{X: 0, Y: y, Width: d.dialogContentWidth(), Height: 1},
-	})
-}
-
-func (d *ThemeDialog) renderLines() []string {
+func (d *ThemeDialog) build() *LineBuilder {
+	b := NewLineBuilder(d.dialogStyle(), d.dialogContentWidth())
 	d.hitRegions = d.hitRegions[:0]
-	var lines []string
 
 	title := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary)
 	muted := lipgloss.NewStyle().Foreground(ColorMuted)
 
-	lines = append(lines, title.Render("Select Theme"), "")
+	b.Append("", title.Render("Select Theme"))
+	b.Blank()
 
 	for i, t := range d.themes {
 		style, prefix := muted, "  "
@@ -230,18 +204,32 @@ func (d *ThemeDialog) renderLines() []string {
 			style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 			prefix = Icons.Cursor + " "
 		}
-		y := len(lines)
-		lines = append(lines, prefix+style.Render(t.Name))
-		d.addHit(i, y)
+		id := strconv.Itoa(i)
+		b.Append(id, prefix+style.Render(t.Name))
+		if r, ok := b.RegionByID(id); ok {
+			d.hitRegions = append(d.hitRegions, themeHitRegion{index: i, region: r})
+		}
 	}
-	lines = append(lines, "")
-
-	style := muted
-	lines = append(lines, style.Render("[Enter] Save • [Esc] Cancel"))
+	b.Blank()
+	b.Append("", muted.Render("[Enter] Save • [Esc] Cancel"))
 
 	if d.showKeymapHintsUI {
-		lines = append(lines, "", muted.Render("↑/↓ navigate"))
+		b.Blank()
+		b.Append("", muted.Render("↑/↓ navigate"))
 	}
 
-	return lines
+	return b
+}
+
+// centerOrigin returns the top-left corner of a (w, h) rectangle centered
+// inside a (totalW, totalH) area, clamped to non-negative coordinates.
+func centerOrigin(totalW, totalH, w, h int) (x, y int) {
+	x, y = (totalW-w)/2, (totalH-h)/2
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	return
 }

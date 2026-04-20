@@ -1,40 +1,61 @@
-<h1 align="center">Medusa</h1>
+<p align="center">
+  <img width="339" src=".github/assets/medusa-logo.png" alt="Medusa" />
+</p>
 
 <p align="center">TUI for easily running parallel coding agents</p>
 
 <p align="center">
-  <a href="https://github.com/Skowt/medusa/releases">
-    <img src="https://img.shields.io/github/v/release/Skowt/medusa?style=flat-square" alt="Latest release" />
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/Skowt/medusa?style=flat-square" alt="License" />
-  </a>
-  <img src="https://img.shields.io/badge/Go-1.24.2-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go version" />
-  <a href="https://discord.gg/Dswc7KFPxs">
-    <img src="https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" />
-  </a>
+  <a href="https://github.com/Skowt/medusa/releases"><img src="https://img.shields.io/github/v/release/Skowt/medusa?style=flat-square" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Skowt/medusa?style=flat-square" alt="License" /></a>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="#features">Features</a>
+  <a href="#features">Features</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#credits">Credits</a>
 </p>
 
 ## What is Medusa?
 
-Medusa is a terminal UI for running multiple coding agents in parallel with a worktree-first model that can import git worktrees.
+Medusa is a terminal UI for [Claude Code](https://claude.com/claude-code). Run multiple agents in parallel — each in its own git worktree on its own branch — and use the monitor view to see which agents are working, idle, or waiting on your input, so you can juggle several tasks at once without losing track of what needs attention.
 
 ## Prerequisites
 
-Medusa requires [tmux](https://github.com/tmux/tmux). Each agent runs in its own tmux session for terminal isolation and persistence.
+- [tmux](https://github.com/tmux/tmux) 3.2 or newer — each agent runs in its own tmux session for terminal isolation and persistence.
+- macOS or Linux. Windows is not supported.
+- Go 1.24 or newer — only if building from source.
 
 ## Quick start
 
+Install with the shell script:
+
 ```bash
-git clone https://github.com/Skowt/medusa.git
-cd medusa
-make run
+curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | sh
+```
+
+Then run it:
+
+```bash
+medusa
+```
+
+Verify the install:
+
+```bash
+medusa --version
+```
+
+## Updating
+
+Medusa checks for updates in the background on startup. When one is available you'll see a toast notification; open the Settings dialog to install it in place.
+
+To update manually, re-run the install script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | sh
 ```
 
 ## How it works
@@ -97,10 +118,48 @@ Each workspace gets a unique port range starting from 6200 (configurable), incre
 
 Press **Ctrl-a r** to launch (or restart) the run scripts for the active workspace. This closes any existing script tabs before starting fresh ones.
 
+### Notes
+
+Each command runs from the workspace's primary worktree root; failures in `setup-workspace` abort workspace setup. Workspace metadata (not to be confused with the per-repo config file above) is tracked in `~/.medusa/workspaces.json`.
+
 ## Development
+
+Build and run from source:
 
 ```bash
 git clone https://github.com/Skowt/medusa.git
 cd medusa
 make run
 ```
+
+Or install directly with Go:
+
+```bash
+go install github.com/Skowt/medusa/cmd/medusa@latest
+```
+
+### Cutting a release
+
+Releases are cut manually from a clean `main` checkout. A release is only triggered by pushing a `v*`-prefixed tag — nothing auto-releases on merge.
+
+```bash
+make release VERSION=vX.Y.Z
+```
+
+That target runs `release-check` (tests + harness smoke), `release-tag` (annotated local tag), and `release-push` (`git push origin vX.Y.Z`). The pushed tag triggers `.github/workflows/release.yml`, which runs GoReleaser and publishes darwin/linux × amd64/arm64 archives plus a `checksums.txt` to the GitHub releases page.
+
+If the workflow run fails for a transient reason, re-trigger it without re-tagging: GitHub → Actions → Release → **Run workflow**, and enter the existing tag. Bump the patch version only if you need to ship different code.
+
+The full commit conventions and release walkthrough live in `.claude/skills/medusa-commits-and-releases/SKILL.md`.
+
+## Credits
+
+Medusa was heavily inspired by [amux](https://github.com/andyrewlee/amux) by [@andyrewlee](https://github.com/andyrewlee). Thank you for the original design and the code Medusa builds on.
+
+## Uninstalling
+
+```bash
+rm /usr/local/bin/medusa
+```
+
+State is kept under `~/.medusa/` (workspace registry, logs, workspace metadata). Remove it too if you want a clean slate.

@@ -147,9 +147,13 @@ func (d *Dialog) renderLines() []string {
 				appendLines(errStyle.Render(d.validationErr))
 			}
 		}
-		// Render checkbox if configured
+		// Render checkbox if configured. Skip the leading blank when the input
+		// is hidden — the message already has a trailing blank, and doubling
+		// them leaves an empty gap before the checkboxes.
 		if d.checkboxLabel != "" {
-			appendBlank(1)
+			if !d.inputHidden || d.message == "" {
+				appendBlank(1)
+			}
 			checkbox := "[ ]"
 			if d.checkboxValue {
 				checkbox = "[" + Icons.Clean + "]"

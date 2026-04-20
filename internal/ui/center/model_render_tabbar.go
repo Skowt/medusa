@@ -1,7 +1,6 @@
 package center
 
 import (
-	"image/color"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -61,21 +60,17 @@ func (m *Model) renderTabBar() string {
 		// Read tab state under lock
 		tab.mu.Lock()
 		tabDisconnected := tab.Detached || !tab.Running
-		tabAllowEdits := tab.AllowEdits
-		tabIsolated := tab.Isolated
-		tabSkipPerms := tab.SkipPermissions
-		tabRenamed := tab.WorkspaceRenamed
 		tab.mu.Unlock()
 
-		// Add brand color indicator for agent tabs (not file viewers)
+		// Brand-color indicator for agent tabs (running = solid dot, idle = ring).
 		var indicator string
 		var tabActive bool
 		isChat := m.isChatTab(tab)
 		if isChat {
 			if tabDisconnected {
-				indicator = common.Icons.Idle + " " // Disconnected indicator
+				indicator = common.Icons.Idle + " "
 			} else {
-				indicator = common.Icons.Running + " " // Brand color dot
+				indicator = common.Icons.Running + " "
 			}
 			tabActive = m.IsTabActive(tab)
 		}
@@ -84,70 +79,6 @@ func (m *Model) renderTabBar() string {
 		if tab.Assistant != "claude" {
 			agentStyle = m.styles.AgentTerm
 		}
-
-		// Build mode indicator icons with spacing
-		type modeIcon struct {
-			char    string
-			fg      color.Color
-			tooltip string
-		}
-		var modeIconList []modeIcon
-		if isChat {
-			if tabRenamed {
-				modeIconList = append(modeIconList, modeIcon{
-					char:    "⚠",
-					fg:      common.ColorWarning,
-					tooltip: "Workspace renamed: restart agent to use new directory",
-				})
-			}
-			if tabAllowEdits {
-				modeIconList = append(modeIconList, modeIcon{
-					char:    "✎",
-					fg:      common.ColorSuccess,
-					tooltip: "Immediately allow edits: agent can write files without asking",
-				})
-			}
-			if tabIsolated {
-				modeIconList = append(modeIconList, modeIcon{
-					char:    "⛶",
-					fg:      common.ColorError,
-					tooltip: "Sandboxed: agent runs in an isolated environment",
-				})
-			}
-			if tabSkipPerms {
-				modeIconList = append(modeIconList, modeIcon{
-					char:    "∅",
-					fg:      common.ColorWarning,
-					tooltip: "Bypass permissions: agent skips all permission checks",
-				})
-			}
-		}
-		renderModeIcons := func(bgColor color.Color) string {
-			if len(modeIconList) == 0 {
-				return ""
-			}
-			parenStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-			if bgColor != nil {
-				parenStyle = parenStyle.Background(bgColor)
-			}
-			var inner string
-			for j, icon := range modeIconList {
-				if j > 0 {
-					if bgColor != nil {
-						inner += lipgloss.NewStyle().Background(bgColor).Render(" ")
-					} else {
-						inner += " "
-					}
-				}
-				iconStyle := lipgloss.NewStyle().Foreground(icon.fg)
-				if bgColor != nil {
-					iconStyle = iconStyle.Background(bgColor)
-				}
-				inner += iconStyle.Render(icon.char)
-			}
-			return parenStyle.Render("(") + inner + parenStyle.Render(")")
-		}
-		modeIcons := renderModeIcons(nil)
 
 		// Build tab content with close affordance
 		closeLabel := m.styles.Muted.Render("×")
@@ -167,14 +98,9 @@ func (m *Model) renderTabBar() string {
 				nameStyle = nameStyle.Foreground(common.ColorMuted)
 			}
 			namePart := nameStyle.Render(name)
-			// Mode icons with background
-			modePart := ""
-			if len(modeIconList) > 0 {
-				modePart = lipgloss.NewStyle().Background(bg).Render(" ") + renderModeIcons(bg)
-			}
 			space := lipgloss.NewStyle().Background(bg).Render(" ")
 			closePart := lipgloss.NewStyle().Foreground(common.ColorMuted).Background(bg).Render("×")
-			rendered = pad + indicatorPart + namePart + modePart + space + closePart + pad
+			rendered = pad + indicatorPart + namePart + space + closePart + pad
 			style = m.styles.ActiveTab
 		} else {
 			// Inactive tab
@@ -192,11 +118,7 @@ func (m *Model) renderTabBar() string {
 			} else {
 				indicatorStyled = agentStyle.Render(indicator)
 			}
-			modeLabel := ""
-			if modeIcons != "" {
-				modeLabel = " " + modeIcons
-			}
-			content := indicatorStyled + nameStyled + modeLabel + " " + closeLabel
+			content := indicatorStyled + nameStyled + " " + closeLabel
 			rendered = m.styles.Tab.Render(content)
 			style = m.styles.Tab
 		}
@@ -232,40 +154,15 @@ func (m *Model) renderTabBar() string {
 					},
 				})
 			}
-
-			// Add hit regions for individual mode icons
-			if len(modeIconList) > 0 {
-				namePartWidth := lipgloss.Width(agentStyle.Render(indicator) + name)
-				iconStartX := x + leftFrame + namePartWidth + 1 // +1 for the leading space before "("
-				// The whole group is wrapped in (...), so offset past the opening paren
-				iconStartX++ // skip "("
-				for j, icon := range modeIconList {
-					if j > 0 {
-						iconStartX++ // skip space between icons
-					}
-					iconW := lipgloss.Width(icon.char)
-					m.tabHits = append(m.tabHits, tabHit{
-						kind:  tabHitModeIcon,
-						index: i,
-						label: icon.tooltip,
-						region: common.HitRegion{
-							X:      iconStartX,
-							Y:      0,
-							Width:  iconW,
-							Height: 1,
-						},
-					})
-					iconStartX += iconW
-				}
-			}
 		}
 		x += renderedWidth
 		renderedTabs = append(renderedTabs, rendered)
 	}
 
-	// Add control buttons (hidden for archived workspaces)
+	// Add control button (hidden for archived workspaces). Clicking always
+	// opens the customize dialog so settings can be chosen per tab.
 	if m.workspace == nil || !m.workspace.Archived() {
-		btn := m.styles.TabPlus.Render("+ New")
+		btn := m.styles.TabPlus.Render("+ New Agent")
 		btnWidth := lipgloss.Width(btn)
 		if btnWidth > 0 {
 			m.tabHits = append(m.tabHits, tabHit{
@@ -280,24 +177,6 @@ func (m *Model) renderTabBar() string {
 			})
 		}
 		renderedTabs = append(renderedTabs, btn)
-		x += btnWidth
-
-		// Add "+ New (Custom)" button to customize tab settings
-		selectBtn := m.styles.TabPlus.Render("+ New (Custom)")
-		selectBtnWidth := lipgloss.Width(selectBtn)
-		if selectBtnWidth > 0 {
-			m.tabHits = append(m.tabHits, tabHit{
-				kind:  tabHitPlusSelect,
-				index: -1,
-				region: common.HitRegion{
-					X:      x,
-					Y:      0,
-					Width:  selectBtnWidth,
-					Height: 1,
-				},
-			})
-		}
-		renderedTabs = append(renderedTabs, selectBtn)
 	}
 
 	// Join tabs horizontally at the bottom so borders align
@@ -334,15 +213,6 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 	}
 	// All tab hits are at Y=0 relative to the tab bar
 	localY := 0
-	// Check mode icon clicks first (they overlap with tab regions)
-	for _, hit := range m.tabHits {
-		if hit.kind == tabHitModeIcon && hit.region.Contains(localX, localY) {
-			tooltip := hit.label
-			return func() tea.Msg {
-				return messages.Toast{Message: tooltip, Level: messages.ToastInfo}
-			}
-		}
-	}
 	// Check close buttons (they overlap with tab regions)
 	for _, hit := range m.tabHits {
 		if hit.kind == tabHitClose && hit.region.Contains(localX, localY) {
@@ -360,23 +230,7 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 				if m.workspace != nil && m.workspace.Archived() {
 					ws := m.workspace
 					return func() tea.Msg {
-						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
-					}
-				}
-				return func() tea.Msg {
-					return messages.LaunchAgent{
-						Assistant:       "claude",
-						Workspace:       m.workspace,
-						AllowEdits:      m.config.UI.LastAllowEdits,
-						Isolated:        m.config.UI.LastIsolated,
-						SkipPermissions: m.config.UI.LastSkipPermissions,
-					}
-				}
-			case tabHitPlusSelect:
-				if m.workspace != nil && m.workspace.Archived() {
-					ws := m.workspace
-					return func() tea.Msg {
-						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+						return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
 					}
 				}
 				return func() tea.Msg { return messages.ShowCustomizeTabDialog{} }
@@ -387,7 +241,7 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 				if m.workspace != nil && m.workspace.Archived() {
 					ws := m.workspace
 					return func() tea.Msg {
-						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+						return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
 					}
 				}
 				m.infoTabActive = false

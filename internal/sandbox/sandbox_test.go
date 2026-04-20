@@ -188,8 +188,12 @@ func TestGenerateSBPL_NoClaudeHomePaths(t *testing.T) {
 	rules := config.DefaultSandboxRules().Rules
 	sbpl := GenerateSBPL("/tmp/ws", []string{"/tmp/.git"}, "/tmp/config", "", rules)
 
-	if strings.Contains(sbpl, home+"/.claude") {
-		t.Error("profile should not reference ~/.claude")
+	// ~/.claude/local is intentionally allowed (legacy auto-updater install dir).
+	// Nothing else under ~/.claude or ~/.claude.json should leak into the profile —
+	// profiles must remain isolated from the user's main Claude home.
+	stripped := strings.ReplaceAll(sbpl, home+"/.claude/local", "")
+	if strings.Contains(stripped, home+"/.claude") {
+		t.Error("profile should not reference ~/.claude (other than ~/.claude/local)")
 	}
 	if strings.Contains(sbpl, home+"/.claude.json") {
 		t.Error("profile should not reference ~/.claude.json")

@@ -1,8 +1,6 @@
 package common
 
 import (
-	"strings"
-
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -29,6 +27,10 @@ type ShowPermissionsEditor struct{}
 // ShowSandboxRulesEditor is sent when the user clicks "Edit Sandbox Path Rules".
 type ShowSandboxRulesEditor struct{}
 
+// TriggerUpgradeRequest is sent when the user clicks "Install update" in settings.
+// The app handler translates this into messages.TriggerUpgrade{}.
+type TriggerUpgradeRequest struct{}
+
 // ThemePreview is sent when user navigates through themes for live preview.
 type ThemePreview struct {
 	Theme ThemeID
@@ -50,9 +52,15 @@ const (
 	settingsItemTmuxPersistence
 	settingsItemManageProfiles
 	settingsItemEditTheme
+	settingsItemReleases // About section - only selectable when updateAvailable
+	settingsItemUpgrade  // About section - only selectable when updateAvailable
 	settingsItemSave
 	settingsItemClose
 )
+
+// medusaReleasesURL is the GitHub releases page — linked from the Settings
+// About section when an update is available so users can review the changelog.
+const medusaReleasesURL = "https://github.com/Skowt/medusa/releases/"
 
 // SettingsDialog is a modal dialog for application settings.
 type SettingsDialog struct {
@@ -215,6 +223,19 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		s.visible = false
 		return s, func() tea.Msg { return ShowSandboxRulesEditor{} }
 
+	case settingsItemReleases:
+		if !s.updateAvailable {
+			return s, nil
+		}
+		return s, openURL(medusaReleasesURL)
+
+	case settingsItemUpgrade:
+		if !s.updateAvailable {
+			return s, nil
+		}
+		s.visible = false
+		return s, func() tea.Msg { return TriggerUpgradeRequest{} }
+
 	case settingsItemTmuxPersistence:
 		s.tmuxPersistence = !s.tmuxPersistence
 		return s, nil
@@ -269,12 +290,20 @@ func (s *SettingsDialog) skipDisabledForward() {
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemNotificationSound
 	}
+	// Skip About-update items when no update is available
+	if !s.updateAvailable && (s.focusedItem == settingsItemReleases || s.focusedItem == settingsItemUpgrade) {
+		s.focusedItem = settingsItemSave
+	}
 }
 
 func (s *SettingsDialog) skipDisabledBackward() {
 	// Skip edit permissions when global perms is off
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemGlobalPerms
+	}
+	// Skip About-update items when no update is available
+	if !s.updateAvailable && (s.focusedItem == settingsItemReleases || s.focusedItem == settingsItemUpgrade) {
+		s.focusedItem = settingsItemEditTheme
 	}
 	// Wrap around from before first item to last
 	if s.focusedItem < 0 {
@@ -293,18 +322,17 @@ func (s *SettingsDialog) handlePrev() (*SettingsDialog, tea.Cmd) {
 }
 
 func (s *SettingsDialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
-	lines := s.renderLines()
-	contentHeight := len(lines)
-	if contentHeight == 0 {
+	b := s.build()
+	dialogW, dialogH := b.Size()
+	if dialogW == 0 || dialogH == 0 {
 		return nil
 	}
-
-	dialogX, dialogY, dialogW, dialogH := s.dialogBounds(contentHeight)
+	dialogX, dialogY := centerOrigin(s.width, s.height, dialogW, dialogH)
 	if msg.X < dialogX || msg.X >= dialogX+dialogW || msg.Y < dialogY || msg.Y >= dialogY+dialogH {
 		return nil
 	}
 
-	_, _, contentOffsetX, contentOffsetY := s.dialogFrame()
+	contentOffsetX, contentOffsetY := b.ContentOffset()
 	localX := msg.X - dialogX - contentOffsetX
 	localY := msg.Y - dialogY - contentOffsetY
 	if localX < 0 || localY < 0 {
@@ -325,7 +353,7 @@ func (s *SettingsDialog) View() string {
 	if !s.visible {
 		return ""
 	}
-	return s.dialogStyle().Render(strings.Join(s.renderLines(), "\n"))
+	return s.build().View()
 }
 
 func (s *SettingsDialog) dialogContentWidth() int {

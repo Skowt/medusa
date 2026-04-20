@@ -8,6 +8,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
 	"github.com/Skowt/medusa/internal/vterm"
 )
@@ -277,6 +278,13 @@ func (m *Model) HandleMonitorInput(tabID TabID, msg tea.Msg) tea.Cmd {
 						return TabInputFailed{TabID: tab.ID, WorkspaceID: wtID, Err: err}
 					}
 				}
+			}
+		}
+		// Ctrl+C (0x03) interrupts the agent — emit a message so the
+		// app layer can clear the activity spinner.
+		if len(input) == 1 && input[0] == 0x03 {
+			return func() tea.Msg {
+				return messages.AgentInterrupted{WorkspaceID: wtID}
 			}
 		}
 	}

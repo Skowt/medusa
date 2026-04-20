@@ -109,6 +109,7 @@ func (e *SandboxRulesEditor) renderLines() []string {
 	lines = append(lines, muted.Render(fmt.Sprintf("  %-13s %-9s %s", "allow-write", "subpath", "/private/tmp")))
 	lines = append(lines, muted.Render(fmt.Sprintf("  %-13s %-9s %s", "allow-write", "subpath", "/private/var/folders")))
 	lines = append(lines, muted.Render(fmt.Sprintf("  %-13s %-9s %s", "allow-write", "subpath", "<Claude OAuth login credentials>")))
+	lines = append(lines, muted.Render(fmt.Sprintf("  %-13s %-9s %s", "allow-write", "subpath", "<Claude Code auto-updater install dirs>")))
 	lines = append(lines, "")
 
 	// Input row (for adding or editing)

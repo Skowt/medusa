@@ -346,6 +346,14 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				} else {
 					logging.Debug("keyToBytes returned empty for: %s", msg.String())
 				}
+				// Ctrl+C (0x03) interrupts the agent but Claude Code's
+				// Stop hook does not fire on user interrupts. Emit a
+				// message so the app layer can clear the activity spinner.
+				if len(input) == 1 && input[0] == 0x03 {
+					return m, func() tea.Msg {
+						return messages.AgentInterrupted{WorkspaceID: m.workspaceID()}
+					}
+				}
 				return m, nil
 			}
 		}

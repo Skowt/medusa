@@ -253,15 +253,20 @@ func (a *App) handleArchiveWorkspace(msg messages.ArchiveWorkspace) []tea.Cmd {
 		return cmds
 	}
 
-	// 4. If active, go home
+	// 4. Stop watching git state — archived workspaces can't change on disk.
+	if a.fileWatcher != nil {
+		a.fileWatcher.Unwatch(ws.PrimaryWorktreeRoot())
+	}
+
+	// 5. If active, go home
 	if a.activeWorkspace != nil && a.activeWorkspace.Root() == ws.Root() {
 		a.goHome()
 	}
 
-	// 5. Prune excess archived workspaces
+	// 6. Prune excess archived workspaces
 	cmds = append(cmds, a.pruneArchivedWorkspaces()...)
 
-	// 6. Reload + toast
+	// 7. Reload + toast
 	cmds = append(cmds, a.loadWorkspaces())
 	cmds = append(cmds, a.toast.ShowSuccess(fmt.Sprintf("Archived '%s'", ws.Name)))
 	return cmds

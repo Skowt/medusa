@@ -134,11 +134,25 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			}
 		}
 
-	case DialogUnarchiveWorkspace:
+	case DialogArchivedWorkspace:
 		if workspace != nil {
 			ws := workspace
-			return func() tea.Msg {
-				return messages.UnarchiveWorkspace{Workspace: ws}
+			switch result.Index {
+			case 0: // Unarchive
+				return func() tea.Msg {
+					return messages.UnarchiveWorkspace{Workspace: ws}
+				}
+			case 1: // Delete
+				if ws.IsOrphaned() {
+					return func() tea.Msg {
+						return messages.DeleteOrphanWorkspace{Workspace: ws}
+					}
+				}
+				return func() tea.Msg {
+					return messages.DeleteWorkspace{Workspace: ws}
+				}
+			default: // Cancel
+				return nil
 			}
 		}
 
@@ -299,8 +313,17 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 
 	case DialogCloseTab:
 		idx := a.dialogCloseTabIdx
-		return func() tea.Msg {
-			return messages.ConfirmCloseTab{Index: idx}
+		switch result.Index {
+		case 0: // Close
+			return func() tea.Msg {
+				return messages.ConfirmCloseTab{Index: idx}
+			}
+		case 1: // Restart
+			return func() tea.Msg {
+				return messages.ConfirmRestartTab{Index: idx}
+			}
+		default: // Cancel
+			return nil
 		}
 
 	case DialogDeleteProfile:
@@ -420,7 +443,7 @@ func (a *App) showNameWorkspaceDialog(repos []data.RepoRef) {
 		}
 		return ""
 	})
-	a.dialog.SetCheckbox("Copy gitignore'd files", true)
+	a.dialog.SetCheckbox("Copy gitignored files", true)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()
@@ -475,6 +498,11 @@ func (a *App) handleUpdateCheckComplete(msg messages.UpdateCheckComplete) tea.Cm
 	// Update settings dialog if visible
 	if a.settingsDialog != nil && a.settingsDialog.Visible() {
 		a.settingsDialog.SetUpdateInfo(msg.CurrentVersion, msg.LatestVersion, true)
+	}
+	// One-time toast on discovery so users don't miss the upgrade.
+	if !a.updateToastShown {
+		a.updateToastShown = true
+		return a.toast.ShowInfo(fmt.Sprintf("Update available: %s → %s · open Settings to install", msg.CurrentVersion, msg.LatestVersion))
 	}
 	return nil
 }

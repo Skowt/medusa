@@ -162,16 +162,40 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 	}
 }
 
-// RestartActiveTab restarts a stopped or detached agent tab by creating a fresh tmux client.
+// RestartActiveTab restarts the active agent tab. Works on running tabs
+// too — restart is non-destructive because the existing ClaudeSessionID
+// is reused via `claude --resume`.
 func (m *Model) RestartActiveTab() tea.Cmd {
+	return m.restartTab(m.getActiveTabIdx())
+}
+
+// RestartTabAtIndex restarts a specific tab by index. Used by the
+// close-tab dialog when launched from a tab-bar click, which may target
+// a tab other than the active one.
+func (m *Model) RestartTabAtIndex(index int) tea.Cmd {
+	return m.restartTab(index)
+}
+
+// restartTab tears down the agent + tmux session for a tab and spawns
+// a fresh one, reusing the tab's ClaudeSessionID (via `--resume`) so the
+// conversation continues. Diff tabs and non-assistant tabs are rejected
+// with a toast.
+func (m *Model) restartTab(index int) tea.Cmd {
 	tabs := m.getTabs()
-	activeIdx := m.getActiveTabIdx()
-	if len(tabs) == 0 || activeIdx >= len(tabs) {
+	if index < 0 || index >= len(tabs) {
 		return nil
 	}
-	tab := tabs[activeIdx]
+	tab := tabs[index]
 	if tab == nil || tab.Workspace == nil {
 		return nil
+	}
+	if tab.DiffViewer != nil {
+		return func() tea.Msg {
+			return messages.Toast{
+				Message: "Diff tabs cannot be restarted",
+				Level:   messages.ToastInfo,
+			}
+		}
 	}
 	if m.config == nil || m.config.Assistants == nil {
 		return nil
@@ -179,8 +203,8 @@ func (m *Model) RestartActiveTab() tea.Cmd {
 	if _, ok := m.config.Assistants[tab.Assistant]; !ok {
 		return nil
 	}
+
 	tab.mu.Lock()
-	running := tab.Running
 	sessionName := tab.SessionName
 	if sessionName == "" && tab.Agent != nil {
 		sessionName = tab.Agent.Session
@@ -190,24 +214,19 @@ func (m *Model) RestartActiveTab() tea.Cmd {
 	tabIsolated := tab.Isolated
 	tabSkipPerms := tab.SkipPermissions
 	tab.mu.Unlock()
-	if running {
-		return func() tea.Msg {
-			return messages.Toast{
-				Message: "Tab is still running",
-				Level:   messages.ToastInfo,
-			}
-		}
-	}
+
 	ws := tab.Workspace
 	tabID := tab.ID
 	if sessionName == "" {
 		sessionName = tmux.SessionName("medusa", ws.Name, "1")
 	}
+
+	// Tear down the existing agent (if any) before spawning a new one.
 	m.stopPTYReader(tab)
-	var existingAgent *appPty.Agent
 	tab.mu.Lock()
-	existingAgent = tab.Agent
+	existingAgent := tab.Agent
 	tab.Agent = nil
+	tab.Running = false
 	tab.autoRestartAttempt = 0
 	tab.mu.Unlock()
 	if existingAgent != nil {

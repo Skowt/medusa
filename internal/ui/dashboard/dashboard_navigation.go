@@ -222,7 +222,7 @@ func (m *Model) activateRow(viaClick bool) tea.Cmd {
 		if row.Workspace != nil && row.Workspace.Archived() {
 			ws := row.Workspace
 			return func() tea.Msg {
-				return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+				return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
 			}
 		}
 		ws := row.Workspace

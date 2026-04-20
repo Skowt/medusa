@@ -63,15 +63,34 @@ curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${FILENAME}"
 echo "Extracting..."
 tar -xzf "${TMP_DIR}/${FILENAME}" -C "$TMP_DIR"
 
-# Install binary
-echo "Installing to ${INSTALL_DIR}/${BINARY}..."
-if [ -w "$INSTALL_DIR" ]; then
-  mv "${TMP_DIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
-else
-  sudo mv "${TMP_DIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
-fi
+# Install one binary from TMP_DIR into INSTALL_DIR.
+# Usage: install_binary <name> [required]
+install_binary() {
+  NAME="$1"
+  REQUIRED="${2:-optional}"
+  SRC="${TMP_DIR}/${NAME}"
+  DEST="${INSTALL_DIR}/${NAME}"
 
-chmod +x "${INSTALL_DIR}/${BINARY}"
+  if [ ! -f "$SRC" ]; then
+    if [ "$REQUIRED" = "required" ]; then
+      echo "Error: expected ${NAME} in archive but it wasn't found"
+      exit 1
+    fi
+    return 0
+  fi
+
+  echo "Installing ${NAME} to ${DEST}..."
+  if [ -w "$INSTALL_DIR" ]; then
+    mv "$SRC" "$DEST"
+    chmod +x "$DEST"
+  else
+    sudo mv "$SRC" "$DEST"
+    sudo chmod +x "$DEST"
+  fi
+}
+
+install_binary "medusa" required
+install_binary "medusa-approve-compound"
 
 echo ""
 echo "✓ ${BINARY} ${VERSION} installed successfully!"

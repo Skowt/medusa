@@ -164,9 +164,18 @@ func (m *Model) renderArchivedRow(ws *data.Workspace, selected bool, contentWidt
 		deleteSlot = " " + common.Icons.Close + " "
 	}
 
-	line := bg.Render(" ") + iconStyle.Render("◇ ") + nameStyle.Render(ws.Name) + nameStyle.Render(deleteSlot)
+	prefix := bg.Render(" ") + iconStyle.Render("◇ ")
+	name := nameStyle.Render(ws.Name)
+	line := prefix + name + nameStyle.Render(deleteSlot)
 
 	if selected {
+		// Record the delete icon column for this row so the click handler in
+		// model.go can map a click on the "×" back to the delete action.
+		// Without this, handleClick reads a stale deleteIconX from whatever
+		// non-archived row was last rendered and clicks on the archived row's
+		// × either miss entirely or hit the wrong column.
+		m.deleteIconX = lipgloss.Width(prefix) + lipgloss.Width(name)
+
 		bgStyle := lipgloss.NewStyle().Background(common.ColorSelection)
 		line = padWithBg(line, contentWidth, bgStyle)
 	}

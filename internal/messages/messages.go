@@ -235,8 +235,8 @@ type ArchiveWorkspace struct {
 	Workspace *data.Workspace
 }
 
-// ShowUnarchiveWorkspaceDialog requests showing the unarchive workspace confirmation
-type ShowUnarchiveWorkspaceDialog struct {
+// ShowArchivedWorkspaceDialog requests showing the archived-workspace actions dialog
+type ShowArchivedWorkspaceDialog struct {
 	Workspace *data.Workspace
 }
 
@@ -403,6 +403,14 @@ type ConfirmCloseTab struct {
 	Index int // -1 means close active tab
 }
 
+// ConfirmRestartTab is sent after the user chooses "Restart" in the
+// close-tab dialog. The existing ClaudeSessionID is preserved so the
+// conversation resumes via `claude --resume`. Index -1 means restart the
+// active tab.
+type ConfirmRestartTab struct {
+	Index int
+}
+
 // ShowCleanupTmuxDialog requests confirmation before cleaning tmux sessions.
 type ShowCleanupTmuxDialog struct{}
 
@@ -494,6 +502,12 @@ type UpgradeComplete struct {
 type OpenFileInVim struct {
 	Path      string
 	Workspace *data.Workspace
+}
+
+// AgentInterrupted is sent when Ctrl+C is forwarded to a workspace terminal,
+// signaling that the agent's activity spinner should be cleared.
+type AgentInterrupted struct {
+	WorkspaceID string
 }
 
 // PermissionWatcherEvent is sent when a watched settings.local.json changes

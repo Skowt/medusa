@@ -46,7 +46,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch result.ID {
 		case DialogAddRepos, DialogAddReposToWorkspace, DialogCreateWorkspace, DialogDeleteWorkspace, DialogCustomizeTab, DialogQuit, DialogCleanupTmux, DialogSetProfile, DialogRenameWorkspace, DialogRenameProfile, DialogCreateProfile, DialogDeleteProfile, DialogCommit,
 			DialogSelectBranchMode, DialogCustomBranch, DialogSelectRecentRepos, DialogCloseTab, DialogSetProfileForCreate, DialogQuickDuplicate,
-			DialogArchiveWorkspace, DialogUnarchiveWorkspace, DialogSetNote:
+			DialogArchiveWorkspace, DialogArchivedWorkspace, DialogSetNote:
 			return a, a.safeCmd(a.handleDialogResult(result))
 		}
 		// If not an App-level dialog, let it fall through to components
@@ -439,8 +439,8 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.ArchiveWorkspace:
 		cmds = append(cmds, a.handleArchiveWorkspace(msg)...)
 
-	case messages.ShowUnarchiveWorkspaceDialog:
-		a.handleShowUnarchiveWorkspaceDialog(msg)
+	case messages.ShowArchivedWorkspaceDialog:
+		a.handleShowArchivedWorkspaceDialog(msg)
 
 	case messages.UnarchiveWorkspace:
 		cmds = append(cmds, a.handleUnarchiveWorkspace(msg)...)
@@ -525,6 +525,11 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.ShowThemeEditor:
 		a.handleShowThemeEditor()
 
+	case common.TriggerUpgradeRequest:
+		if cmd := a.handleTriggerUpgrade(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
 	case common.ThemeResult:
 		if cmd := a.handleThemeResult(msg); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -582,17 +587,24 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case messages.CloseTab:
 		a.dialogCloseTabIdx = -1
-		a.showCloseTabConfirmation()
+		a.showCloseTabDialog()
 
 	case messages.CloseTabAt:
 		a.dialogCloseTabIdx = msg.Index
-		a.showCloseTabConfirmation()
+		a.showCloseTabDialog()
 
 	case messages.ConfirmCloseTab:
 		if msg.Index == -1 {
 			cmds = append(cmds, a.center.CloseActiveTab())
 		} else {
 			cmds = append(cmds, a.center.CloseTabAtIndex(msg.Index))
+		}
+
+	case messages.ConfirmRestartTab:
+		if msg.Index == -1 {
+			cmds = append(cmds, a.center.RestartActiveTab())
+		} else {
+			cmds = append(cmds, a.center.RestartTabAtIndex(msg.Index))
 		}
 
 	case messages.LaunchAgent:
@@ -661,6 +673,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case center.TabInputFailed:
 		cmds = append(cmds, a.handleTabInputFailed(msg)...)
+
+	case messages.AgentInterrupted:
+		cmds = append(cmds, a.handleAgentInterrupted(msg.WorkspaceID)...)
 
 	case messages.Toast:
 		switch msg.Level {
