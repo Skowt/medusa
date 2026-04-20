@@ -84,22 +84,28 @@ func (m *Model) DetachTabByID(wsID string, tabID TabID) tea.Cmd {
 	return nil
 }
 
-// ReattachTabByID reattaches to a detached tmux session by workspace ID and tab ID.
+// ReattachTabByID reattaches to a detached tmux session by workspace ID and
+// tab ID. Works for both agent tabs (resumed via CreateAgentWithTags) and
+// script tabs (attached via CreateViewerWithTags).
 func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 	tab := m.getTabByID(wsID, tabID)
 	if tab == nil || tab.Workspace == nil {
 		return nil
 	}
-	if m.config == nil || m.config.Assistants == nil {
-		return nil
-	}
-	if _, ok := m.config.Assistants[tab.Assistant]; !ok {
-		return nil
+	isScript := tab.Assistant == "script"
+	if !isScript {
+		if m.config == nil || m.config.Assistants == nil {
+			return nil
+		}
+		if _, ok := m.config.Assistants[tab.Assistant]; !ok {
+			return nil
+		}
 	}
 	tab.mu.Lock()
 	detached := tab.Detached
 	sessionName := tab.SessionName
 	claudeSessionID := tab.ClaudeSessionID
+	scriptFullCmd := tab.ScriptFullCmd
 	tab.mu.Unlock()
 	if !detached {
 		return nil
@@ -135,10 +141,20 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 		tags := tmux.SessionTags{
 			WorkspaceID: string(ws.ID()),
 			TabID:       string(tabID),
-			Type:        "agent",
-			Assistant:   assistant,
 		}
-		agent, err := m.agentManager.CreateAgentWithTags(ws, appPty.AgentType(assistant), sessionName, uint16(termHeight), uint16(termWidth), tags, appPty.AgentOptions{})
+		var agent *appPty.Agent
+		if isScript {
+			tags.Type = "script"
+			tags.Assistant = "script"
+			// The tmux session already exists (state.Exists checked above), so
+			// tmux's `new-session -A` flag makes this an attach — the command
+			// here is only used for re-creation, not re-attach.
+			agent, err = m.agentManager.CreateViewerWithTags(ws, scriptFullCmd, sessionName, uint16(termHeight), uint16(termWidth), tags)
+		} else {
+			tags.Type = "agent"
+			tags.Assistant = assistant
+			agent, err = m.agentManager.CreateAgentWithTags(ws, appPty.AgentType(assistant), sessionName, uint16(termHeight), uint16(termWidth), tags, appPty.AgentOptions{})
+		}
 		if err != nil {
 			return ptyTabReattachFailed{
 				WorkspaceID: string(ws.ID()),
@@ -185,10 +201,49 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		return nil
 	}
 
+	activeIdx := ws.ActiveTabIndex
+	// Pre-scan to pick the persisted index of the tab that should receive
+	// initial focus: the persisted-active tab if it's a non-script, otherwise
+	// the first non-script tab at or after activeIdx, otherwise the first
+	// non-script tab overall. Script tabs are never initially focused.
+	focusPersistedIdx := -1
+	firstNonScriptIdx := -1
+	for i, tab := range ws.OpenTabs {
+		if tab.Assistant == "" || tab.Assistant == "script" {
+			continue
+		}
+		if m.config == nil || m.config.Assistants == nil {
+			continue
+		}
+		if _, ok := m.config.Assistants[tab.Assistant]; !ok {
+			continue
+		}
+		if firstNonScriptIdx == -1 {
+			firstNonScriptIdx = i
+		}
+		if i >= activeIdx {
+			focusPersistedIdx = i
+			break
+		}
+	}
+	if focusPersistedIdx == -1 {
+		focusPersistedIdx = firstNonScriptIdx
+	}
+
 	var cmds []tea.Cmd
 	restoreCount := 0
-	lastBeforeActive := -1
-	activeIdx := ws.ActiveTabIndex
+	setFocus := func(tab *Tab) {
+		if tab == nil {
+			return
+		}
+		for idx, t := range m.tabsByWorkspace[wsID] {
+			if t == tab {
+				m.activeTabByWorkspace[wsID] = idx
+				m.infoTabActive = false
+				return
+			}
+		}
+	}
 	for i, tab := range ws.OpenTabs {
 		if tab.Assistant == "" {
 			continue
@@ -203,14 +258,12 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			}
 		}
 		status := strings.ToLower(strings.TrimSpace(tab.Status))
-		if i <= activeIdx {
-			lastBeforeActive = restoreCount
-		}
 		// Migration: tabs without per-tab settings get defaults (AllowEdits=true)
 		tabAllowEdits := tab.AllowEdits
 		if !tab.AllowEdits && !tab.Isolated && !tab.SkipPermissions {
 			tabAllowEdits = true // Default for migrated tabs
 		}
+		activate := !isScript && i == focusPersistedIdx
 		// Script tabs always reattach to their existing tmux session.
 		if isScript {
 			info := tab
@@ -224,8 +277,11 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		if status == "stopped" {
 			info := tab
 			info.AllowEdits = tabAllowEdits
-			m.addPlaceholderTab(ws, info, false)
+			placeholder := m.addPlaceholderTab(ws, info, false)
 			restoreCount++
+			if activate {
+				setFocus(placeholder)
+			}
 			continue
 		}
 		if status == "detached" {
@@ -233,24 +289,21 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			info.AllowEdits = tabAllowEdits
 			placeholder := m.addPlaceholderTab(ws, info, true)
 			restoreCount++
+			if activate {
+				setFocus(placeholder)
+			}
 			if placeholder != nil {
 				cmds = append(cmds, m.ReattachTabByID(wsID, placeholder.ID))
 			}
 			continue
 		}
 		restoreCount++
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, false, tab.ClaudeSessionID, tabAllowEdits, tab.Isolated, tab.SkipPermissions))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, tabAllowEdits, tab.Isolated, tab.SkipPermissions))
 	}
-	if restoreCount > 0 {
-		desired := lastBeforeActive
-		if desired < 0 {
-			desired = 0
-		}
-		if desired >= restoreCount {
-			desired = restoreCount - 1
-		}
-		m.activeTabByWorkspace[wsID] = desired
-		m.infoTabActive = false
+	if restoreCount > 0 && focusPersistedIdx == -1 {
+		// Only scripts were restored — focus the Info tab instead.
+		m.activeTabByWorkspace[wsID] = 0
+		m.infoTabActive = true
 	}
 	return common.SafeBatch(cmds...)
 }
