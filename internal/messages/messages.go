@@ -1,7 +1,6 @@
 package messages
 
 import (
-	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/git"
 )
@@ -434,43 +433,6 @@ type FileWatcherEvent struct {
 	Root string
 }
 
-// SidebarPTYOutput contains PTY output for sidebar terminal
-type SidebarPTYOutput struct {
-	WorkspaceID string
-	TabID       string
-	Data        []byte
-}
-
-// SidebarPTYTick triggers a sidebar PTY read
-type SidebarPTYTick struct {
-	WorkspaceID string
-	TabID       string
-}
-
-// SidebarPTYFlush applies buffered PTY output for sidebar terminal
-type SidebarPTYFlush struct {
-	WorkspaceID string
-	TabID       string
-}
-
-// SidebarPTYStopped signals that the sidebar PTY read loop has stopped
-type SidebarPTYStopped struct {
-	WorkspaceID string
-	TabID       string
-	Err         error
-}
-
-// SidebarTerminalCreated signals that the sidebar terminal was created
-type SidebarTerminalCreated struct {
-	WorkspaceID string
-}
-
-// SidebarTerminalTabCreated signals that a sidebar terminal tab was created
-type SidebarTerminalTabCreated struct {
-	WorkspaceID string
-	TabID       string
-}
-
 // UpdateCheckComplete is sent when the background update check finishes
 type UpdateCheckComplete struct {
 	CurrentVersion  string
@@ -499,101 +461,6 @@ type OpenFileInVim struct {
 // signaling that the agent's activity spinner should be cleared.
 type AgentInterrupted struct {
 	WorkspaceID string
-}
-
-// PermissionWatcherEvent is sent when a watched settings.local.json changes
-type PermissionWatcherEvent struct {
-	Root     string
-	NewAllow []string
-}
-
-// PermissionDetected is sent when new permissions are found in a workspace
-type PermissionDetected struct {
-	WorkspaceRoot string
-	WorkspaceName string
-	NewAllow      []string
-}
-
-// ShowPermissionsDialog requests showing the pending permissions dialog
-type ShowPermissionsDialog struct{}
-
-// PermissionsDialogResult contains the user's actions on pending permissions
-type PermissionsDialogResult struct {
-	Actions []PermissionAction
-}
-
-// PermissionAction represents the user's choice for a single pending permission
-type PermissionAction struct {
-	Permission string
-	Action     PermissionActionType
-}
-
-// PermissionActionType identifies how to handle a detected permission
-type PermissionActionType int
-
-const (
-	PermissionAllow PermissionActionType = iota
-	PermissionDeny
-	PermissionSkip
-)
-
-// PermissionsEditorResult contains the updated allow/deny lists from the editor
-type PermissionsEditorResult struct {
-	Confirmed bool
-	Allow     []string
-	Deny      []string
-}
-
-// SandboxRulesEditorResult contains the updated sandbox rules from the editor
-type SandboxRulesEditorResult struct {
-	Confirmed bool
-	Rules     []config.SandboxRule
-}
-
-// ActionBarCopyDir requests copying the workspace directory to clipboard
-type ActionBarCopyDir struct {
-	WorkspaceRoot string
-}
-
-// ActionBarOpenIDE requests opening the workspace folder in the user's IDE
-type ActionBarOpenIDE struct {
-	WorkspaceRoot string
-}
-
-// ActionBarMergeToMain requests merging the worktree branch into main
-type ActionBarMergeToMain struct {
-	RepoPath   string
-	BranchName string
-}
-
-// ActionBarCommit requests staging all changes and creating a commit
-type ActionBarCommit struct {
-	WorkspaceRoot string
-	Message       string
-}
-
-// ActionBarCommitResult contains the result of a commit operation
-type ActionBarCommitResult struct {
-	Success    bool
-	CommitHash string
-	Err        error
-}
-
-// ActionBarMergeResult contains the result of a merge operation
-type ActionBarMergeResult struct {
-	Success bool
-	Err     error
-}
-
-// ActionBarOpenMR requests opening a merge/pull request in browser
-type ActionBarOpenMR struct {
-	WorkspaceRoot string
-	BranchName    string
-}
-
-// ShowCommitDialog requests showing the commit message dialog
-type ShowCommitDialog struct {
-	WorkspaceRoot string
 }
 
 // WorkspaceFetchDone is sent after remote bases have been fetched for workspace creation.
