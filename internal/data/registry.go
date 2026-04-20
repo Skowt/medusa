@@ -17,12 +17,22 @@ type Registry struct {
 // registryFile represents the JSON structure of workspaces.json
 type registryFile struct {
 	Workspaces []registryWorkspace `json:"workspaces"`
+	Groups     []RegistryGroup     `json:"groups,omitempty"`
 }
 
 type registryWorkspace struct {
 	Name    string `json:"name"`
 	ID      string `json:"id"`
 	Profile string `json:"profile,omitempty"`
+}
+
+// RegistryGroup is a user-defined collapsible group scoped to a repo.
+// Name uniqueness is enforced per (Name, RepoKey); the same name can exist under different repos.
+type RegistryGroup struct {
+	Name     string `json:"name"`
+	RepoKey  string `json:"repo_key"`
+	Expanded bool   `json:"expanded"`
+	Order    int    `json:"order"`
 }
 
 // NewRegistry creates a new registry at the specified path
@@ -36,44 +46,92 @@ func NewRegistry(path string) *Registry {
 func (r *Registry) ListWorkspaces() ([]registryWorkspace, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.loadLocked()
+	file, err := r.loadFileLocked()
+	if err != nil {
+		return nil, err
+	}
+	return file.Workspaces, nil
+}
+
+// ListGroups reads all group entries from the registry.
+func (r *Registry) ListGroups() ([]RegistryGroup, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	file, err := r.loadFileLocked()
+	if err != nil {
+		return nil, err
+	}
+	return file.Groups, nil
 }
 
 // loadLocked reads workspace entries without acquiring locks.
 // The caller must hold at least r.mu.RLock().
 func (r *Registry) loadLocked() ([]registryWorkspace, error) {
-	raw, err := os.ReadFile(r.path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
+	file, err := r.loadFileLocked()
 	if err != nil {
 		return nil, err
+	}
+	return file.Workspaces, nil
+}
+
+// loadFileLocked reads the full registry file without acquiring locks.
+// The caller must hold at least r.mu.RLock().
+func (r *Registry) loadFileLocked() (registryFile, error) {
+	raw, err := os.ReadFile(r.path)
+	if os.IsNotExist(err) {
+		return registryFile{}, nil
+	}
+	if err != nil {
+		return registryFile{}, err
 	}
 
 	var registry registryFile
 	if err := json.Unmarshal(raw, &registry); err != nil {
-		return nil, err
+		return registryFile{}, err
 	}
-	return registry.Workspaces, nil
+	return registry, nil
 }
 
 // modifyWorkspaces loads, modifies, and saves workspace entries atomically
-// under a single write lock.
+// under a single write lock. Groups are preserved.
 func (r *Registry) modifyWorkspaces(fn func([]registryWorkspace) ([]registryWorkspace, error)) error {
+	return r.modifyFile(func(file *registryFile) error {
+		updated, err := fn(file.Workspaces)
+		if err != nil {
+			return err
+		}
+		file.Workspaces = updated
+		return nil
+	})
+}
+
+// modifyGroups loads, modifies, and saves group entries atomically under a single write lock.
+func (r *Registry) modifyGroups(fn func([]RegistryGroup) ([]RegistryGroup, error)) error {
+	return r.modifyFile(func(file *registryFile) error {
+		updated, err := fn(file.Groups)
+		if err != nil {
+			return err
+		}
+		file.Groups = updated
+		return nil
+	})
+}
+
+// modifyFile is the shared atomic read/modify/write core used by modifyWorkspaces and modifyGroups.
+func (r *Registry) modifyFile(fn func(*registryFile) error) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	workspaces, err := r.loadLocked()
+	file, err := r.loadFileLocked()
 	if err != nil {
 		return err
 	}
 
-	workspaces, err = fn(workspaces)
-	if err != nil {
+	if err := fn(&file); err != nil {
 		return err
 	}
 
-	return r.saveLocked(workspaces)
+	return r.saveFileLocked(file)
 }
 
 // AddWorkspace adds a workspace to the registry
@@ -156,23 +214,102 @@ func (r *Registry) ClearProfile(profile string) error {
 	})
 }
 
-// saveLocked writes the workspace entries to the registry file.
+// saveLocked writes workspace entries while preserving existing groups.
 // The caller must hold r.mu.Lock().
 func (r *Registry) saveLocked(workspaces []registryWorkspace) error {
+	file, err := r.loadFileLocked()
+	if err != nil {
+		return err
+	}
+	file.Workspaces = workspaces
+	return r.saveFileLocked(file)
+}
+
+// saveFileLocked writes the full registry file.
+// The caller must hold r.mu.Lock().
+func (r *Registry) saveFileLocked(file registryFile) error {
 	dir := filepath.Dir(r.path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	if workspaces == nil {
-		workspaces = []registryWorkspace{}
+	if file.Workspaces == nil {
+		file.Workspaces = []registryWorkspace{}
 	}
 
-	registry := registryFile{Workspaces: workspaces}
-	raw, err := json.MarshalIndent(registry, "", "  ")
+	raw, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return err
 	}
 
 	return os.WriteFile(r.path, raw, 0644)
+}
+
+// AddGroup appends a new group if (name, repoKey) is not already present.
+// Newly created groups start expanded and are appended at the end of their repo scope's order.
+func (r *Registry) AddGroup(name, repoKey string) error {
+	return r.modifyGroups(func(groups []RegistryGroup) ([]RegistryGroup, error) {
+		maxOrder := -1
+		for _, g := range groups {
+			if g.RepoKey == repoKey {
+				if g.Name == name {
+					return groups, nil // already exists; no-op
+				}
+				if g.Order > maxOrder {
+					maxOrder = g.Order
+				}
+			}
+		}
+		return append(groups, RegistryGroup{
+			Name:     name,
+			RepoKey:  repoKey,
+			Expanded: true,
+			Order:    maxOrder + 1,
+		}), nil
+	})
+}
+
+// RemoveGroup deletes a group entry. Clearing the Group field on member workspaces is the caller's responsibility.
+func (r *Registry) RemoveGroup(name, repoKey string) error {
+	return r.modifyGroups(func(groups []RegistryGroup) ([]RegistryGroup, error) {
+		filtered := groups[:0]
+		for _, g := range groups {
+			if g.Name == name && g.RepoKey == repoKey {
+				continue
+			}
+			filtered = append(filtered, g)
+		}
+		return filtered, nil
+	})
+}
+
+// RenameGroup updates the name of a group. Rewriting the Group field on member workspaces is the caller's responsibility.
+func (r *Registry) RenameGroup(oldName, newName, repoKey string) error {
+	return r.modifyGroups(func(groups []RegistryGroup) ([]RegistryGroup, error) {
+		for _, g := range groups {
+			if g.Name == newName && g.RepoKey == repoKey {
+				return nil, fmt.Errorf("group %q already exists in repo scope %q", newName, repoKey)
+			}
+		}
+		for i := range groups {
+			if groups[i].Name == oldName && groups[i].RepoKey == repoKey {
+				groups[i].Name = newName
+				return groups, nil
+			}
+		}
+		return nil, fmt.Errorf("group not found: %s/%s", repoKey, oldName)
+	})
+}
+
+// SetGroupExpanded toggles the expanded state of a group.
+func (r *Registry) SetGroupExpanded(name, repoKey string, expanded bool) error {
+	return r.modifyGroups(func(groups []RegistryGroup) ([]RegistryGroup, error) {
+		for i := range groups {
+			if groups[i].Name == name && groups[i].RepoKey == repoKey {
+				groups[i].Expanded = expanded
+				return groups, nil
+			}
+		}
+		return nil, fmt.Errorf("group not found: %s/%s", repoKey, name)
+	})
 }

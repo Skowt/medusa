@@ -51,6 +51,10 @@ const (
 	DialogArchiveWorkspace    = "archive_workspace"
 	DialogArchivedWorkspace   = "archived_workspace"
 	DialogSetNote             = "set_note"
+	DialogCreateGroup         = "create_group"
+	DialogRenameGroup         = "rename_group"
+	DialogDeleteGroup         = "delete_group"
+	DialogAssignGroup         = "assign_group"
 )
 
 // Prefix mode constants
@@ -126,6 +130,10 @@ type App struct {
 	dialogProfile       string             // For rename/delete profile dialogs
 	dialogCloseTabIdx   int                // For close tab confirmation
 	dialogRecents       []data.RecentEntry // Snapshot of recents for select dialog
+	dialogGroupName     string             // For group rename/delete dialogs
+	dialogGroupRepoKey  string             // For group create/rename/delete/assign dialogs
+	dialogGroupChoices  []string           // For assign-to-group select dialog (group names in order)
+	pendingGroupAssign  *data.Workspace    // When set, the next created group is immediately assigned to this workspace
 
 	// Process management
 	scripts *process.ScriptRunner

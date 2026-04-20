@@ -20,6 +20,10 @@ import (
 
 func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	a.allWorkspaces = msg.Workspaces
+	// Load groups alongside workspaces so the dashboard can render nested collapsible groups.
+	if groups, err := a.registry.ListGroups(); err == nil {
+		a.dashboard.SetGroups(groups)
+	}
 	a.dashboard.SetWorkspaces(a.allWorkspaces)
 	// Restore hook states from workspace JSON so indicators (e.g. '!') survive restarts.
 	a.restoreHookStatesFromWorkspaces()

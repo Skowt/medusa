@@ -41,6 +41,13 @@ func (m *Model) renderRow(row Row, selected bool) string {
 		}
 		return "\n" + style.Render(" "+common.Icons.Add+" Quick Duplicate ")
 
+	case RowCreateGroup:
+		style := m.styles.CreateButton
+		if selected {
+			style = m.styles.SelectedRow
+		}
+		return style.Render("   " + common.Icons.Add + " New Group ")
+
 	case RowSectionHeader:
 		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
 		contentWidth := m.width - 3
@@ -57,11 +64,41 @@ func (m *Model) renderRow(row Row, selected bool) string {
 		}
 		return style.Render(" " + row.Label)
 
+	case RowGroupHeader:
+		return m.renderGroupHeader(row, selected)
+
 	case RowSpacer:
 		return ""
 	}
 
 	return ""
+}
+
+// renderGroupHeader renders a user-defined collapsible group header.
+// Indented under the repo header; shows ▼/▶ + name, plus (N) when collapsed.
+func (m *Model) renderGroupHeader(row Row, selected bool) string {
+	icon := common.Icons.DirOpen
+	if !row.GroupExpanded {
+		icon = common.Icons.DirClosed
+	}
+	label := row.GroupName
+	if !row.GroupExpanded && row.GroupCount > 0 {
+		label = fmt.Sprintf("%s (%d)", label, row.GroupCount)
+	}
+	style := lipgloss.NewStyle().Foreground(common.ColorSecondary)
+	if selected {
+		style = style.Bold(true).Background(common.ColorSelection).Foreground(common.ColorForeground)
+	}
+	line := style.Render("   " + icon + " " + label)
+	if selected {
+		contentWidth := m.width - 3
+		if contentWidth < 1 {
+			contentWidth = 1
+		}
+		bgStyle := lipgloss.NewStyle().Background(common.ColorSelection)
+		line = padWithBg(line, contentWidth, bgStyle)
+	}
+	return line
 }
 
 // renderWorkspaceRow renders a 2-line workspace entry
@@ -76,14 +113,24 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 		contentWidth = 1
 	}
 
+	// Grouped workspaces are indented by 2 columns under their group header.
+	indent := ""
+	if row.GroupName != "" {
+		indent = "  "
+		contentWidth -= 2
+		if contentWidth < 1 {
+			contentWidth = 1
+		}
+	}
+
 	// Orphaned workspaces get a distinct rendering
 	if ws.IsOrphaned() {
-		return m.renderOrphanRow(ws, selected, contentWidth)
+		return prefixIndent(m.renderOrphanRow(ws, selected, contentWidth), indent, selected)
 	}
 
 	// Archived workspaces get single-line rendering
 	if ws.Archived() {
-		return m.renderArchivedRow(ws, selected, contentWidth)
+		return prefixIndent(m.renderArchivedRow(ws, selected, contentWidth), indent, selected)
 	}
 
 	line1 := m.renderWorkspaceLine1(ws, selected, contentWidth)
@@ -95,7 +142,25 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 		line2 = padWithBg(line2, contentWidth, bg)
 	}
 
-	return line1 + "\n" + line2
+	return prefixIndent(line1+"\n"+line2, indent, selected)
+}
+
+// prefixIndent prepends indent to every line. When selected, the indent columns
+// are rendered with the selection background so the highlight extends to the left edge.
+func prefixIndent(block, indent string, selected bool) string {
+	if indent == "" {
+		return block
+	}
+	style := lipgloss.NewStyle()
+	if selected {
+		style = style.Background(common.ColorSelection)
+	}
+	rendered := style.Render(indent)
+	lines := strings.Split(block, "\n")
+	for i := range lines {
+		lines[i] = rendered + lines[i]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderOrphanRow renders a 2-line orphaned workspace entry.
@@ -371,17 +436,26 @@ func (m *Model) helpLines(contentWidth int) []string {
 		m.helpItem("enter", "open"),
 	}
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
-		if m.rows[m.cursor].Type == RowWorkspace {
+		switch m.rows[m.cursor].Type {
+		case RowWorkspace:
 			items = append(items, m.helpItem("r", "rename"))
 			ws := m.rows[m.cursor].Workspace
 			if ws != nil && (ws.Archived() || ws.IsOrphaned()) {
 				items = append(items, m.helpItem("D", "delete"))
 			} else {
 				items = append(items, m.helpItem("D", "archive"))
+				items = append(items, m.helpItem("g", "group"))
 			}
 			items = append(items, m.helpItem("P", "profile"))
+		case RowGroupHeader:
+			items = append(items,
+				m.helpItem("enter/l/h", "toggle"),
+				m.helpItem("r", "rename"),
+				m.helpItem("D", "delete"),
+			)
 		}
 	}
+	items = append(items, m.helpItem("N", "new group"))
 	items = append(items, m.helpItem("R", "refresh"))
 	focusKey := "C-Spc h/j/k"
 	if m.canFocusRight {

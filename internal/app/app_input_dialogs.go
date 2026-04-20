@@ -20,11 +20,15 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 	defaultName := a.dialogDefaultName
 	workspaceRoot := a.dialogWorkspaceRoot
 	profile := a.dialogProfile
+	groupName := a.dialogGroupName
+	groupRepoKey := a.dialogGroupRepoKey
 	a.dialog = nil
 	a.dialogWorkspace = nil
 	a.dialogDefaultName = ""
 	a.dialogWorkspaceRoot = ""
 	a.dialogProfile = ""
+	a.dialogGroupName = ""
+	a.dialogGroupRepoKey = ""
 	logging.Debug("Dialog result: id=%s confirmed=%v value=%s", result.ID, result.Confirmed, result.Value)
 
 	if !result.Confirmed {
@@ -398,6 +402,9 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 
 	case DialogCleanupTmux:
 		return func() tea.Msg { return messages.CleanupTmuxSessions{} }
+
+	case DialogCreateGroup, DialogRenameGroup, DialogDeleteGroup, DialogAssignGroup:
+		return a.handleGroupDialogResult(result, workspace, groupName, groupRepoKey)
 
 	case DialogCommit:
 		if workspaceRoot != "" && result.Value != "" {

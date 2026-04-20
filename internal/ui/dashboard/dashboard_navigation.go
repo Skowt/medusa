@@ -17,6 +17,9 @@ func isSelectable(rt RowType) bool {
 	}
 }
 
+// RowGroupHeader is intentionally selectable (falls into the default case) so
+// the cursor can land on a group header to trigger toggle/rename/delete.
+
 // findSelectableRow finds a selectable row starting from 'from' in direction 'dir'.
 func (m *Model) findSelectableRow(from, dir int) int {
 	if dir == 0 {
@@ -69,6 +72,10 @@ func (m *Model) rowLineCount(idx int) int {
 		if m.rows[idx].Label == "archived" || m.rows[idx].Label == "archived-footer" {
 			return 2
 		}
+		return 1
+	case RowGroupHeader:
+		return 1
+	case RowCreateGroup:
 		return 1
 	case RowHome:
 		return 2 // title + separator line
@@ -186,6 +193,8 @@ func (m *Model) previewCurrentRow() tea.Cmd {
 		return func() tea.Msg { return messages.ShowWelcome{} }
 	case RowQuickDuplicate:
 		return func() tea.Msg { return messages.ShowWelcome{} }
+	case RowCreateGroup:
+		return func() tea.Msg { return messages.ShowWelcome{} }
 	}
 
 	return nil
@@ -246,6 +255,17 @@ func (m *Model) activateRow(viaClick bool) tea.Cmd {
 				Profile:     profile,
 				CopyIgnored: copyIgnored,
 			}
+		}
+	case RowCreateGroup:
+		repoKey := row.GroupRepoKey
+		return func() tea.Msg {
+			return messages.ShowCreateGroupDialog{RepoKey: repoKey}
+		}
+	case RowGroupHeader:
+		name := row.GroupName
+		repoKey := row.GroupRepoKey
+		return func() tea.Msg {
+			return messages.ToggleGroupExpanded{Name: name, RepoKey: repoKey}
 		}
 	}
 

@@ -115,6 +115,10 @@ type Workspace struct {
 	// Activity state (persisted so indicators like '!' survive restarts)
 	ActivityState string `json:"activity_state,omitempty"`
 
+	// Group is the user-defined group name this workspace belongs to within its repo scope.
+	// Empty means ungrouped. Groups are scoped per RepoKeyFor(w) so the same name can exist under different repos.
+	Group string `json:"group,omitempty"`
+
 	// Orphan detection (runtime only, not persisted)
 	Orphan     OrphanType `json:"-"` // Whether this workspace is orphaned and why
 	OrphanPath string     `json:"-"` // For directory orphans: the path on disk

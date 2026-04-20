@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"sort"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -79,11 +78,20 @@ func (m *Model) SetWorkspaceDeleting(root string, deleting bool) tea.Cmd {
 
 // rebuildRows rebuilds the row list from workspaces
 func (m *Model) rebuildRows() {
-	// Remember the workspace at the current cursor so we can re-anchor after rebuild.
+	// Remember the item at the current cursor so we can re-anchor after rebuild.
+	// Either a workspace (by root) or a group header (by name+repoKey) — not both.
 	var prevCursorRoot string
+	var prevCursorGroupName, prevCursorGroupRepoKey string
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
-		if row := m.rows[m.cursor]; row.Type == RowWorkspace && row.Workspace != nil {
-			prevCursorRoot = row.Workspace.Root()
+		row := m.rows[m.cursor]
+		switch row.Type {
+		case RowWorkspace:
+			if row.Workspace != nil {
+				prevCursorRoot = row.Workspace.Root()
+			}
+		case RowGroupHeader:
+			prevCursorGroupName = row.GroupName
+			prevCursorGroupRepoKey = row.GroupRepoKey
 		}
 	}
 
@@ -125,55 +133,24 @@ func (m *Model) rebuildRows() {
 		return all[i].Created.Before(all[j].Created)
 	})
 
-	// Group workspaces by repo name(s): single-repo by repo name,
-	// multi-repo by sorted comma-joined repo names (truncated to 15 chars).
-	repoGroups := make(map[string][]*data.Workspace) // group key -> workspaces
-	groupLabels := make(map[string]string)           // group key -> display label
-	var groupOrder []string                          // first-seen order of keys
+	// Group workspaces by repo name(s) using RepoKeyFor (shared with the registry group scope).
+	repoGroups := make(map[string][]*data.Workspace) // repoKey -> workspaces
+	repoLabels := make(map[string]string)            // repoKey -> display label
+	var repoOrder []string                           // first-seen order of repoKeys
 
 	for _, ws := range all {
-		var key, label string
-		if len(ws.Repos) == 0 {
-			key = "other"
-			label = "other"
-		} else {
-			names := make([]string, len(ws.Repos))
-			for i, r := range ws.Repos {
-				names[i] = r.Name
-			}
-			sort.Strings(names)
-			label = strings.Join(names, ", ")
-			if len(label) > 15 {
-				label = label[:15] + "..."
-			}
-			key = strings.Join(names, ",") // stable key (no truncation)
-		}
+		key := data.RepoKeyFor(ws)
 		if _, seen := repoGroups[key]; !seen {
-			groupOrder = append(groupOrder, key)
-			groupLabels[key] = label
+			repoOrder = append(repoOrder, key)
+			repoLabels[key] = data.RepoLabelFor(ws)
 		}
 		repoGroups[key] = append(repoGroups[key], ws)
 	}
 
-	sort.Strings(groupOrder)
+	sort.Strings(repoOrder)
 
-	for _, key := range groupOrder {
-		groupWs := repoGroups[key]
-		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: groupLabels[key]})
-		for _, ws := range groupWs {
-			m.rows = append(m.rows, Row{
-				Type:      RowWorkspace,
-				Workspace: ws,
-			})
-		}
-		lastWs := groupWs[len(groupWs)-1]
-		m.rows = append(m.rows, Row{
-			Type:             RowQuickDuplicate,
-			GroupRepos:       lastWs.Repos,
-			GroupProfile:     lastWs.Profile,
-			GroupCopyIgnored: lastWs.CopyIgnored,
-		})
-		m.rows = append(m.rows, Row{Type: RowSpacer})
+	for _, repoKey := range repoOrder {
+		m.appendRepoSection(repoKey, repoLabels[repoKey], repoGroups[repoKey])
 	}
 
 	// Orphans section
@@ -206,18 +183,23 @@ func (m *Model) rebuildRows() {
 		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "archived-footer"})
 	}
 
-	// Try to re-anchor cursor to the previously selected workspace.
-	if prevCursorRoot != "" {
+	// Try to re-anchor cursor to the previously selected workspace or group header.
+	if prevCursorRoot != "" || prevCursorGroupName != "" {
 		found := false
 		for i, row := range m.rows {
-			if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == prevCursorRoot {
+			if prevCursorRoot != "" && row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == prevCursorRoot {
+				m.cursor = i
+				found = true
+				break
+			}
+			if prevCursorGroupName != "" && row.Type == RowGroupHeader && row.GroupName == prevCursorGroupName && row.GroupRepoKey == prevCursorGroupRepoKey {
 				m.cursor = i
 				found = true
 				break
 			}
 		}
 		if !found {
-			// Workspace was removed — clamp index so it lands on a neighbor.
+			// Anchor target was removed — clamp index so it lands on a neighbor.
 			if m.cursor >= len(m.rows) {
 				m.cursor = len(m.rows) - 1
 			}
