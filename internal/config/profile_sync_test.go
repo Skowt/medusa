@@ -7,19 +7,51 @@ import (
 	"testing"
 )
 
+func mustMkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0755); err != nil {
+		t.Fatalf("MkdirAll %s: %v", path, err)
+	}
+}
+
+func mustWriteFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("WriteFile %s: %v", path, err)
+	}
+}
+
+func mustUnmarshalSettings(t *testing.T, data []byte) map[string]any {
+	t.Helper()
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	return settings
+}
+
+func mustEnabledPlugins(t *testing.T, settings map[string]any) map[string]any {
+	t.Helper()
+	enabled, ok := settings["enabledPlugins"].(map[string]any)
+	if !ok {
+		t.Fatalf("enabledPlugins missing or wrong type")
+	}
+	return enabled
+}
+
 func setupTestProfiles(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	// Create shared dirs
-	os.MkdirAll(filepath.Join(root, "shared", "skills"), 0755)
-	os.MkdirAll(filepath.Join(root, "shared", "plugins"), 0755)
+	mustMkdirAll(t, filepath.Join(root, "shared", "skills"))
+	mustMkdirAll(t, filepath.Join(root, "shared", "plugins"))
 	return root
 }
 
 func TestSyncFreshProfile(t *testing.T) {
 	root := setupTestProfiles(t)
 	profileDir := filepath.Join(root, "myprofile")
-	os.MkdirAll(profileDir, 0755)
+	mustMkdirAll(t, profileDir)
 
 	if err := SyncProfileSharedDirs(root, "myprofile"); err != nil {
 		t.Fatalf("SyncProfileSharedDirs: %v", err)
@@ -52,8 +84,8 @@ func TestSyncExistingDirsGetBackup(t *testing.T) {
 	// Create existing skills and plugins dirs with a file inside
 	for _, name := range []string{"skills", "plugins"} {
 		dir := filepath.Join(profileDir, name)
-		os.MkdirAll(dir, 0755)
-		os.WriteFile(filepath.Join(dir, "test.txt"), []byte("data"), 0644)
+		mustMkdirAll(t, dir)
+		mustWriteFile(t, filepath.Join(dir, "test.txt"), []byte("data"))
 	}
 
 	if err := SyncProfileSharedDirs(root, "myprofile"); err != nil {
@@ -86,7 +118,7 @@ func TestSyncExistingDirsGetBackup(t *testing.T) {
 func TestSyncIdempotent(t *testing.T) {
 	root := setupTestProfiles(t)
 	profileDir := filepath.Join(root, "myprofile")
-	os.MkdirAll(profileDir, 0755)
+	mustMkdirAll(t, profileDir)
 
 	// Sync twice
 	if err := SyncProfileSharedDirs(root, "myprofile"); err != nil {
@@ -113,7 +145,7 @@ func TestSyncAllProfilesSkipsShared(t *testing.T) {
 
 	// Create multiple profile dirs
 	for _, name := range []string{"profile1", "profile2"} {
-		os.MkdirAll(filepath.Join(root, name), 0755)
+		mustMkdirAll(t, filepath.Join(root, name))
 	}
 
 	if err := SyncAllProfiles(root); err != nil {
@@ -154,8 +186,8 @@ func TestUnsyncRemovesSymlinksRestoresBackup(t *testing.T) {
 	// Create existing dirs with files, then sync
 	for _, name := range []string{"skills", "plugins"} {
 		dir := filepath.Join(profileDir, name)
-		os.MkdirAll(dir, 0755)
-		os.WriteFile(filepath.Join(dir, "test.txt"), []byte("original"), 0644)
+		mustMkdirAll(t, dir)
+		mustWriteFile(t, filepath.Join(dir, "test.txt"), []byte("original"))
 	}
 	if err := SyncProfileSharedDirs(root, "myprofile"); err != nil {
 		t.Fatalf("SyncProfileSharedDirs: %v", err)
@@ -199,11 +231,11 @@ func TestUnsyncRemovesSymlinksRestoresBackup(t *testing.T) {
 func TestUnsyncLeavesSharedIntact(t *testing.T) {
 	root := setupTestProfiles(t)
 	profileDir := filepath.Join(root, "myprofile")
-	os.MkdirAll(profileDir, 0755)
+	mustMkdirAll(t, profileDir)
 
 	// Add files to shared dirs
 	for _, name := range []string{"skills", "plugins"} {
-		os.WriteFile(filepath.Join(root, "shared", name, "shared.txt"), []byte("shared"), 0644)
+		mustWriteFile(t, filepath.Join(root, "shared", name, "shared.txt"), []byte("shared"))
 	}
 
 	if err := SyncProfileSharedDirs(root, "myprofile"); err != nil {
@@ -230,7 +262,7 @@ func TestUnsyncAllProfiles(t *testing.T) {
 
 	// Create and sync multiple profiles
 	for _, name := range []string{"profile1", "profile2"} {
-		os.MkdirAll(filepath.Join(root, name), 0755)
+		mustMkdirAll(t, filepath.Join(root, name))
 	}
 	if err := SyncAllProfiles(root); err != nil {
 		t.Fatalf("SyncAllProfiles: %v", err)
@@ -266,10 +298,10 @@ func TestSyncPropagatesEnabledPlugins(t *testing.T) {
 		},
 	}
 	data, _ := json.Marshal(registry)
-	os.WriteFile(filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data, 0644)
+	mustWriteFile(t, filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data)
 
 	// Create a profile with no settings.json and sync it
-	os.MkdirAll(filepath.Join(root, "work"), 0755)
+	mustMkdirAll(t, filepath.Join(root, "work"))
 	if err := SyncProfileSharedDirs(root, "work"); err != nil {
 		t.Fatalf("SyncProfileSharedDirs: %v", err)
 	}
@@ -280,15 +312,8 @@ func TestSyncPropagatesEnabledPlugins(t *testing.T) {
 		t.Fatalf("settings.json should have been created: %v", err)
 	}
 
-	var settings map[string]any
-	if err := json.Unmarshal(settingsData, &settings); err != nil {
-		t.Fatalf("unmarshal settings.json: %v", err)
-	}
-
-	enabled, ok := settings["enabledPlugins"].(map[string]any)
-	if !ok {
-		t.Fatalf("enabledPlugins missing or wrong type")
-	}
+	settings := mustUnmarshalSettings(t, settingsData)
+	enabled := mustEnabledPlugins(t, settings)
 
 	for _, key := range []string{"context7@official", "github@official", "my-skill@official"} {
 		val, exists := enabled[key]
@@ -314,11 +339,11 @@ func TestSyncPreservesExistingEnabledPlugins(t *testing.T) {
 		},
 	}
 	data, _ := json.Marshal(registry)
-	os.WriteFile(filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data, 0644)
+	mustWriteFile(t, filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data)
 
 	// Create a profile with an existing settings.json that has pluginA disabled
 	profileDir := filepath.Join(root, "existing")
-	os.MkdirAll(profileDir, 0755)
+	mustMkdirAll(t, profileDir)
 	existingSettings := map[string]any{
 		"enabledPlugins": map[string]any{
 			"pluginA@official": false,
@@ -326,18 +351,19 @@ func TestSyncPreservesExistingEnabledPlugins(t *testing.T) {
 		"otherSetting": "preserved",
 	}
 	settingsData, _ := json.Marshal(existingSettings)
-	os.WriteFile(filepath.Join(profileDir, "settings.json"), settingsData, 0644)
+	mustWriteFile(t, filepath.Join(profileDir, "settings.json"), settingsData)
 
 	if err := SyncProfileSharedDirs(root, "existing"); err != nil {
 		t.Fatalf("SyncProfileSharedDirs: %v", err)
 	}
 
 	// Read back settings.json
-	result, _ := os.ReadFile(filepath.Join(profileDir, "settings.json"))
-	var settings map[string]any
-	json.Unmarshal(result, &settings)
-
-	enabled := settings["enabledPlugins"].(map[string]any)
+	result, err := os.ReadFile(filepath.Join(profileDir, "settings.json"))
+	if err != nil {
+		t.Fatalf("ReadFile settings.json: %v", err)
+	}
+	settings := mustUnmarshalSettings(t, result)
+	enabled := mustEnabledPlugins(t, settings)
 
 	// pluginA should remain false (existing value preserved)
 	if enabled["pluginA@official"] != false {
@@ -367,20 +393,22 @@ func TestSyncRemovesUninstalledPlugins(t *testing.T) {
 		},
 	}
 	data, _ := json.Marshal(registry)
-	os.WriteFile(filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data, 0644)
+	mustWriteFile(t, filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data)
 
 	// Sync the profile — both plugins get enabled
 	profileDir := filepath.Join(root, "myprofile")
-	os.MkdirAll(profileDir, 0755)
+	mustMkdirAll(t, profileDir)
 	if err := SyncProfileSharedDirs(root, "myprofile"); err != nil {
 		t.Fatalf("initial sync: %v", err)
 	}
 
 	// Verify both are enabled
-	settingsData, _ := os.ReadFile(filepath.Join(profileDir, "settings.json"))
-	var settings map[string]any
-	json.Unmarshal(settingsData, &settings)
-	enabled := settings["enabledPlugins"].(map[string]any)
+	settingsData, err := os.ReadFile(filepath.Join(profileDir, "settings.json"))
+	if err != nil {
+		t.Fatalf("ReadFile settings.json: %v", err)
+	}
+	settings := mustUnmarshalSettings(t, settingsData)
+	enabled := mustEnabledPlugins(t, settings)
 	if len(enabled) != 2 {
 		t.Fatalf("expected 2 enabled plugins, got %d", len(enabled))
 	}
@@ -390,7 +418,7 @@ func TestSyncRemovesUninstalledPlugins(t *testing.T) {
 		"pluginA@official": []any{map[string]any{"scope": "user"}},
 	}
 	data, _ = json.Marshal(registry)
-	os.WriteFile(filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data, 0644)
+	mustWriteFile(t, filepath.Join(root, "shared", "plugins", "installed_plugins.json"), data)
 
 	// Re-sync
 	if err := SyncProfileSharedDirs(root, "myprofile"); err != nil {
@@ -398,9 +426,12 @@ func TestSyncRemovesUninstalledPlugins(t *testing.T) {
 	}
 
 	// pluginB should be gone from enabledPlugins
-	settingsData, _ = os.ReadFile(filepath.Join(profileDir, "settings.json"))
-	json.Unmarshal(settingsData, &settings)
-	enabled = settings["enabledPlugins"].(map[string]any)
+	settingsData, err = os.ReadFile(filepath.Join(profileDir, "settings.json"))
+	if err != nil {
+		t.Fatalf("ReadFile settings.json: %v", err)
+	}
+	settings = mustUnmarshalSettings(t, settingsData)
+	enabled = mustEnabledPlugins(t, settings)
 
 	if _, exists := enabled["pluginA@official"]; !exists {
 		t.Errorf("pluginA should still be enabled")

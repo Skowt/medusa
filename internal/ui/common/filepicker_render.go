@@ -36,21 +36,6 @@ func (fp *FilePicker) dialogFrame() (frameX, frameY, offsetX, offsetY int) {
 	return frameX, frameY, offsetX, offsetY
 }
 
-func (fp *FilePicker) dialogBounds(contentHeight int) (x, y, w, h int) {
-	frameX, frameY, _, _ := fp.dialogFrame()
-	w = filePickerContentWidth + frameX
-	h = contentHeight + frameY
-	x = (fp.width - w) / 2
-	y = (fp.height - h) / 2
-	if x < 0 {
-		x = 0
-	}
-	if y < 0 {
-		y = 0
-	}
-	return x, y, w, h
-}
-
 func (fp *FilePicker) renderLines() []string {
 	fp.rowHits = fp.rowHits[:0]
 	fp.buttonHits = fp.buttonHits[:0]

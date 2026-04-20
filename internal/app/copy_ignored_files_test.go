@@ -23,27 +23,40 @@ func TestCopyIgnoredFiles(t *testing.T) {
 		}
 	}
 
+	writeFile := func(path string, content []byte) {
+		t.Helper()
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			t.Fatalf("WriteFile %s: %v", path, err)
+		}
+	}
+	mkdirAll := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("MkdirAll %s: %v", path, err)
+		}
+	}
+
 	run("init")
 	run("config", "user.email", "test@test.com")
 	run("config", "user.name", "Test")
 
 	// Create .gitignore
-	os.WriteFile(filepath.Join(src, ".gitignore"), []byte("*.secret\n.env*\ncreds/\n"), 0o644)
+	writeFile(filepath.Join(src, ".gitignore"), []byte("*.secret\n.env*\ncreds/\n"))
 
 	// Create a tracked file and commit so we have a repo
-	os.WriteFile(filepath.Join(src, "main.go"), []byte("package main"), 0o644)
+	writeFile(filepath.Join(src, "main.go"), []byte("package main"))
 	run("add", ".")
 	run("commit", "-m", "init")
 
 	// Create ignored files
-	os.WriteFile(filepath.Join(src, ".env"), []byte("DB_URL=postgres://..."), 0o644)
-	os.WriteFile(filepath.Join(src, ".env.local"), []byte("LOCAL=1"), 0o644)
-	os.WriteFile(filepath.Join(src, "api.secret"), []byte("key=abc123"), 0o644)
-	os.MkdirAll(filepath.Join(src, "creds"), 0o755)
-	os.WriteFile(filepath.Join(src, "creds", "key.pem"), []byte("-----BEGIN RSA-----"), 0o644)
+	writeFile(filepath.Join(src, ".env"), []byte("DB_URL=postgres://..."))
+	writeFile(filepath.Join(src, ".env.local"), []byte("LOCAL=1"))
+	writeFile(filepath.Join(src, "api.secret"), []byte("key=abc123"))
+	mkdirAll(filepath.Join(src, "creds"))
+	writeFile(filepath.Join(src, "creds", "key.pem"), []byte("-----BEGIN RSA-----"))
 
 	// Create a non-ignored file (should NOT be copied since it's tracked)
-	os.WriteFile(filepath.Join(src, "README.md"), []byte("# hi"), 0o644)
+	writeFile(filepath.Join(src, "README.md"), []byte("# hi"))
 	run("add", "README.md")
 	run("commit", "-m", "add readme")
 

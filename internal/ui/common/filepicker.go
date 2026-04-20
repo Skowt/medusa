@@ -320,14 +320,14 @@ func (fp *FilePicker) Update(msg tea.Msg) (*FilePicker, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("down", "ctrl+n"))):
-			if fp.filteredIdx != nil && len(fp.filteredIdx) > 0 {
+			if len(fp.filteredIdx) > 0 {
 				fp.cursor = (fp.cursor + 1) % fp.displayCount()
 				fp.ensureVisible()
 			}
 			return fp, nil
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("up", "ctrl+p"))):
-			if fp.filteredIdx != nil && len(fp.filteredIdx) > 0 {
+			if len(fp.filteredIdx) > 0 {
 				fp.cursor--
 				if fp.cursor < 0 {
 					fp.cursor = fp.displayCount() - 1

@@ -59,8 +59,14 @@ func TestHookCoexistence(t *testing.T) {
 		}
 
 		settings := readSettings(t, pd)
-		hooks := settings["hooks"].(map[string]any)
-		preToolUse := hooks["PreToolUse"].([]any)
+		hooks, ok := settings["hooks"].(map[string]any)
+		if !ok {
+			t.Fatal("hooks missing or wrong type")
+		}
+		preToolUse, ok := hooks["PreToolUse"].([]any)
+		if !ok {
+			t.Fatal("PreToolUse missing or wrong type")
+		}
 		if len(preToolUse) != 2 {
 			t.Errorf("expected 2 PreToolUse entries, got %d", len(preToolUse))
 		}
@@ -78,16 +84,34 @@ func TestHookCoexistence(t *testing.T) {
 		}
 
 		settings := readSettings(t, pd)
-		hooks := settings["hooks"].(map[string]any)
-		preToolUse := hooks["PreToolUse"].([]any)
+		hooks, ok := settings["hooks"].(map[string]any)
+		if !ok {
+			t.Fatal("hooks missing or wrong type")
+		}
+		preToolUse, ok := hooks["PreToolUse"].([]any)
+		if !ok {
+			t.Fatal("PreToolUse missing or wrong type")
+		}
 		if len(preToolUse) != 1 {
 			t.Errorf("expected 1 PreToolUse entry after removal, got %d", len(preToolUse))
 		}
 		// Verify it's the monitoring one, not compound
-		rule := preToolUse[0].(map[string]any)
-		innerHooks := rule["hooks"].([]any)
-		hm := innerHooks[0].(map[string]any)
-		cmd := hm["command"].(string)
+		rule, ok := preToolUse[0].(map[string]any)
+		if !ok {
+			t.Fatal("PreToolUse entry not an object")
+		}
+		innerHooks, ok := rule["hooks"].([]any)
+		if !ok {
+			t.Fatal("rule.hooks missing or wrong type")
+		}
+		hm, ok := innerHooks[0].(map[string]any)
+		if !ok {
+			t.Fatal("inner hook not an object")
+		}
+		cmd, ok := hm["command"].(string)
+		if !ok {
+			t.Fatal("hook command missing or wrong type")
+		}
 		if cmd == hookBin {
 			t.Error("compound approve hook should have been removed")
 		}
