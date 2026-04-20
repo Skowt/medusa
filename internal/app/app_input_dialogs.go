@@ -134,11 +134,25 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			}
 		}
 
-	case DialogUnarchiveWorkspace:
+	case DialogArchivedWorkspace:
 		if workspace != nil {
 			ws := workspace
-			return func() tea.Msg {
-				return messages.UnarchiveWorkspace{Workspace: ws}
+			switch result.Index {
+			case 0: // Unarchive
+				return func() tea.Msg {
+					return messages.UnarchiveWorkspace{Workspace: ws}
+				}
+			case 1: // Delete
+				if ws.IsOrphaned() {
+					return func() tea.Msg {
+						return messages.DeleteOrphanWorkspace{Workspace: ws}
+					}
+				}
+				return func() tea.Msg {
+					return messages.DeleteWorkspace{Workspace: ws}
+				}
+			default: // Cancel
+				return nil
 			}
 		}
 

@@ -235,8 +235,8 @@ type ArchiveWorkspace struct {
 	Workspace *data.Workspace
 }
 
-// ShowUnarchiveWorkspaceDialog requests showing the unarchive workspace confirmation
-type ShowUnarchiveWorkspaceDialog struct {
+// ShowArchivedWorkspaceDialog requests showing the archived-workspace actions dialog
+type ShowArchivedWorkspaceDialog struct {
 	Workspace *data.Workspace
 }
 

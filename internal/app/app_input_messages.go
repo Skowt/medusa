@@ -182,8 +182,9 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 	a.dashboard = newDashboard
 	cmds = append(cmds, cmd)
 
-	// Refresh git status and set up file watching (skip when sidebar is hidden)
-	if msg.Workspace != nil && !a.layout.SidebarHidden() {
+	// Refresh git status and set up file watching (skip when sidebar is hidden
+	// or the workspace is archived — archived workspaces don't change on disk).
+	if msg.Workspace != nil && !a.layout.SidebarHidden() && !msg.Workspace.Archived() {
 		cmds = append(cmds, a.requestGitStatus(msg.Workspace.PrimaryWorktreeRoot()))
 		if a.fileWatcher != nil {
 			_ = a.fileWatcher.Watch(msg.Workspace.PrimaryWorktreeRoot())
@@ -946,14 +947,16 @@ func (a *App) handleShowArchiveWorkspaceDialog(msg messages.ShowArchiveWorkspace
 	a.dialog.Show()
 }
 
-// handleShowUnarchiveWorkspaceDialog shows the unarchive workspace dialog.
-func (a *App) handleShowUnarchiveWorkspaceDialog(msg messages.ShowUnarchiveWorkspaceDialog) {
+// handleShowArchivedWorkspaceDialog shows the archived-workspace actions dialog.
+func (a *App) handleShowArchivedWorkspaceDialog(msg messages.ShowArchivedWorkspaceDialog) {
 	a.dialogWorkspace = msg.Workspace
-	a.dialog = common.NewConfirmDialog(
-		DialogUnarchiveWorkspace,
-		"Unarchive Workspace",
-		fmt.Sprintf("Unarchive '%s'? Agent sessions will be restarted.", msg.Workspace.Name),
+	a.dialog = common.NewSelectDialog(
+		DialogArchivedWorkspace,
+		"Archived Workspace",
+		fmt.Sprintf("'%s' is archived. Unarchive to restart agents, or delete it permanently.", msg.Workspace.Name),
+		[]string{"Unarchive", "Delete", "Cancel"},
 	)
+	a.dialog.SetVerticalLayout(true)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()
@@ -1220,9 +1223,11 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 				if termCmd := a.sidebarTerminal.SetWorkspace(a.activeWorkspace); termCmd != nil {
 					sidebarCmds = append(sidebarCmds, termCmd)
 				}
-				sidebarCmds = append(sidebarCmds, a.requestGitStatus(a.activeWorkspace.PrimaryWorktreeRoot()))
-				if a.fileWatcher != nil {
-					_ = a.fileWatcher.Watch(a.activeWorkspace.PrimaryWorktreeRoot())
+				if !a.activeWorkspace.Archived() {
+					sidebarCmds = append(sidebarCmds, a.requestGitStatus(a.activeWorkspace.PrimaryWorktreeRoot()))
+					if a.fileWatcher != nil {
+						_ = a.fileWatcher.Watch(a.activeWorkspace.PrimaryWorktreeRoot())
+					}
 				}
 			}
 		}

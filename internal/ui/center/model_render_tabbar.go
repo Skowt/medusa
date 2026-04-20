@@ -230,9 +230,28 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 				if m.workspace != nil && m.workspace.Archived() {
 					ws := m.workspace
 					return func() tea.Msg {
-						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+						return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
 					}
 				}
+<<<<<<< HEAD
+=======
+				return func() tea.Msg {
+					return messages.LaunchAgent{
+						Assistant:       "claude",
+						Workspace:       m.workspace,
+						AllowEdits:      m.config.UI.LastAllowEdits,
+						Isolated:        m.config.UI.LastIsolated,
+						SkipPermissions: m.config.UI.LastSkipPermissions,
+					}
+				}
+			case tabHitPlusSelect:
+				if m.workspace != nil && m.workspace.Archived() {
+					ws := m.workspace
+					return func() tea.Msg {
+						return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
+					}
+				}
+>>>>>>> improve-archiving
 				return func() tea.Msg { return messages.ShowCustomizeTabDialog{} }
 			case tabHitInfo:
 				m.infoTabActive = true
@@ -241,7 +260,7 @@ func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
 				if m.workspace != nil && m.workspace.Archived() {
 					ws := m.workspace
 					return func() tea.Msg {
-						return messages.ShowUnarchiveWorkspaceDialog{Workspace: ws}
+						return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
 					}
 				}
 				m.infoTabActive = false

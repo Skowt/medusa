@@ -51,7 +51,7 @@ const (
 	DialogSetProfileForCreate   = "set_profile_for_create"
 	DialogQuickDuplicate        = "quick_duplicate"
 	DialogArchiveWorkspace      = "archive_workspace"
-	DialogUnarchiveWorkspace    = "unarchive_workspace"
+	DialogArchivedWorkspace     = "archived_workspace"
 	DialogSetNote               = "set_note"
 )
 
