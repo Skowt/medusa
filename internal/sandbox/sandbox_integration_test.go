@@ -1,3 +1,5 @@
+//go:build sandbox_mode
+
 package sandbox
 
 import (
@@ -11,12 +13,26 @@ import (
 	"github.com/Skowt/medusa/internal/config"
 )
 
-// skipIfNoSandboxExec skips the test if sandbox-exec is not available.
+// skipIfNoSandboxExec skips the test if sandbox-exec is not available OR the
+// test binary is itself running inside an outer sandbox. Nested sandbox-exec
+// invocations fail with sandbox_apply: Operation not permitted, and every
+// test's setup writes a probe directory under $HOME that the outer sandbox
+// would block — so either condition makes the suite unrunnable.
 func skipIfNoSandboxExec(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("sandbox-exec"); err != nil {
 		t.Skip("sandbox-exec not available (non-macOS)")
 	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	f, err := os.CreateTemp(home, ".medusa-sandbox-probe-*")
+	if err != nil {
+		t.Skipf("outer sandbox active (cannot write to $HOME) — sandbox_mode tests require an unsandboxed host: %v", err)
+	}
+	f.Close()
+	os.Remove(f.Name())
 }
 
 // skipIfNoGit skips the test if git is not installed.
