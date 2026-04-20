@@ -73,6 +73,18 @@ func (m *Model) HasTabsForWorkspace(wsID string) bool {
 	return len(m.tabsByWorkspace[wsID]) > 0
 }
 
+// HasAgentTabsForWorkspace returns whether there are any non-script tabs for a
+// given workspace ID. Used by the agent auto-launch gate, which must not count
+// dev-server script tabs created by run commands.
+func (m *Model) HasAgentTabsForWorkspace(wsID string) bool {
+	for _, tab := range m.tabsByWorkspace[wsID] {
+		if tab != nil && tab.Assistant != "script" {
+			return true
+		}
+	}
+	return false
+}
+
 // AgentManager returns the agent manager instance.
 func (m *Model) AgentManager() *appPty.AgentManager {
 	return m.agentManager

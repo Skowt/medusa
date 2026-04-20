@@ -329,6 +329,25 @@ func workspaceHasLiveTabs(ws *data.Workspace) bool {
 	return false
 }
 
+// workspaceHasLiveAgentTabs is like workspaceHasLiveTabs but excludes script
+// tabs created by run commands — used by the agent auto-launch gate so a
+// dev-server tab doesn't suppress the initial agent tab.
+func workspaceHasLiveAgentTabs(ws *data.Workspace) bool {
+	if ws == nil {
+		return false
+	}
+	for _, tab := range ws.OpenTabs {
+		if tab.Assistant == "" || tab.Assistant == "script" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(tab.Status), "stopped") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // handleShowCommitDialog shows the commit message dialog.
 func (a *App) handleShowCommitDialog(msg messages.ShowCommitDialog) {
 	a.dialogWorkspaceRoot = msg.WorkspaceRoot
