@@ -4,12 +4,10 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/git"
-	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -27,18 +25,17 @@ const (
 	RowWorkspace         // workspace entry
 	RowCreate            // "+ New Workspace"
 	RowSpacer
-	RowSectionHeader  // status group header
-	RowQuickDuplicate // "+ Quick Duplicate"
+	RowSectionHeader // section header (user group, archived, orphans)
 )
 
 // Row represents a single row in the dashboard
 type Row struct {
-	Type             RowType
-	Workspace        *data.Workspace
-	Label            string         // for RowSectionHeader
-	GroupRepos       []data.RepoRef // for RowQuickDuplicate
-	GroupProfile     string         // for RowQuickDuplicate
-	GroupCopyIgnored bool           // for RowQuickDuplicate
+	Type        RowType
+	Workspace   *data.Workspace
+	Label       string // for RowSectionHeader: group label, or "archived" / "archived-footer" / "orphans"
+	IsUserGroup bool   // true for user-defined group headers (interactive)
+	Collapsed   bool   // only meaningful when IsUserGroup && Type == RowSectionHeader
+	MemberCount int    // number of hidden children when Collapsed; 0 otherwise
 }
 
 // toolbarButtonKind identifies toolbar buttons
@@ -77,6 +74,9 @@ type Model struct {
 	toolbarFocused  bool            // Whether toolbar actions are focused
 	toolbarIndex    int             // Focused toolbar action index
 	deleteIconX     int             // X position of delete "x" icon for currently selected row
+	duplicateIconX  int             // X position of the "+" duplicate icon for the currently selected row
+	groupIconX      int             // X position of the "#" group-edit icon for the currently selected row
+	collapsedGroups map[string]bool // Group label ("" = Ungrouped) → collapsed
 
 	// Loading state
 	creatingWorkspaces map[string]*data.Workspace // Workspaces currently being created
@@ -108,6 +108,7 @@ func New() *Model {
 		unreadWorkspaces:     make(map[string]bool),
 		confirmedActive:      make(map[string]bool),
 		hookStates:           make(map[string]string),
+		collapsedGroups:      make(map[string]bool),
 		cursor:               0,
 		focused:              true,
 		styles:               common.DefaultStyles(),
@@ -174,6 +175,14 @@ func (m *Model) SetCanFocusRight(can bool) {
 	m.canFocusRight = can
 }
 
+// SetCollapsedGroups replaces the collapsed-groups map (called from App when config loads).
+func (m *Model) SetCollapsedGroups(cg map[string]bool) {
+	if cg == nil {
+		cg = make(map[string]bool)
+	}
+	m.collapsedGroups = cg
+}
+
 // SetShowKeymapHints controls whether helper text is rendered.
 func (m *Model) SetShowKeymapHints(show bool) {
 	m.showKeymapHints = show
@@ -187,173 +196,6 @@ func (m *Model) SetStyles(styles common.Styles) {
 // Init initializes the dashboard
 func (m *Model) Init() tea.Cmd {
 	return nil
-}
-
-// Update handles messages
-func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	switch msg := msg.(type) {
-	case tea.MouseClickMsg:
-		if !m.focused {
-			return m, nil
-		}
-		if msg.Button == tea.MouseLeft {
-			if cmd := m.handleToolbarClick(msg.X, msg.Y); cmd != nil {
-				return m, cmd
-			}
-
-			idx, ok := m.rowIndexAt(msg.X, msg.Y)
-			if !ok {
-				return m, nil
-			}
-			if idx < 0 || idx >= len(m.rows) {
-				return m, nil
-			}
-			if !isSelectable(m.rows[idx].Type) {
-				return m, nil
-			}
-
-			// Check if click is on the delete icon
-			if idx == m.cursor {
-				rowType := m.rows[idx].Type
-				if rowType == RowWorkspace {
-					borderLeft := 1
-					paddingLeft := 0
-					contentX := msg.X - borderLeft - paddingLeft
-					if contentX >= m.deleteIconX && contentX < m.deleteIconX+3 {
-						m.toolbarFocused = false
-						return m, m.handleDelete()
-					}
-				}
-			}
-
-			m.toolbarFocused = false
-			m.cursor = idx
-			return m, m.handleClick()
-		}
-
-	case tea.KeyPressMsg:
-		if !m.focused {
-			return m, nil
-		}
-
-		toolbarItems := m.toolbarItems()
-		if m.toolbarFocused {
-			if len(toolbarItems) == 0 {
-				m.toolbarFocused = false
-				break
-			}
-			switch {
-			case key.Matches(msg, key.NewBinding(key.WithKeys("left", "h"))):
-				m.toolbarIndex = (m.toolbarIndex - 1 + len(toolbarItems)) % len(toolbarItems)
-			case key.Matches(msg, key.NewBinding(key.WithKeys("right", "l"))):
-				m.toolbarIndex = (m.toolbarIndex + 1) % len(toolbarItems)
-			case key.Matches(msg, key.NewBinding(key.WithKeys("up", "k"))):
-				m.toolbarFocused = false
-				if last := m.findSelectableRow(len(m.rows)-1, -1); last != -1 {
-					m.cursor = last
-				}
-				return m, m.previewCurrentRow()
-			case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
-				// Already at bottom
-			case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-				return m, m.toolbarCommand(toolbarItems[m.toolbarIndex].kind)
-			}
-			return m, nil
-		}
-
-		switch {
-		case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
-			last := m.findSelectableRow(len(m.rows)-1, -1)
-			if last != -1 && m.cursor == last && len(toolbarItems) > 0 {
-				m.toolbarFocused = true
-				m.toolbarIndex = 0
-				return m, m.previewCurrentRow()
-			} else {
-				m.moveCursor(1)
-				return m, m.previewCurrentRow()
-			}
-		case key.Matches(msg, key.NewBinding(key.WithKeys("k", "up"))):
-			m.moveCursor(-1)
-			return m, m.previewCurrentRow()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("pgdown", "ctrl+d"))):
-			delta := m.visibleHeight() / 2
-			if delta < 1 {
-				delta = 1
-			}
-			m.moveCursor(delta)
-			return m, m.previewCurrentRow()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("pgup", "ctrl+u"))):
-			delta := m.visibleHeight() / 2
-			if delta < 1 {
-				delta = 1
-			}
-			m.moveCursor(-delta)
-			return m, m.previewCurrentRow()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-			return m, m.handleEnter()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
-			return m, m.handleDelete()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("P"))):
-			return m, m.handleSetProfile()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
-			if m.cursor >= 0 && m.cursor < len(m.rows) {
-				if m.rows[m.cursor].Type == RowWorkspace {
-					return m, m.handleRename()
-				}
-			}
-		case key.Matches(msg, key.NewBinding(key.WithKeys("S"))):
-			return m, m.handleToggleStatus()
-		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):
-			return m, func() tea.Msg { return messages.RefreshDashboard{} }
-		case key.Matches(msg, key.NewBinding(key.WithKeys("G"))):
-			if idx := m.findSelectableRow(len(m.rows)-1, -1); idx != -1 {
-				m.cursor = idx
-				return m, m.previewCurrentRow()
-			}
-		case key.Matches(msg, key.NewBinding(key.WithKeys("g"))):
-			if idx := m.findSelectableRow(0, 1); idx != -1 {
-				m.cursor = idx
-				return m, m.previewCurrentRow()
-			}
-		}
-
-	case SpinnerTickMsg:
-		if len(m.creatingWorkspaces) > 0 || len(m.deletingWorkspaces) > 0 || m.hasActiveAgents() {
-			m.spinnerFrame++
-			cmds = append(cmds, m.tickSpinner())
-		} else {
-			m.spinnerActive = false
-		}
-
-	case messages.WorkspacesLoaded:
-		m.SetWorkspaces(msg.Workspaces)
-
-	case messages.GitStatusResult:
-		if msg.Err == nil {
-			m.statusCache[msg.Root] = msg.Status
-		}
-
-	case messages.WorkspaceActivated:
-		if msg.Workspace != nil {
-			m.activeRoot = msg.Workspace.Root()
-			m.MarkRead(string(msg.Workspace.ID()))
-			m.moveCursorToRoot(msg.Workspace.Root())
-		}
-
-	case messages.WorkspacePreviewed:
-		if msg.Workspace != nil {
-			m.activeRoot = msg.Workspace.Root()
-			// MarkRead is handled by app with a delay to avoid
-			// clearing unread when quickly scrolling through workspaces.
-		}
-
-	case messages.ShowWelcome:
-		m.activeRoot = ""
-	}
-
-	return m, common.SafeBatch(cmds...)
 }
 
 // View renders the dashboard

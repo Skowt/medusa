@@ -98,7 +98,8 @@ type Workspace struct {
 	ActiveTabIndex int       `json:"active_tab_index"`
 
 	// Note
-	Note string `json:"note,omitempty"`
+	Note  string `json:"note,omitempty"`
+	Group string `json:"group,omitempty"` // User-assigned group label; empty = ungrouped
 
 	// Lifecycle
 	Status        WorkspaceStatus `json:"status"`

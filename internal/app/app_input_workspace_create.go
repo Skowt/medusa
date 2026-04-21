@@ -332,7 +332,7 @@ func (a *App) handleWorkspacePreviewed(msg messages.WorkspacePreviewed) []tea.Cm
 
 // handleShowQuickDuplicateDialog shows a name input dialog for quick duplicate with pre-filled repos and profile.
 func (a *App) handleShowQuickDuplicateDialog(msg messages.ShowQuickDuplicateDialog) {
-	a.dialogWorkspace = &data.Workspace{Repos: msg.Repos, Profile: msg.Profile, CopyIgnored: msg.CopyIgnored}
+	a.dialogWorkspace = &data.Workspace{Repos: msg.Repos, Profile: msg.Profile, CopyIgnored: msg.CopyIgnored, Group: msg.Group}
 	a.dialogDefaultName = generateWorkspaceName(msg.Repos)
 	a.dialog = common.NewInputDialog(DialogQuickDuplicate, "Quick Duplicate", a.dialogDefaultName)
 	a.dialog.SetMessage("Enter a name for the new workspace.")

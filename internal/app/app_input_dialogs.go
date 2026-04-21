@@ -38,6 +38,11 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 		return nil
 	}
 
+	// Delegate to group dialog handler (handles confirmed group dialogs)
+	if cmd, handled := a.handleGroupDialogResult(result.ID, result.Confirmed, result.Value, workspace, defaultName); handled {
+		return cmd
+	}
+
 	switch result.ID {
 	case DialogSelectRecentRepos:
 		// Use the snapshot stored when the dialog was opened to avoid race conditions
@@ -240,15 +245,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			_ = a.config.SaveUISettings()
 			a.dialogWorkspace = workspace
 			a.dialogDefaultName = defaultName
-			a.dialog = common.NewSelectDialog(
-				DialogSelectBranchMode,
-				"Base Branch",
-				"Which branch should this worktree be based on?",
-				[]string{"Latest remote main", "Checked out branch", "Custom branch"},
-			)
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
+			a.showGroupPickerForCreate()
 			return nil
 		}
 
@@ -337,6 +334,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			name := defaultName
 			repos := workspace.Repos
 			wsProfile := workspace.Profile
+			wsGroup := workspace.Group
 			copyIgnored := workspace.CopyIgnored
 			switch result.Index {
 			case 0: // Latest remote main
@@ -347,7 +345,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
 				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchRemoteBase(repos, name, wsProfile, copyIgnored)
+				return a.fetchRemoteBase(repos, name, wsProfile, wsGroup, copyIgnored)
 			case 1: // Checked out branch
 				steps := []string{"Resolving checked out branch", "Creating worktree"}
 				if copyIgnored {
@@ -356,7 +354,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
 				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchCheckedOutBase(repos, name, wsProfile, copyIgnored)
+				return a.fetchCheckedOutBase(repos, name, wsProfile, wsGroup, copyIgnored)
 			case 2: // Custom branch
 				a.dialogWorkspace = workspace
 				a.dialogDefaultName = name
@@ -378,6 +376,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			name := defaultName
 			repos := workspace.Repos
 			wsProfile := workspace.Profile
+			wsGroup := workspace.Group
 			copyIgnored := workspace.CopyIgnored
 			steps := []string{"Resolving custom branch", "Creating worktree"}
 			if copyIgnored {
@@ -386,7 +385,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
 			a.creationOverlay.SetStepDetail(repos[0].Name)
 			a.creationOverlay.SetSize(a.width, a.height)
-			return a.fetchCustomBase(repos, name, wsProfile, customBranch, copyIgnored)
+			return a.fetchCustomBase(repos, name, wsProfile, wsGroup, customBranch, copyIgnored)
 		}
 
 	case DialogQuit:

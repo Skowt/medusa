@@ -219,6 +219,7 @@ type ShowQuickDuplicateDialog struct {
 	Repos       []data.RepoRef
 	Profile     string
 	CopyIgnored bool
+	Group       string // Source workspace's group (inherited by duplicate)
 }
 
 // ShowCreateWorkspaceDialog requests showing the create workspace dialog
@@ -273,6 +274,7 @@ type CreateWorkspace struct {
 	BranchMode   git.BranchMode
 	CustomBranch string
 	CopyIgnored  bool
+	Group        string // Optional user group label (empty = ungrouped)
 }
 
 // DeleteWorkspace requests deleting a workspace
@@ -478,4 +480,5 @@ type WorkspaceFetchDone struct {
 	Bases       []string // parallel to Repos
 	Profile     string
 	CopyIgnored bool
+	Group       string // User-assigned group label (inherited from duplicated workspace)
 }

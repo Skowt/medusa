@@ -146,6 +146,11 @@ func (a *App) renderWorkspaceInfo() string {
 	}
 	b.WriteString(prefix(2) + label.Render("Profile: ") + value.Render(profileStr) + "\n")
 
+	// Group (non-interactive display)
+	if ws.Group != "" {
+		b.WriteString("  " + label.Render("Group:   ") + value.Render(ws.Group) + "\n")
+	}
+
 	// Repos
 	if ws.IsMultiRepo() {
 		b.WriteString("\n" + label.Render("Repos:") + "\n")

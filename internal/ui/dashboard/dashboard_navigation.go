@@ -7,11 +7,16 @@ import (
 	"github.com/Skowt/medusa/internal/messages"
 )
 
-// isSelectable returns whether a row type can be selected
-func isSelectable(rt RowType) bool {
-	switch rt {
-	case RowSpacer, RowHome, RowSectionHeader:
+// isSelectable returns whether a row can be selected. Group headers are
+// selectable because user-defined groups support Enter-to-toggle-collapse,
+// D-to-delete, and r-to-rename; built-in section headers (archived / orphans)
+// remain non-selectable.
+func isSelectable(r Row) bool {
+	switch r.Type {
+	case RowSpacer, RowHome:
 		return false
+	case RowSectionHeader:
+		return r.IsUserGroup
 	default:
 		return true
 	}
@@ -23,7 +28,7 @@ func (m *Model) findSelectableRow(from, dir int) int {
 		dir = 1
 	}
 	for i := from; i >= 0 && i < len(m.rows); i += dir {
-		if isSelectable(m.rows[i].Type) {
+		if isSelectable(m.rows[i]) {
 			return i
 		}
 	}
@@ -61,8 +66,12 @@ func (m *Model) rowLineCount(idx int) int {
 	}
 	switch m.rows[idx].Type {
 	case RowWorkspace:
-		if m.rows[idx].Workspace != nil && m.rows[idx].Workspace.Archived() {
+		ws := m.rows[idx].Workspace
+		if ws != nil && ws.Archived() {
 			return 1
+		}
+		if idx == m.cursor && ws != nil && len(ws.Repos) >= 2 {
+			return 3
 		}
 		return 2
 	case RowSectionHeader:
@@ -72,8 +81,6 @@ func (m *Model) rowLineCount(idx int) int {
 		return 1
 	case RowHome:
 		return 2 // title + separator line
-	case RowQuickDuplicate:
-		return 2 // blank line + button
 	default:
 		return 1
 	}
@@ -184,8 +191,6 @@ func (m *Model) previewCurrentRow() tea.Cmd {
 		}
 	case RowCreate:
 		return func() tea.Msg { return messages.ShowWelcome{} }
-	case RowQuickDuplicate:
-		return func() tea.Msg { return messages.ShowWelcome{} }
 	}
 
 	return nil
@@ -236,15 +241,11 @@ func (m *Model) activateRow(viaClick bool) tea.Cmd {
 		return func() tea.Msg {
 			return messages.ShowCreateWorkspaceDialog{}
 		}
-	case RowQuickDuplicate:
-		repos := row.GroupRepos
-		profile := row.GroupProfile
-		copyIgnored := row.GroupCopyIgnored
-		return func() tea.Msg {
-			return messages.ShowQuickDuplicateDialog{
-				Repos:       repos,
-				Profile:     profile,
-				CopyIgnored: copyIgnored,
+	case RowSectionHeader:
+		if row.IsUserGroup {
+			label := labelToKey(row.Label)
+			return func() tea.Msg {
+				return messages.ToggleGroupCollapse{Label: label}
 			}
 		}
 	}
@@ -270,6 +271,15 @@ func (m *Model) handleDelete() tea.Cmd {
 		// Active workspaces get archived first
 		return func() tea.Msg {
 			return messages.ShowArchiveWorkspaceDialog{Workspace: ws}
+		}
+	}
+
+	if row.Type == RowSectionHeader && row.IsUserGroup {
+		if row.Label == ungroupedLabel {
+			return nil // Can't delete the Ungrouped pseudo-group.
+		}
+		return func() tea.Msg {
+			return messages.ShowDeleteGroupDialog{Label: row.Label}
 		}
 	}
 
@@ -343,6 +353,59 @@ func (m *Model) handleRename() tea.Cmd {
 			return messages.ShowRenameWorkspaceDialog{
 				Workspace: row.Workspace,
 			}
+		}
+	}
+	if row.Type == RowSectionHeader && row.IsUserGroup {
+		if row.Label == ungroupedLabel {
+			return nil // Ungrouped is not a real label; renaming means tagging workspaces individually.
+		}
+		return func() tea.Msg {
+			return messages.ShowRenameGroupDialog{Label: row.Label}
+		}
+	}
+	return nil
+}
+
+// handleSetGroup opens the group-label input dialog for the current workspace.
+func (m *Model) handleSetGroup() tea.Cmd {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return nil
+	}
+	row := m.rows[m.cursor]
+	if row.Type == RowWorkspace && row.Workspace != nil {
+		ws := row.Workspace
+		return func() tea.Msg {
+			return messages.ShowSetWorkspaceGroupDialog{Workspace: ws}
+		}
+	}
+	return nil
+}
+
+// handleDuplicate triggers duplication of the currently selected workspace.
+func (m *Model) handleDuplicate() tea.Cmd {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return nil
+	}
+	row := m.rows[m.cursor]
+	if row.Type == RowWorkspace && row.Workspace != nil && !row.Workspace.Archived() && !row.Workspace.IsOrphaned() {
+		ws := row.Workspace
+		return func() tea.Msg {
+			return messages.DuplicateWorkspace{Workspace: ws}
+		}
+	}
+	return nil
+}
+
+// handleToggleCollapse toggles collapse state for the group header at the cursor.
+func (m *Model) handleToggleCollapse() tea.Cmd {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return nil
+	}
+	row := m.rows[m.cursor]
+	if row.Type == RowSectionHeader && row.IsUserGroup {
+		label := labelToKey(row.Label)
+		return func() tea.Msg {
+			return messages.ToggleGroupCollapse{Label: label}
 		}
 	}
 	return nil

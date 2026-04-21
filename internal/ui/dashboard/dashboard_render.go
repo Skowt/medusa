@@ -7,7 +7,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/Skowt/medusa/internal/data"
-	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -34,19 +33,16 @@ func (m *Model) renderRow(row Row, selected bool) string {
 		}
 		return style.Render(" " + common.Icons.Add + " New Workspace ")
 
-	case RowQuickDuplicate:
-		style := m.styles.CreateButton
-		if selected {
-			style = m.styles.SelectedRow
-		}
-		return "\n" + style.Render(" "+common.Icons.Add+" Quick Duplicate ")
-
 	case RowSectionHeader:
-		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
 		contentWidth := m.width - 3
 		if contentWidth < 1 {
 			contentWidth = 1
 		}
+		if row.IsUserGroup {
+			return m.renderUserGroupHeader(row, selected, contentWidth)
+		}
+		// Non-interactive drawer headers (archived/orphans) — existing behavior.
+		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
 		if row.Label == "archived" {
 			sep := lipgloss.NewStyle().Foreground(common.ColorSurface2).Render(strings.Repeat("─", contentWidth))
 			return sep + "\n" + style.Render(" "+row.Label)
@@ -95,6 +91,13 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 		line2 = padWithBg(line2, contentWidth, bg)
 	}
 
+	if selected && len(ws.Repos) >= 2 {
+		line3 := m.renderWorkspaceLine3(ws, contentWidth)
+		if line3 != "" {
+			return line1 + "\n" + line2 + "\n" + line3
+		}
+	}
+
 	return line1 + "\n" + line2
 }
 
@@ -126,6 +129,9 @@ func (m *Model) renderOrphanRow(ws *data.Workspace, selected bool, contentWidth 
 	if selected {
 		arrowStyle = arrowStyle.Background(common.ColorSelection)
 		mutedStyle = mutedStyle.Background(common.ColorSelection)
+		// Reset duplicate/group icon positions since orphan rows don't expose them
+		m.duplicateIconX = 0
+		m.groupIconX = 0
 	}
 
 	desc := "worktree missing"
@@ -169,6 +175,9 @@ func (m *Model) renderArchivedRow(ws *data.Workspace, selected bool, contentWidt
 	line := prefix + name + nameStyle.Render(deleteSlot)
 
 	if selected {
+		// Reset duplicate/group icon positions since archived rows don't expose them
+		m.duplicateIconX = 0
+		m.groupIconX = 0
 		// Record the delete icon column for this row so the click handler in
 		// model.go can map a click on the "×" back to the delete action.
 		// Without this, handleClick reads a stale deleteIconX from whatever
@@ -190,162 +199,6 @@ func padWithBg(line string, width int, bg lipgloss.Style) string {
 		return line + bg.Render(strings.Repeat(" ", width-w))
 	}
 	return line
-}
-
-// renderWorkspaceLine1: hook indicator + name + delete icon
-func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentWidth int) string {
-	indicatorWidth := 2
-
-	wsID := string(ws.ID())
-
-	// Status text for creating/deleting
-	statusText := ""
-	if m.deletingWorkspaces[ws.Root()] {
-		frame := common.SpinnerFrame(m.spinnerFrame)
-		pendingStyle := m.styles.StatusPending
-		spaceStyle := lipgloss.NewStyle()
-		if selected {
-			pendingStyle = pendingStyle.Background(common.ColorSelection)
-			spaceStyle = spaceStyle.Background(common.ColorSelection)
-		}
-		statusText = spaceStyle.Render(" ") + pendingStyle.Render(frame+" deleting")
-	} else if _, ok := m.creatingWorkspaces[ws.Root()]; ok {
-		frame := common.SpinnerFrame(m.spinnerFrame)
-		pendingStyle := m.styles.StatusPending
-		spaceStyle := lipgloss.NewStyle()
-		if selected {
-			pendingStyle = pendingStyle.Background(common.ColorSelection)
-			spaceStyle = spaceStyle.Background(common.ColorSelection)
-		}
-		statusText = spaceStyle.Render(" ") + pendingStyle.Render(frame+" creating")
-	}
-
-	// Default indicator based on workspace status
-	indicator := "●"
-	indicatorFg := common.ColorSuccess
-	switch ws.Status {
-	case data.StatusBlocked:
-		indicator = common.Icons.Blocked
-		indicatorFg = common.ColorError
-	case data.StatusReview:
-		indicator = common.Icons.Pending
-		indicatorFg = common.ColorSecondary
-	case data.StatusMerged:
-		indicator = common.Icons.Completed
-		indicatorFg = common.ColorPrimary
-	}
-
-	// Hook-based activity overrides: spinner on PreToolUse, warning symbols for notifications
-	if hookState, ok := m.hookStates[wsID]; ok {
-		switch hookState {
-		case "PreToolUse", "PostToolUse", "UserPromptSubmit":
-			indicator = common.SpinnerFrame(m.spinnerFrame)
-			indicatorFg = common.ColorSuccess
-		case "NotificationPermission", "NotificationElicitation", "PermissionRequest":
-			indicator = "!"
-			indicatorFg = common.ColorWarning
-		}
-	}
-
-	// Override for unread workspaces: make indicator and name orange
-	isCurrentWorkspace := ws.Root() == m.activeRoot
-	hasUnread := m.unreadWorkspaces[wsID] && !isCurrentWorkspace
-
-	if hasUnread {
-		indicatorFg = common.ColorWarning
-	}
-
-	iconStyle := lipgloss.NewStyle().Foreground(indicatorFg)
-	if selected {
-		iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
-	}
-	renderedIndicator := iconStyle.Render(indicator + " ")
-
-	// Styles
-	style := m.styles.WorkspaceRow
-	if hasUnread {
-		style = lipgloss.NewStyle().Foreground(common.ColorWarning)
-	}
-	if selected {
-		style = lipgloss.NewStyle().Bold(true).Foreground(common.ColorForeground).Background(common.ColorSelection)
-	}
-
-	// Delete icon
-	deleteSlot := "   "
-	deleteSlotWidth := 3
-	if selected {
-		deleteSlot = " " + common.Icons.Close + " "
-	}
-
-	// Truncate name
-	name := ws.Name
-	prefixWidth := 2 + indicatorWidth // " " prefix + " " styled prefix + indicator
-	maxNameWidth := contentWidth - lipgloss.Width(statusText) - deleteSlotWidth - prefixWidth
-	if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
-		runes := []rune(name)
-		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
-			runes = runes[:len(runes)-1]
-		}
-		name = string(runes) + "…"
-	}
-
-	if selected {
-		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name))
-	}
-
-	return style.Render(" ") + renderedIndicator + style.Render(name) + style.Render(deleteSlot) + statusText
-}
-
-// renderWorkspaceLine2: profile · git changes · created day
-func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentWidth int) string {
-	bg := lipgloss.NewStyle()
-	if selected {
-		bg = bg.Background(common.ColorSelection)
-	}
-
-	mutedStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-	if selected {
-		mutedStyle = mutedStyle.Background(common.ColorSelection)
-	}
-
-	arrowStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
-	if selected {
-		arrowStyle = arrowStyle.Background(common.ColorSelection)
-	}
-
-	indent := bg.Render(" ") + arrowStyle.Render("└ ")
-
-	var parts []string
-
-	// Profile name
-	profileName := "Default"
-	if ws.Profile != "" {
-		profileName = ws.Profile
-	}
-	parts = append(parts, mutedStyle.Render(profileName))
-
-	// Git changes summary
-	root := ws.PrimaryWorktreeRoot()
-	if status, ok := m.statusCache[root]; ok && status != nil && !status.Clean {
-		gitSummary := formatGitSummary(status)
-		if gitSummary != "" {
-			gitStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-			if selected {
-				gitStyle = gitStyle.Background(common.ColorSelection)
-			}
-			parts = append(parts, gitStyle.Render(gitSummary))
-		}
-	} else {
-		parts = append(parts, mutedStyle.Render("Clean"))
-	}
-
-	// Created day (e.g. "Mon")
-	if !ws.Created.IsZero() {
-		parts = append(parts, mutedStyle.Render(ws.Created.Format("Mon")))
-	}
-
-	sep := mutedStyle.Render(" · ")
-	return indent + strings.Join(parts, sep)
 }
 
 func (m *Model) helpItem(key, desc string) string {
@@ -380,6 +233,15 @@ func (m *Model) helpLines(contentWidth int) []string {
 				items = append(items, m.helpItem("D", "archive"))
 			}
 			items = append(items, m.helpItem("P", "profile"))
+			items = append(items, m.helpItem("g", "group"))
+			items = append(items, m.helpItem("+", "duplicate"))
+		}
+		if m.rows[m.cursor].Type == RowSectionHeader && m.rows[m.cursor].IsUserGroup {
+			items = append(items,
+				m.helpItem("enter/space", "toggle"),
+				m.helpItem("r", "rename"),
+				m.helpItem("D", "delete"),
+			)
 		}
 	}
 	items = append(items, m.helpItem("R", "refresh"))
@@ -396,23 +258,27 @@ func (m *Model) helpLines(contentWidth int) []string {
 	return common.WrapHelpItems(items, contentWidth)
 }
 
-// formatGitSummary returns a short summary of git changes, e.g. "3M 2A 1?"
-func formatGitSummary(status *git.StatusResult) string {
-	if status == nil || status.Clean {
-		return ""
+// renderUserGroupHeader renders a collapsible user-group header with a chevron
+// and a "(N)" member count when collapsed.
+func (m *Model) renderUserGroupHeader(row Row, selected bool, contentWidth int) string {
+	chevron := "▾ "
+	if row.Collapsed {
+		chevron = "▸ "
 	}
-	var parts []string
-	staged := len(status.Staged)
-	unstaged := len(status.Unstaged)
-	untracked := len(status.Untracked)
-	if staged > 0 {
-		parts = append(parts, fmt.Sprintf("%d+", staged))
+
+	style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
+	if selected {
+		style = style.Background(common.ColorSelection)
 	}
-	if unstaged > 0 {
-		parts = append(parts, fmt.Sprintf("%dM", unstaged))
+
+	label := row.Label
+	if row.Collapsed && row.MemberCount > 0 {
+		label = fmt.Sprintf("%s (%d)", label, row.MemberCount)
 	}
-	if untracked > 0 {
-		parts = append(parts, fmt.Sprintf("%d?", untracked))
+
+	line := style.Render(" " + chevron + label)
+	if selected {
+		return padWithBg(line, contentWidth, lipgloss.NewStyle().Background(common.ColorSelection))
 	}
-	return strings.Join(parts, " ")
+	return line
 }
