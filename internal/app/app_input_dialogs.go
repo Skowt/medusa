@@ -209,6 +209,25 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			}
 		}
 
+	case DialogRenameGroup:
+		old := defaultName
+		if old == "" {
+			return nil
+		}
+		newLabel := validation.SanitizeInput(result.Value)
+		return func() tea.Msg {
+			return messages.RenameGroup{OldLabel: old, NewLabel: newLabel}
+		}
+
+	case DialogDeleteGroup:
+		label := defaultName
+		if label == "" {
+			return nil
+		}
+		return func() tea.Msg {
+			return messages.DeleteGroup{Label: label}
+		}
+
 	case DialogRenameWorkspace:
 		if workspace != nil {
 			name := validation.SanitizeInput(result.Value)

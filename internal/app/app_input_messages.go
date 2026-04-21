@@ -466,14 +466,6 @@ func (a *App) handleActionBarOpenMR(msg messages.ActionBarOpenMR) tea.Cmd {
 	}
 }
 
-// TODO(task-9): implement group rename cascade.
-func (a *App) handleShowRenameGroupDialog(msg messages.ShowRenameGroupDialog) {}
-func (a *App) handleRenameGroup(msg messages.RenameGroup) tea.Cmd             { return nil }
-
-// TODO(task-9): implement group delete cascade.
-func (a *App) handleShowDeleteGroupDialog(msg messages.ShowDeleteGroupDialog) {}
-func (a *App) handleDeleteGroup(msg messages.DeleteGroup) tea.Cmd             { return nil }
-
 // TODO(task-10): implement collapse toggle + duplicate.
 func (a *App) handleToggleGroupCollapse(msg messages.ToggleGroupCollapse) tea.Cmd { return nil }
 func (a *App) handleDuplicateWorkspace(msg messages.DuplicateWorkspace) tea.Cmd   { return nil }
