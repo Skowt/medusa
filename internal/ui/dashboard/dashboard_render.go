@@ -231,7 +231,7 @@ func (m *Model) helpLines(contentWidth int) []string {
 				items = append(items, m.helpItem("D", "archive"))
 			}
 			items = append(items, m.helpItem("P", "profile"))
-			items = append(items, m.helpItem("T", "group"))
+			items = append(items, m.helpItem("g", "group"))
 			items = append(items, m.helpItem("+", "duplicate"))
 		}
 		if m.rows[m.cursor].Type == RowSectionHeader && m.rows[m.cursor].IsUserGroup {

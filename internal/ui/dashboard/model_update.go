@@ -132,7 +132,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			return m, m.handleToggleStatus()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):
 			return m, func() tea.Msg { return messages.RefreshDashboard{} }
-		case key.Matches(msg, key.NewBinding(key.WithKeys("T"))):
+		case key.Matches(msg, key.NewBinding(key.WithKeys("g"))):
 			return m, m.handleSetGroup()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("+"))):
 			return m, m.handleDuplicate()
@@ -140,12 +140,12 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			if cmd := m.handleToggleCollapse(); cmd != nil {
 				return m, cmd
 			}
-		case key.Matches(msg, key.NewBinding(key.WithKeys("G"))):
+		case key.Matches(msg, key.NewBinding(key.WithKeys("G", "end"))):
 			if idx := m.findSelectableRow(len(m.rows)-1, -1); idx != -1 {
 				m.cursor = idx
 				return m, m.previewCurrentRow()
 			}
-		case key.Matches(msg, key.NewBinding(key.WithKeys("g"))):
+		case key.Matches(msg, key.NewBinding(key.WithKeys("home"))):
 			if idx := m.findSelectableRow(0, 1); idx != -1 {
 				m.cursor = idx
 				return m, m.previewCurrentRow()
