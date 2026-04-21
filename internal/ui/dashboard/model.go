@@ -75,6 +75,7 @@ type Model struct {
 	toolbarIndex    int             // Focused toolbar action index
 	deleteIconX     int             // X position of delete "x" icon for currently selected row
 	duplicateIconX  int             // X position of the "+" duplicate icon for the currently selected row
+	groupIconX      int             // X position of the "#" group-edit icon for the currently selected row
 	collapsedGroups map[string]bool // Group label ("" = Ungrouped) → collapsed
 
 	// Loading state

@@ -40,11 +40,15 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 					borderLeft := 1
 					paddingLeft := 0
 					contentX := msg.X - borderLeft - paddingLeft
-					if contentX >= m.duplicateIconX && contentX < m.duplicateIconX+3 {
+					if contentX >= m.duplicateIconX && contentX < m.duplicateIconX+2 {
 						m.toolbarFocused = false
 						return m, m.handleDuplicate()
 					}
-					if contentX >= m.deleteIconX && contentX < m.deleteIconX+3 {
+					if contentX >= m.groupIconX && contentX < m.groupIconX+2 {
+						m.toolbarFocused = false
+						return m, m.handleSetGroup()
+					}
+					if contentX >= m.deleteIconX && contentX < m.deleteIconX+2 {
 						m.toolbarFocused = false
 						return m, m.handleDelete()
 					}

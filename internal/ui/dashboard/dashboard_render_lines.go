@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	rightSlotWidth = 5 // " + × " or equivalent 5-col slot
+	rightSlotWidth = 7 // " + # × " — duplicate, group-edit, delete slots
 )
 
 // renderWorkspaceLine1: hook indicator + name + delete icon
@@ -97,10 +97,10 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	// Prefix is the leading space + rendered indicator (" <indicator> "), width 3.
 	prefix := style.Render(" ") + renderedIndicator
 
-	// Right-edge icon slot: " + × " when selected (5 cols), "     " otherwise (5 cols).
-	rightSlot := "     "
+	// Right-edge icon slot: " + # × " when selected (7 cols), "       " otherwise (7 cols).
+	rightSlot := "       "
 	if selected {
-		rightSlot = " " + common.Icons.Add + " " + common.Icons.Close + " "
+		rightSlot = " " + common.Icons.Add + " " + common.Icons.Group + " " + common.Icons.Close + " "
 	}
 
 	// Truncate name
@@ -117,11 +117,12 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 
 	if selected {
 		// Measure from the actual rendered prefix so icon click ranges match
-		// what's on screen. rightSlot layout is " + × " — positions relative
-		// to nameEnd: 0=space, 1=+, 2=space, 3=×, 4=space.
+		// what's on screen. rightSlot layout is " + # × " — positions relative
+		// to nameEnd: 0=space, 1=+, 2=space, 3=#, 4=space, 5=×, 6=space.
 		nameEnd := lipgloss.Width(prefix) + lipgloss.Width(style.Render(name))
 		m.duplicateIconX = nameEnd + 1
-		m.deleteIconX = nameEnd + 3
+		m.groupIconX = nameEnd + 3
+		m.deleteIconX = nameEnd + 5
 	}
 
 	return prefix + style.Render(name) + style.Render(rightSlot) + statusText
