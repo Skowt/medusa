@@ -156,7 +156,7 @@ func (a *App) deleteOrphanWorkspace(ws *data.Workspace) tea.Cmd {
 }
 
 // fetchRemoteBase fetches the remote base branch asynchronously.
-func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string, copyIgnored bool) tea.Cmd {
+func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile, group string, copyIgnored bool) tea.Cmd {
 	reposCopy := make([]data.RepoRef, len(repos))
 	copy(reposCopy, repos)
 	return func() tea.Msg {
@@ -180,12 +180,13 @@ func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile string, copyIg
 			Bases:       bases,
 			Profile:     profile,
 			CopyIgnored: copyIgnored,
+			Group:       group,
 		}
 	}
 }
 
 // fetchCheckedOutBase resolves the currently checked-out branch as the base (no fetch).
-func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile string, copyIgnored bool) tea.Cmd {
+func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile, group string, copyIgnored bool) tea.Cmd {
 	reposCopy := make([]data.RepoRef, len(repos))
 	copy(reposCopy, repos)
 	return func() tea.Msg {
@@ -209,12 +210,13 @@ func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile string, co
 			Bases:       bases,
 			Profile:     profile,
 			CopyIgnored: copyIgnored,
+			Group:       group,
 		}
 	}
 }
 
 // fetchCustomBase fetches if stale, then resolves a custom branch name locally or on remote.
-func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, customBranch string, copyIgnored bool) tea.Cmd {
+func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, group, customBranch string, copyIgnored bool) tea.Cmd {
 	reposCopy := make([]data.RepoRef, len(repos))
 	copy(reposCopy, repos)
 	return func() tea.Msg {
@@ -235,12 +237,13 @@ func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, customBranch 
 			Bases:       bases,
 			Profile:     profile,
 			CopyIgnored: copyIgnored,
+			Group:       group,
 		}
 	}
 }
 
 // createWorkspace creates a new workspace (single or multi-repo).
-func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string, profile string, copyIgnored bool) tea.Cmd {
+func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string, profile, group string, copyIgnored bool) tea.Cmd {
 	return func() (msg tea.Msg) {
 		var ws *data.Workspace
 		defer func() {
@@ -356,6 +359,11 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 		// Set profile on workspace
 		if profile != "" {
 			ws.Profile = profile
+		}
+
+		// Set group on workspace
+		if group != "" {
+			ws.Group = group
 		}
 
 		// Register in registry

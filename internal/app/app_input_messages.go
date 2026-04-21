@@ -292,11 +292,11 @@ func (a *App) handleCreateWorkspace(msg messages.CreateWorkspace) []tea.Cmd {
 	// Start the fetch+create flow based on branch mode
 	switch msg.BranchMode {
 	case git.BranchModeCheckedOut:
-		cmds = append(cmds, a.fetchCheckedOutBase(msg.Repos, msg.Name, "", msg.CopyIgnored))
+		cmds = append(cmds, a.fetchCheckedOutBase(msg.Repos, msg.Name, "", msg.Group, msg.CopyIgnored))
 	case git.BranchModeCustom:
-		cmds = append(cmds, a.fetchCustomBase(msg.Repos, msg.Name, "", msg.CustomBranch, msg.CopyIgnored))
+		cmds = append(cmds, a.fetchCustomBase(msg.Repos, msg.Name, "", msg.Group, msg.CustomBranch, msg.CopyIgnored))
 	default: // BranchModeRemoteMain
-		cmds = append(cmds, a.fetchRemoteBase(msg.Repos, msg.Name, "", msg.CopyIgnored))
+		cmds = append(cmds, a.fetchRemoteBase(msg.Repos, msg.Name, "", msg.Group, msg.CopyIgnored))
 	}
 	return cmds
 }
@@ -465,7 +465,3 @@ func (a *App) handleActionBarOpenMR(msg messages.ActionBarOpenMR) tea.Cmd {
 		return messages.Toast{Message: "Opened in browser", Level: messages.ToastSuccess}
 	}
 }
-
-// TODO(task-10): implement collapse toggle + duplicate.
-func (a *App) handleToggleGroupCollapse(msg messages.ToggleGroupCollapse) tea.Cmd { return nil }
-func (a *App) handleDuplicateWorkspace(msg messages.DuplicateWorkspace) tea.Cmd   { return nil }

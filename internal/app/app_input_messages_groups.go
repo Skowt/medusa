@@ -98,3 +98,39 @@ func (a *App) handleDeleteGroup(msg messages.DeleteGroup) tea.Cmd {
 	}
 	return nil
 }
+
+// handleToggleGroupCollapse flips the collapse state for a group and persists it.
+func (a *App) handleToggleGroupCollapse(msg messages.ToggleGroupCollapse) tea.Cmd {
+	if a.config.UI.CollapsedGroups == nil {
+		a.config.UI.CollapsedGroups = make(map[string]bool)
+	}
+	if a.config.UI.CollapsedGroups[msg.Label] {
+		delete(a.config.UI.CollapsedGroups, msg.Label)
+	} else {
+		a.config.UI.CollapsedGroups[msg.Label] = true
+	}
+	if a.dashboard != nil {
+		a.dashboard.SetCollapsedGroups(a.config.UI.CollapsedGroups)
+		a.dashboard.SetWorkspaces(a.allWorkspaces)
+	}
+	if err := a.config.SaveUISettings(); err != nil {
+		return a.toast.ShowWarning("Failed to save collapse state")
+	}
+	return nil
+}
+
+// handleDuplicateWorkspace dispatches ShowQuickDuplicateDialog seeded from the source workspace.
+func (a *App) handleDuplicateWorkspace(msg messages.DuplicateWorkspace) tea.Cmd {
+	if msg.Workspace == nil {
+		return nil
+	}
+	ws := msg.Workspace
+	return func() tea.Msg {
+		return messages.ShowQuickDuplicateDialog{
+			Repos:       ws.Repos,
+			Profile:     ws.Profile,
+			CopyIgnored: ws.CopyIgnored,
+			Group:       ws.Group,
+		}
+	}
+}

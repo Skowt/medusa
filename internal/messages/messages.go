@@ -516,4 +516,5 @@ type WorkspaceFetchDone struct {
 	Bases       []string // parallel to Repos
 	Profile     string
 	CopyIgnored bool
+	Group       string // User-assigned group label (inherited from duplicated workspace)
 }

@@ -369,6 +369,7 @@ func New(version, commit, date string) (*App, error) {
 	app.center.SetStyles(app.styles)
 	app.toast.SetStyles(app.styles)
 	app.helpOverlay.SetStyles(app.styles)
+	app.dashboard.SetCollapsedGroups(cfg.UI.CollapsedGroups)
 	app.layout.SetSidebarHidden(cfg.UI.HideSidebar)
 	app.layout.SetTerminalHidden(cfg.UI.HideTerminal)
 	app.setKeymapHintsEnabled(cfg.UI.ShowKeymapHints)
