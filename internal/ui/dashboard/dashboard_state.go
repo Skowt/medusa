@@ -202,8 +202,8 @@ func (m *Model) rebuildRows() {
 			for _, ws := range members {
 				m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: ws})
 			}
-			m.rows = append(m.rows, Row{Type: RowSpacer})
 		}
+		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
 
 	// Ungrouped pseudo-section: only when at least one named group exists.
@@ -224,8 +224,8 @@ func (m *Model) rebuildRows() {
 			for _, ws := range ungrouped {
 				m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: ws})
 			}
-			m.rows = append(m.rows, Row{Type: RowSpacer})
 		}
+		m.rows = append(m.rows, Row{Type: RowSpacer})
 	} else if !hasGroups {
 		// No named groups — flat list sorted by repo names, no headers at all.
 		sortMembers(ungrouped)
