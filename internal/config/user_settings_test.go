@@ -34,3 +34,25 @@ func TestSaveLoadUISettingsTmuxPersistence(t *testing.T) {
 		t.Fatal("TmuxPersistence should persist false value")
 	}
 }
+
+func TestSaveLoadUISettingsCollapsedGroups(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	settings := defaultUISettings()
+	settings.CollapsedGroups = map[string]bool{
+		"shipping-q2": true,
+		"":            true, // Ungrouped
+	}
+	if err := saveUISettings(path, settings); err != nil {
+		t.Fatalf("saveUISettings: %v", err)
+	}
+
+	loaded := loadUISettings(path)
+	if !loaded.CollapsedGroups["shipping-q2"] {
+		t.Errorf("expected shipping-q2 collapsed after reload")
+	}
+	if !loaded.CollapsedGroups[""] {
+		t.Errorf("expected ungrouped (empty key) collapsed after reload")
+	}
+}
