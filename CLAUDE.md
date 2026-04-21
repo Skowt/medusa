@@ -94,4 +94,4 @@ Per-repo workspace config lives at `.medusa/workspaces.json` (setup-workspace, r
 
 Conventional-commit-lite — the `.goreleaser.yml` changelog filter depends on the prefix. See `.claude/skills/medusa-commits-and-releases/SKILL.md` for the full table and the release walkthrough.
 
-Short version: `feat:` / `fix:` / `refactor:` / `perf:` surface in release notes; `docs:` / `test:` / `ci:` / `chore:` don't. Do NOT commit or push unless the user explicitly asks for it.
+Short version: `feat:` / `fix:` / `refactor:` / `perf:` surface in release notes; `docs:` / `test:` / `ci:` / `chore:` don't.
