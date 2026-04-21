@@ -1,19 +1,25 @@
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
 
 linters:
+  default: none
   enable:
     - errcheck
     - govet
     - staticcheck
     - unused
-    - gosimple
+  settings:
+    errcheck:
+      check-type-assertions: true
+
+formatters:
+  enable:
     - gofmt
     - goimports
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/Skowt/medusa
-  errcheck:
-    check-type-assertions: true
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Skowt/medusa

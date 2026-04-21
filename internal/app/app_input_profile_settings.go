@@ -325,19 +325,24 @@ func (a *App) handleShowCleanupTmuxDialog() {
 }
 
 // showCloseTabDialog shows the tab-actions dialog: close, restart, or
-// cancel. Restart tears down the current tmux + agent process and spawns
-// a fresh one using the same Claude session ID via `claude --resume`,
-// which is useful for picking up a newer claude binary without losing
-// the conversation.
+// cancel. Restart tears down the current tmux session and spawns a fresh
+// one: for agent tabs it reuses the Claude session ID via `claude --resume`
+// so the conversation continues; for script tabs it reruns the same shell
+// command. Dialog copy is tailored to the target tab's type.
 func (a *App) showCloseTabDialog() {
 	if a.dialog != nil && a.dialog.Visible() {
 		return
 	}
+	description := "Restart launches a fresh claude process using the same session " +
+		"(useful after upgrading claude). Close ends the session."
+	if a.center.TabAssistantAt(a.dialogCloseTabIdx) == "script" {
+		description = "Restart kills the current process and re-runs the same command " +
+			"in a fresh tmux session. Close stops the process and removes the tab."
+	}
 	a.dialog = common.NewSelectDialog(
 		DialogCloseTab,
 		"Tab Actions",
-		"Restart launches a fresh claude process using the same session "+
-			"(useful after upgrading claude). Close ends the session.",
+		description,
 		[]string{"Close", "Restart", "Cancel"},
 	)
 	a.dialog.SetVerticalLayout(true)

@@ -59,6 +59,7 @@ type ptyTabCreateResult struct {
 	AllowEdits        bool
 	Isolated          bool
 	SkipPermissions   bool
+	ScriptFullCmd     string // Only set for script tabs; enables in-place Restart.
 }
 
 type ptyTabReattachResult struct {
@@ -214,6 +215,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		AllowEdits:      msg.AllowEdits,
 		Isolated:        msg.Isolated,
 		SkipPermissions: msg.SkipPermissions,
+		ScriptFullCmd:   msg.ScriptFullCmd,
 	}
 
 	// Set up response writer for terminal queries (DSR, DA, etc.)
@@ -256,10 +258,9 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		m.resizePTY(tab, rows, cols)
 	}
 
-	// Add tab to the workspace's tab list
+	// Add tab to the workspace's tab list (script tabs are kept at the end).
 	wsID := string(msg.Workspace.ID())
-	m.tabsByWorkspace[wsID] = append(m.tabsByWorkspace[wsID], tab)
-	createdIdx := len(m.tabsByWorkspace[wsID]) - 1
+	createdIdx := m.appendTabOrdered(wsID, tab)
 	if msg.Activate {
 		m.activeTabByWorkspace[wsID] = createdIdx
 		m.infoTabActive = false

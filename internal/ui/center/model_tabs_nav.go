@@ -5,6 +5,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 // hasActiveAgent returns whether there's an active agent
@@ -79,6 +80,22 @@ func (m *Model) CloseTabAtIndex(index int) tea.Cmd {
 	return m.closeTabAt(index)
 }
 
+// CloseScriptTabs closes all script tabs for the given workspace and returns
+// a batched command that kills their tmux sessions.
+func (m *Model) CloseScriptTabs(wsID string) tea.Cmd {
+	tabs := m.tabsByWorkspace[wsID]
+	var cmds []tea.Cmd
+	// Collect indices in reverse so removals don't shift later indices.
+	for i := len(tabs) - 1; i >= 0; i-- {
+		if tabs[i] != nil && tabs[i].Assistant == "script" {
+			if cmd := m.closeTabAt(i); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+	return common.SafeBatch(cmds...)
+}
+
 // SelectTab switches to a specific tab by index (0-indexed)
 func (m *Model) SelectTab(index int) {
 	tabs := m.getTabs()
@@ -132,6 +149,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 		allowEdits := tab.AllowEdits
 		isolated := tab.Isolated
 		skipPerms := tab.SkipPermissions
+		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
 		if detached {
@@ -148,6 +166,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			AllowEdits:      allowEdits,
 			Isolated:        isolated,
 			SkipPermissions: skipPerms,
+			ScriptFullCmd:   scriptFullCmd,
 		})
 	}
 	return result, m.getActiveTabIdx()
@@ -172,6 +191,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 		allowEdits := tab.AllowEdits
 		isolated := tab.Isolated
 		skipPerms := tab.SkipPermissions
+		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
 		if detached {
@@ -188,6 +208,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			AllowEdits:      allowEdits,
 			Isolated:        isolated,
 			SkipPermissions: skipPerms,
+			ScriptFullCmd:   scriptFullCmd,
 		})
 	}
 	return result, m.activeTabByWorkspace[wsID]
