@@ -44,10 +44,17 @@ type StatusResult struct {
 	Clean     bool     // True if no changes
 }
 
-// GetStatus returns the git status for a repository using porcelain v1 -z format
-// This format handles spaces, unicode, and special characters in paths correctly
+// GetStatus returns the git status for a repository using porcelain v1 -z format.
+// This format handles spaces, unicode, and special characters in paths correctly.
+//
+// Uses --untracked-files=normal (git's default) rather than -u/=all so git stops
+// at untracked-directory boundaries instead of recursing into them. A workspace
+// with a large untracked directory (vendored caches, node_modules, build
+// outputs) can otherwise make every status call walk tens of thousands of files
+// and take hundreds of ms. The UI shows one entry per untracked directory,
+// which is usually what users want anyway.
 func GetStatus(repoPath string) (*StatusResult, error) {
-	output, err := RunGitRaw(repoPath, "--no-optional-locks", "status", "--porcelain=v1", "-z", "-u")
+	output, err := RunGitRaw(repoPath, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal")
 	if err != nil {
 		return nil, err
 	}
