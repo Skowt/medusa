@@ -12,6 +12,27 @@ import (
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
+// activeGroupLabels returns the sorted, deduped set of group labels that have
+// at least one live (non-archived, non-orphaned) member. This mirrors the
+// sidebar's visibility rule so pickers never surface a group the user can't
+// see elsewhere.
+func activeGroupLabels(workspaces []*data.Workspace) []string {
+	seen := make(map[string]struct{})
+	groups := make([]string, 0)
+	for _, ws := range workspaces {
+		if ws == nil || ws.Group == "" || ws.Archived() || ws.IsOrphaned() {
+			continue
+		}
+		if _, ok := seen[ws.Group]; ok {
+			continue
+		}
+		seen[ws.Group] = struct{}{}
+		groups = append(groups, ws.Group)
+	}
+	sort.Strings(groups)
+	return groups
+}
+
 // handleShowRenameGroupDialog opens the rename-group input dialog.
 func (a *App) handleShowRenameGroupDialog(msg messages.ShowRenameGroupDialog) {
 	if msg.Label == "" {
@@ -196,20 +217,7 @@ func (a *App) handleShowSetWorkspaceGroupDialog(msg messages.ShowSetWorkspaceGro
 	if msg.Workspace == nil {
 		return
 	}
-	// Derive the existing-groups list from a.allWorkspaces
-	seen := make(map[string]struct{})
-	groups := make([]string, 0)
-	for _, ws := range a.allWorkspaces {
-		if ws.Group == "" {
-			continue
-		}
-		if _, ok := seen[ws.Group]; ok {
-			continue
-		}
-		seen[ws.Group] = struct{}{}
-		groups = append(groups, ws.Group)
-	}
-	sort.Strings(groups)
+	groups := activeGroupLabels(a.allWorkspaces)
 
 	a.dialogWorkspace = msg.Workspace
 	a.dialog = common.NewGroupPicker(DialogSetWorkspaceGroup, groups, msg.Workspace.Group)

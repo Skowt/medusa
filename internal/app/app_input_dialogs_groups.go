@@ -1,8 +1,6 @@
 package app
 
 import (
-	"sort"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
@@ -118,19 +116,7 @@ func (a *App) handleGroupDialogResult(id string, confirmed bool, value string, w
 // The caller must set a.dialogWorkspace / a.dialogDefaultName beforehand so
 // they persist across the next dialog hop.
 func (a *App) showGroupPickerForCreate() {
-	seen := make(map[string]struct{})
-	groups := make([]string, 0)
-	for _, ws := range a.allWorkspaces {
-		if ws.Group == "" {
-			continue
-		}
-		if _, ok := seen[ws.Group]; ok {
-			continue
-		}
-		seen[ws.Group] = struct{}{}
-		groups = append(groups, ws.Group)
-	}
-	sort.Strings(groups)
+	groups := activeGroupLabels(a.allWorkspaces)
 
 	a.dialog = common.NewGroupPicker(DialogSetGroupForCreate, groups, "")
 	a.dialog.SetSize(a.width, a.height)

@@ -148,3 +148,26 @@ func TestHandleSetWorkspaceGroup_KeepsCollapsedKeyWhenOthersRemain(t *testing.T)
 		t.Errorf("popular key wrongly pruned while ws2 still in group")
 	}
 }
+
+func TestActiveGroupLabels_SkipsArchivedAndOrphaned(t *testing.T) {
+	live := &data.Workspace{Name: "live", Group: "active"}
+	archivedOnly := &data.Workspace{Name: "old", Group: "zombie", Status: data.StatusArchived}
+	orphanedOnly := &data.Workspace{Name: "lost", Group: "ghost", Orphan: data.OrphanMetadata}
+	mixedArchived := &data.Workspace{Name: "mix-old", Group: "mixed", Status: data.StatusArchived}
+	mixedLive := &data.Workspace{Name: "mix-live", Group: "mixed"}
+	ungrouped := &data.Workspace{Name: "u"}
+
+	got := activeGroupLabels([]*data.Workspace{
+		live, archivedOnly, orphanedOnly, mixedArchived, mixedLive, ungrouped, nil,
+	})
+
+	want := []string{"active", "mixed"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
