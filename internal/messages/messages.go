@@ -76,6 +76,7 @@ type DeleteOrphanWorkspace struct {
 // OrphanWorkspaceDeleted is sent after an orphaned workspace has been cleaned up.
 type OrphanWorkspaceDeleted struct {
 	Workspace *data.Workspace
+	Err       error
 }
 
 // GitStatusRequest requests a git status refresh

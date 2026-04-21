@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,17 +143,37 @@ func (a *App) deleteOrphanWorkspace(ws *data.Workspace) tea.Cmd {
 		}
 	}
 	return func() tea.Msg {
+		var err error
 		switch ws.Orphan {
 		case data.OrphanMetadata:
-			_ = a.workspaces.Delete(ws.ID())
-			_ = a.registry.RemoveWorkspace(string(ws.ID()))
+			if storeErr := a.workspaces.Delete(ws.ID()); storeErr != nil {
+				err = fmt.Errorf("remove workspace store: %w", storeErr)
+			}
+			if regErr := a.registry.RemoveWorkspace(string(ws.ID())); regErr != nil && err == nil {
+				err = fmt.Errorf("remove registry entry: %w", regErr)
+			}
 		case data.OrphanDirectory:
 			if ws.OrphanPath != "" {
-				_ = os.RemoveAll(ws.OrphanPath)
+				if rmErr := forceRemoveAll(ws.OrphanPath); rmErr != nil {
+					err = fmt.Errorf("remove %s: %w", ws.OrphanPath, rmErr)
+				}
 			}
 		}
-		return messages.OrphanWorkspaceDeleted{Workspace: ws}
+		return messages.OrphanWorkspaceDeleted{Workspace: ws, Err: err}
 	}
+}
+
+// forceRemoveAll removes path, first chmod'ing any directories under it to
+// 0o700 so os.RemoveAll can unlink their contents. Needed for Go module
+// cache trees (e.g. .gotools/pkg/mod/) which are created mode 0o555.
+func forceRemoveAll(path string) error {
+	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			_ = os.Chmod(p, 0o700)
+		}
+		return nil
+	})
+	return os.RemoveAll(path)
 }
 
 // fetchRemoteBase fetches the remote base branch asynchronously.
