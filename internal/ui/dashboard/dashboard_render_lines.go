@@ -12,6 +12,10 @@ import (
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
+const (
+	rightSlotWidth = 5 // " + × " or equivalent 5-col slot
+)
+
 // renderWorkspaceLine1: hook indicator + name + delete icon
 func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentWidth int) string {
 	indicatorWidth := 2
@@ -95,7 +99,6 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 
 	// Right-edge icon slot: " + × " when selected (5 cols), "     " otherwise (5 cols).
 	rightSlot := "     "
-	rightSlotWidth := 5
 	if selected {
 		rightSlot = " " + common.Icons.Add + " " + common.Icons.Close + " "
 	}

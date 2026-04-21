@@ -129,6 +129,8 @@ func (m *Model) renderOrphanRow(ws *data.Workspace, selected bool, contentWidth 
 	if selected {
 		arrowStyle = arrowStyle.Background(common.ColorSelection)
 		mutedStyle = mutedStyle.Background(common.ColorSelection)
+		// Reset duplicateIconX since orphan rows don't have a duplicate icon
+		m.duplicateIconX = 0
 	}
 
 	desc := "worktree missing"
@@ -172,6 +174,8 @@ func (m *Model) renderArchivedRow(ws *data.Workspace, selected bool, contentWidt
 	line := prefix + name + nameStyle.Render(deleteSlot)
 
 	if selected {
+		// Reset duplicateIconX since archived rows don't have a duplicate icon
+		m.duplicateIconX = 0
 		// Record the delete icon column for this row so the click handler in
 		// model.go can map a click on the "×" back to the delete action.
 		// Without this, handleClick reads a stale deleteIconX from whatever
