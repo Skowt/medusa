@@ -239,10 +239,7 @@ func (m *Model) activateRow(viaClick bool) tea.Cmd {
 		}
 	case RowSectionHeader:
 		if row.IsUserGroup {
-			label := row.Label
-			if label == "Ungrouped" {
-				label = ""
-			}
+			label := labelToKey(row.Label)
 			return func() tea.Msg {
 				return messages.ToggleGroupCollapse{Label: label}
 			}
@@ -274,12 +271,11 @@ func (m *Model) handleDelete() tea.Cmd {
 	}
 
 	if row.Type == RowSectionHeader && row.IsUserGroup {
-		label := row.Label
-		if label == "Ungrouped" {
+		if row.Label == ungroupedLabel {
 			return nil // Can't delete the Ungrouped pseudo-group.
 		}
 		return func() tea.Msg {
-			return messages.ShowDeleteGroupDialog{Label: label}
+			return messages.ShowDeleteGroupDialog{Label: row.Label}
 		}
 	}
 
@@ -356,12 +352,11 @@ func (m *Model) handleRename() tea.Cmd {
 		}
 	}
 	if row.Type == RowSectionHeader && row.IsUserGroup {
-		label := row.Label
-		if label == "Ungrouped" {
+		if row.Label == ungroupedLabel {
 			return nil // Ungrouped is not a real label; renaming means tagging workspaces individually.
 		}
 		return func() tea.Msg {
-			return messages.ShowRenameGroupDialog{Label: label}
+			return messages.ShowRenameGroupDialog{Label: row.Label}
 		}
 	}
 	return nil
@@ -404,10 +399,7 @@ func (m *Model) handleToggleCollapse() tea.Cmd {
 	}
 	row := m.rows[m.cursor]
 	if row.Type == RowSectionHeader && row.IsUserGroup {
-		label := row.Label
-		if label == "Ungrouped" {
-			label = ""
-		}
+		label := labelToKey(row.Label)
 		return func() tea.Msg {
 			return messages.ToggleGroupCollapse{Label: label}
 		}

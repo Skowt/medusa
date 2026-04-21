@@ -268,16 +268,19 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		style = lipgloss.NewStyle().Bold(true).Foreground(common.ColorForeground).Background(common.ColorSelection)
 	}
 
-	// Right-edge icon slot: " + × " when selected (6 cols), "      " otherwise (6 cols).
-	rightSlot := "      "
-	rightSlotWidth := 6
+	// Prefix is the leading space + rendered indicator (" <indicator> "), width 3.
+	prefix := style.Render(" ") + renderedIndicator
+
+	// Right-edge icon slot: " + × " when selected (5 cols), "     " otherwise (5 cols).
+	rightSlot := "     "
+	rightSlotWidth := 5
 	if selected {
 		rightSlot = " " + common.Icons.Add + " " + common.Icons.Close + " "
 	}
 
 	// Truncate name
 	name := ws.Name
-	prefixWidth := 2 + indicatorWidth // " " prefix + " " styled prefix + indicator
+	prefixWidth := 2 + indicatorWidth // logical width used for truncation budget
 	maxNameWidth := contentWidth - lipgloss.Width(statusText) - rightSlotWidth - prefixWidth
 	if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
 		runes := []rune(name)
@@ -288,12 +291,15 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	}
 
 	if selected {
-		nameEnd := prefixWidth + lipgloss.Width(style.Render(name))
-		m.duplicateIconX = nameEnd + 1 // leading space before "+"
-		m.deleteIconX = nameEnd + 4    // "+" + space, then "×" starts at offset +3 past the leading space
+		// Measure from the actual rendered prefix so icon click ranges match
+		// what's on screen. rightSlot layout is " + × " — positions relative
+		// to nameEnd: 0=space, 1=+, 2=space, 3=×, 4=space.
+		nameEnd := lipgloss.Width(prefix) + lipgloss.Width(style.Render(name))
+		m.duplicateIconX = nameEnd + 1
+		m.deleteIconX = nameEnd + 3
 	}
 
-	return style.Render(" ") + renderedIndicator + style.Render(name) + style.Render(rightSlot) + statusText
+	return prefix + style.Render(name) + style.Render(rightSlot) + statusText
 }
 
 // renderWorkspaceLine2: profile · git changes · created day

@@ -11,6 +11,20 @@ import (
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
+// ungroupedLabel is the display label for workspaces without a Group value.
+// It maps to the empty-string key in the collapsedGroups map and in
+// ToggleGroupCollapse/RenameGroup/DeleteGroup messages.
+const ungroupedLabel = "Ungrouped"
+
+// labelToKey converts a displayed group label back to its message-key form
+// (empty string for Ungrouped, passthrough otherwise).
+func labelToKey(label string) string {
+	if label == ungroupedLabel {
+		return ""
+	}
+	return label
+}
+
 // tickSpinner returns a command that ticks the spinner
 func (m *Model) tickSpinner() tea.Cmd {
 	return common.SafeTick(spinnerInterval, func(t time.Time) tea.Msg {
@@ -198,7 +212,7 @@ func (m *Model) rebuildRows() {
 		collapsed := m.collapsedGroups[""]
 		header := Row{
 			Type:        RowSectionHeader,
-			Label:       "Ungrouped",
+			Label:       ungroupedLabel,
 			IsUserGroup: true,
 			Collapsed:   collapsed,
 		}
