@@ -99,49 +99,6 @@ func (a *App) handleSetWorkspaceNote(msg messages.SetWorkspaceNote) tea.Cmd {
 	return nil
 }
 
-// handleShowSetWorkspaceGroupDialog opens the group picker dialog.
-func (a *App) handleShowSetWorkspaceGroupDialog(msg messages.ShowSetWorkspaceGroupDialog) {
-	if msg.Workspace == nil {
-		return
-	}
-	// Derive the existing-groups list from a.allWorkspaces
-	seen := make(map[string]struct{})
-	groups := make([]string, 0)
-	for _, ws := range a.allWorkspaces {
-		if ws.Group == "" {
-			continue
-		}
-		if _, ok := seen[ws.Group]; ok {
-			continue
-		}
-		seen[ws.Group] = struct{}{}
-		groups = append(groups, ws.Group)
-	}
-	sort.Strings(groups)
-
-	a.dialogWorkspace = msg.Workspace
-	a.dialog = common.NewGroupPicker(DialogSetWorkspaceGroup, groups, msg.Workspace.Group)
-	a.dialog.SetSize(a.width, a.height)
-	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-	a.dialog.Show()
-}
-
-// handleSetWorkspaceGroup persists a group label on a workspace.
-func (a *App) handleSetWorkspaceGroup(msg messages.SetWorkspaceGroup) tea.Cmd {
-	if msg.Workspace == nil {
-		return nil
-	}
-	msg.Workspace.Group = msg.Label
-	if err := a.workspaces.Save(msg.Workspace); err != nil {
-		logging.Error("Failed to save workspace group: %v", err)
-		return a.toast.ShowError("Failed to save group")
-	}
-	if a.dashboard != nil {
-		a.dashboard.SetWorkspaces(a.allWorkspaces)
-	}
-	return nil
-}
-
 // handleSetWorkspaceProfile persists a profile for a workspace and reloads.
 func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cmd {
 	if msg.Workspace == nil {

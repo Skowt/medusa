@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -188,4 +189,70 @@ func (a *App) handleDuplicateWorkspace(msg messages.DuplicateWorkspace) tea.Cmd 
 			Group:       ws.Group,
 		}
 	}
+}
+
+// handleShowSetWorkspaceGroupDialog opens the group picker dialog.
+func (a *App) handleShowSetWorkspaceGroupDialog(msg messages.ShowSetWorkspaceGroupDialog) {
+	if msg.Workspace == nil {
+		return
+	}
+	// Derive the existing-groups list from a.allWorkspaces
+	seen := make(map[string]struct{})
+	groups := make([]string, 0)
+	for _, ws := range a.allWorkspaces {
+		if ws.Group == "" {
+			continue
+		}
+		if _, ok := seen[ws.Group]; ok {
+			continue
+		}
+		seen[ws.Group] = struct{}{}
+		groups = append(groups, ws.Group)
+	}
+	sort.Strings(groups)
+
+	a.dialogWorkspace = msg.Workspace
+	a.dialog = common.NewGroupPicker(DialogSetWorkspaceGroup, groups, msg.Workspace.Group)
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
+}
+
+// handleSetWorkspaceGroup persists a group label on a workspace.
+func (a *App) handleSetWorkspaceGroup(msg messages.SetWorkspaceGroup) tea.Cmd {
+	if msg.Workspace == nil {
+		return nil
+	}
+	oldGroup := msg.Workspace.Group
+	msg.Workspace.Group = msg.Label
+	if err := a.workspaces.Save(msg.Workspace); err != nil {
+		msg.Workspace.Group = oldGroup // revert in-memory on save failure
+		logging.Error("Failed to save workspace group: %v", err)
+		return a.toast.ShowError("Failed to save group")
+	}
+
+	// Prune CollapsedGroups if the old group is now empty.
+	if oldGroup != "" && oldGroup != msg.Label {
+		stillExists := false
+		for _, ws := range a.allWorkspaces {
+			if ws.Group == oldGroup {
+				stillExists = true
+				break
+			}
+		}
+		if !stillExists && a.config.UI.CollapsedGroups != nil {
+			if _, ok := a.config.UI.CollapsedGroups[oldGroup]; ok {
+				delete(a.config.UI.CollapsedGroups, oldGroup)
+				if err := a.config.SaveUISettings(); err != nil {
+					logging.Warn("Failed to save collapse settings after group prune: %v", err)
+					// Don't block the main flow on the UI-settings save.
+				}
+			}
+		}
+	}
+
+	if a.dashboard != nil {
+		a.dashboard.SetWorkspaces(a.allWorkspaces)
+	}
+	return nil
 }

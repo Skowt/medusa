@@ -112,3 +112,39 @@ func TestHandleDeleteGroup_RollsBackOnSaveFailure(t *testing.T) {
 	// If WorkspaceStore gains a failure hook in future, this test can be implemented.
 	t.Skip("WorkspaceStore.Save has no failure-injection hook; rollback logic is best-effort unless a test double is introduced")
 }
+
+func TestHandleSetWorkspaceGroup_PrunesCollapsedGroupsKeyWhenLastMemberLeaves(t *testing.T) {
+	a := newAppForGroupTests(t)
+	ws := &data.Workspace{Name: "only", Group: "lonely"}
+	a.allWorkspaces = []*data.Workspace{ws}
+	a.config.UI.CollapsedGroups["lonely"] = true
+
+	_ = a.handleSetWorkspaceGroup(messages.SetWorkspaceGroup{
+		Workspace: ws,
+		Label:     "new-home",
+	})
+
+	if ws.Group != "new-home" {
+		t.Errorf("group not updated: %q", ws.Group)
+	}
+	if _, ok := a.config.UI.CollapsedGroups["lonely"]; ok {
+		t.Errorf("stale key lonely not pruned")
+	}
+}
+
+func TestHandleSetWorkspaceGroup_KeepsCollapsedKeyWhenOthersRemain(t *testing.T) {
+	a := newAppForGroupTests(t)
+	ws1 := &data.Workspace{Name: "a", Group: "popular"}
+	ws2 := &data.Workspace{Name: "b", Group: "popular"}
+	a.allWorkspaces = []*data.Workspace{ws1, ws2}
+	a.config.UI.CollapsedGroups["popular"] = true
+
+	_ = a.handleSetWorkspaceGroup(messages.SetWorkspaceGroup{
+		Workspace: ws1,
+		Label:     "",
+	})
+
+	if _, ok := a.config.UI.CollapsedGroups["popular"]; !ok {
+		t.Errorf("popular key wrongly pruned while ws2 still in group")
+	}
+}
