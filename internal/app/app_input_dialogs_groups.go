@@ -5,6 +5,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/ui/common"
 	"github.com/Skowt/medusa/internal/validation"
 )
 
@@ -24,7 +25,27 @@ func (a *App) handleGroupDialogResult(id string, confirmed bool, value string, w
 
 	switch id {
 	case DialogSetWorkspaceGroup:
-		if workspace != nil {
+		if workspace == nil {
+			return nil, true
+		}
+		switch value {
+		case common.NewGroupOption:
+			// Swap to a text input for the new label. Reuse the same ID so the
+			// second submission lands back here.
+			a.dialogWorkspace = workspace
+			a.dialog = common.NewInputDialog(DialogSetWorkspaceGroup, "New Group", "")
+			a.dialog.SetMessage("Label for the new group.")
+			a.dialog.SetSize(a.width, a.height)
+			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+			a.dialog.Show()
+			return nil, true
+		case common.UngroupedOption:
+			ws := workspace
+			return func() tea.Msg {
+				return messages.SetWorkspaceGroup{Workspace: ws, Label: ""}
+			}, true
+		default:
+			// Either a picked existing group OR a typed custom label from the input-dialog fallback.
 			label := validation.SanitizeInput(value)
 			ws := workspace
 			return func() tea.Msg {

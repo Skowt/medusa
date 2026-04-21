@@ -99,14 +99,28 @@ func (a *App) handleSetWorkspaceNote(msg messages.SetWorkspaceNote) tea.Cmd {
 	return nil
 }
 
-// handleShowSetWorkspaceGroupDialog opens the group-label input dialog.
+// handleShowSetWorkspaceGroupDialog opens the group picker dialog.
 func (a *App) handleShowSetWorkspaceGroupDialog(msg messages.ShowSetWorkspaceGroupDialog) {
 	if msg.Workspace == nil {
 		return
 	}
+	// Derive the existing-groups list from a.allWorkspaces
+	seen := make(map[string]struct{})
+	groups := make([]string, 0)
+	for _, ws := range a.allWorkspaces {
+		if ws.Group == "" {
+			continue
+		}
+		if _, ok := seen[ws.Group]; ok {
+			continue
+		}
+		seen[ws.Group] = struct{}{}
+		groups = append(groups, ws.Group)
+	}
+	sort.Strings(groups)
+
 	a.dialogWorkspace = msg.Workspace
-	a.dialog = common.NewInputDialog(DialogSetWorkspaceGroup, "Set Group", msg.Workspace.Group)
-	a.dialog.SetMessage("Group label to organize workspaces (leave empty to ungroup).")
+	a.dialog = common.NewGroupPicker(DialogSetWorkspaceGroup, groups, msg.Workspace.Group)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()
