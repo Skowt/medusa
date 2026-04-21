@@ -270,7 +270,7 @@ func (m *AgentManager) CreateViewerWithTags(ws *data.Workspace, command string, 
 // CloseAgent closes an agent
 func (m *AgentManager) CloseAgent(agent *Agent) error {
 	if agent.Terminal != nil {
-		agent.Terminal.Close()
+		_ = agent.Terminal.Close()
 	}
 	if agent.sandboxCleanup != nil {
 		agent.sandboxCleanup()
@@ -303,7 +303,7 @@ func (m *AgentManager) CloseAll() {
 	for _, agents := range agentsByWorkspace {
 		for _, agent := range agents {
 			if agent.Terminal != nil {
-				agent.Terminal.Close()
+				_ = agent.Terminal.Close()
 			}
 			if agent.sandboxCleanup != nil {
 				agent.sandboxCleanup()
@@ -345,7 +345,7 @@ func (m *AgentManager) CloseWorkspaceAgents(ws *data.Workspace) {
 	m.mu.Unlock()
 	for _, agent := range agents {
 		if agent.Terminal != nil {
-			agent.Terminal.Close()
+			_ = agent.Terminal.Close()
 		}
 	}
 }

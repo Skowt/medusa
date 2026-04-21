@@ -162,10 +162,11 @@ func (p *Parser) executeCSI(final byte) {
 			p.vt.restoreCursor()
 		}
 	case 'c': // DA - device attributes
-		if p.intermediate == '>' {
+		switch p.intermediate {
+		case '>':
 			// Secondary DA - report VT220
 			p.vt.respond([]byte("\x1b[>1;10;0c"))
-		} else if p.intermediate == 0 {
+		case 0:
 			// Primary DA - report VT220 with ANSI color
 			p.vt.respond([]byte("\x1b[?62;22c"))
 		}

@@ -249,7 +249,7 @@ func (m *TerminalModel) CloseTerminal(wsID string) {
 			m.stopPTYReader(tab.State)
 			tab.State.mu.Lock()
 			if tab.State.Terminal != nil {
-				tab.State.Terminal.Close()
+				_ = tab.State.Terminal.Close()
 			}
 			tab.State.Running = false
 			tab.State.ptyRestartBackoff = 0
@@ -302,7 +302,7 @@ func (m *TerminalModel) closeState(ts *TerminalState) {
 	ts.pendingOutput = nil
 	ts.mu.Unlock()
 	if term != nil {
-		term.Close()
+		_ = term.Close()
 	}
 }
 

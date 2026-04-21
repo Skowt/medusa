@@ -21,8 +21,8 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	success := false
 	defer func() {
 		if !success {
-			tmp.Close()
-			os.Remove(tmpPath)
+			_ = tmp.Close()
+			_ = os.Remove(tmpPath)
 		}
 	}()
 
@@ -49,18 +49,18 @@ func acquireDirLock(lockDir string) (func(), error) {
 	for {
 		err := os.Mkdir(lockDir, 0700)
 		if err == nil {
-			return func() { os.Remove(lockDir) }, nil
+			return func() { _ = os.Remove(lockDir) }, nil
 		}
 		if !os.IsExist(err) {
 			return nil, fmt.Errorf("failed to acquire lock %s: %w", lockDir, err)
 		}
 		if time.Now().After(deadline) {
 			// Stale lock — force remove and retry once
-			os.Remove(lockDir)
+			_ = os.Remove(lockDir)
 			if err := os.Mkdir(lockDir, 0700); err != nil {
 				return nil, fmt.Errorf("failed to acquire lock %s: %w", lockDir, err)
 			}
-			return func() { os.Remove(lockDir) }, nil
+			return func() { _ = os.Remove(lockDir) }, nil
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

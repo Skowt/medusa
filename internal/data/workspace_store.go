@@ -90,7 +90,7 @@ func (s *WorkspaceStore) Save(ws *Workspace) error {
 		return err
 	}
 	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 		return err
 	}
 	if ws.storeID != "" && ws.storeID != id {

@@ -108,9 +108,9 @@ func writeTarGz(t *testing.T, archivePath string, entries map[string][]byte) {
 			t.Fatalf("write content: %v", err)
 		}
 	}
-	tw.Close()
-	gzw.Close()
-	f.Close()
+	_ = tw.Close()
+	_ = gzw.Close()
+	_ = f.Close()
 }
 
 func TestExtractBinaries_BothPresent(t *testing.T) {

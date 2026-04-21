@@ -180,13 +180,13 @@ func WriteTempProfile(sbpl string) (path string, cleanup func(), err error) {
 		return "", nil, fmt.Errorf("create sandbox profile: %w", err)
 	}
 	if _, err := f.WriteString(sbpl); err != nil {
-		f.Close()
-		os.Remove(f.Name())
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 		return "", nil, fmt.Errorf("write sandbox profile: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name())
 		return "", nil, fmt.Errorf("close sandbox profile: %w", err)
 	}
-	return f.Name(), func() { os.Remove(f.Name()) }, nil
+	return f.Name(), func() { _ = os.Remove(f.Name()) }, nil
 }
