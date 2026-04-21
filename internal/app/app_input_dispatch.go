@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/config"
@@ -76,7 +78,11 @@ func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 			}
 		}
 		*cmds = append(*cmds, a.loadWorkspaces())
-		*cmds = append(*cmds, a.toast.ShowSuccess("Orphan cleaned up"))
+		if msg.Err != nil {
+			*cmds = append(*cmds, a.toast.ShowError(fmt.Sprintf("Orphan cleanup failed: %v", msg.Err)))
+		} else {
+			*cmds = append(*cmds, a.toast.ShowSuccess("Orphan cleaned up"))
+		}
 	case messages.WorkspaceDeleteFailed:
 		if cmd := a.handleWorkspaceDeleteFailed(msg); cmd != nil {
 			*cmds = append(*cmds, cmd)
