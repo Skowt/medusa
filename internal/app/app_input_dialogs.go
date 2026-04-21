@@ -245,15 +245,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			_ = a.config.SaveUISettings()
 			a.dialogWorkspace = workspace
 			a.dialogDefaultName = defaultName
-			a.dialog = common.NewSelectDialog(
-				DialogSelectBranchMode,
-				"Base Branch",
-				"Which branch should this worktree be based on?",
-				[]string{"Latest remote main", "Checked out branch", "Custom branch"},
-			)
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
+			a.showGroupPickerForCreate()
 			return nil
 		}
 

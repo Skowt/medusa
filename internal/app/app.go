@@ -52,6 +52,7 @@ const (
 	DialogArchivedWorkspace   = "archived_workspace"
 	DialogSetNote             = "set_note"
 	DialogSetWorkspaceGroup   = "set_workspace_group"
+	DialogSetGroupForCreate   = "set_group_for_create"
 	DialogRenameGroup         = "rename_group"
 	DialogDeleteGroup         = "delete_group"
 )
