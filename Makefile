@@ -2,7 +2,7 @@ BINARY_NAME := medusa
 MAIN_PACKAGE := ./cmd/medusa
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-sandbox-mode bench lint fmt fmt-check vet clean run dev help release-check release-tag release-push release
+.PHONY: build test test-race test-sandbox-mode bench lint fmt fmt-check vet clean run dev help release-check release-tag release-push release
 
 build:
 	go build -o $(BINARY_NAME) $(MAIN_PACKAGE)
@@ -11,13 +11,16 @@ build:
 test:
 	go test -v ./...
 
+test-race:
+	go test -race -v ./...
+
 test-sandbox-mode:
 	go test -tags sandbox_mode -v ./internal/sandbox/...
 
 bench:
 	go test -bench=. -benchmem ./internal/ui/compositor/ -run=^$$
 
-lint: test
+lint: test-race
 	golangci-lint run
 	@echo "Checking file lengths (max 500 lines)..."
 	@find . -name '*.go' -exec wc -l {} + | awk '!/total$$/ && $$1 > 500 { print "ERROR: " $$2 " has " $$1 " lines (max 500)"; found=1 } END { if(found) exit 1 }'
@@ -45,8 +48,9 @@ help:
 	@echo "Available targets:"
 	@echo "  build      - Build the binary"
 	@echo "  test       - Run all tests"
+	@echo "  test-race  - Run all tests with the race detector (mirrors CI)"
 	@echo "  test-sandbox-mode - Run macOS sandbox-exec integration tests (requires unsandboxed host)"
-	@echo "  lint       - Run golangci-lint and check file lengths (max 500 lines)"
+	@echo "  lint       - Full end-of-dev gate: test-race + golangci-lint + 500-line check"
 	@echo "  fmt        - Format code with gofmt and goimports"
 	@echo "  fmt-check  - Check formatting (for CI)"
 	@echo "  vet        - Run go vet"

@@ -42,7 +42,7 @@ func newTestApp(t *testing.T) (*App, *config.Config) {
 	if err != nil {
 		t.Fatalf("NewPermissionWatcher: %v", err)
 	}
-	t.Cleanup(func() { pw.Close() })
+	t.Cleanup(func() { _ = pw.Close() })
 
 	app := &App{
 		config:            cfg,

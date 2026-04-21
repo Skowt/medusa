@@ -172,15 +172,20 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 		return nil, err
 	}
 
+	// Capture the workspace root up-front so the monitor goroutine doesn't
+	// race with concurrent mutations of ws (Workspace.Root is a value receiver,
+	// so calling it copies every field — including ones callers may write).
+	wsRoot := ws.Root()
+
 	r.mu.Lock()
-	r.running[ws.Root()] = cmd
+	r.running[wsRoot] = cmd
 	r.mu.Unlock()
 
 	// Monitor in background
 	safego.Go("process.script_wait", func() {
 		_ = cmd.Wait()
 		r.mu.Lock()
-		delete(r.running, ws.Root())
+		delete(r.running, wsRoot)
 		r.mu.Unlock()
 	})
 

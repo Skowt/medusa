@@ -59,7 +59,7 @@ func NewWatcher(hooksDir string, onEvent func(HookEvent)) (*Watcher, error) {
 		return nil, err
 	}
 	if err := fw.Add(hooksDir); err != nil {
-		fw.Close()
+		_ = fw.Close()
 		return nil, err
 	}
 	return &Watcher{

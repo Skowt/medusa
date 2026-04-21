@@ -475,5 +475,5 @@ func (l *PositionedVTermLayer) Draw(s uv.Screen, r uv.Rectangle) {
 		return
 	}
 	// Delegate to VTermLayer.DrawAt with our position and dimensions
-	l.VTermLayer.DrawAt(s, l.PosX, l.PosY, l.Width, l.Height)
+	l.DrawAt(s, l.PosX, l.PosY, l.Width, l.Height)
 }

@@ -297,9 +297,10 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 
 // sendPrefixToTerminal sends a literal Ctrl-A to the focused terminal
 func (a *App) sendPrefixToTerminal() {
-	if a.focusedPane == messages.PaneCenter {
+	switch a.focusedPane {
+	case messages.PaneCenter:
 		a.center.SendToTerminal("\x01")
-	} else if a.focusedPane == messages.PaneTerminal {
+	case messages.PaneTerminal:
 		a.sidebarTerminal.SendToTerminal("\x01")
 	}
 }

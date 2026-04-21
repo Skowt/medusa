@@ -220,9 +220,10 @@ func (h *HelpOverlay) Update(msg tea.Msg) (*HelpOverlay, HelpResult, tea.Cmd) {
 		return h, HelpResultNone, nil
 
 	case tea.MouseWheelMsg:
-		if msg.Button == tea.MouseWheelUp {
+		switch msg.Button {
+		case tea.MouseWheelUp:
 			h.scrollUp()
-		} else if msg.Button == tea.MouseWheelDown {
+		case tea.MouseWheelDown:
 			h.scrollDown()
 		}
 		return h, HelpResultNone, nil

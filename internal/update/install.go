@@ -20,13 +20,13 @@ func ExtractBinaries(archivePath string, destDir string, names []string) (map[st
 	if err != nil {
 		return nil, fmt.Errorf("opening archive: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gzr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, fmt.Errorf("creating gzip reader: %w", err)
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 
 	wanted := make(map[string]bool, len(names))
 	for _, n := range names {
@@ -64,10 +64,10 @@ func ExtractBinaries(archivePath string, destDir string, names []string) (map[st
 		}
 
 		if _, err := io.Copy(outFile, tr); err != nil {
-			outFile.Close()
+			_ = outFile.Close()
 			return nil, fmt.Errorf("extracting %s: %w", name, err)
 		}
-		outFile.Close()
+		_ = outFile.Close()
 		result[name] = outPath
 
 		if len(result) == len(wanted) {
@@ -102,7 +102,7 @@ func InstallBinary(newBinaryPath string, currentBinaryPath string) error {
 	if err := copyFile(newBinaryPath, stagedPath); err != nil {
 		return fmt.Errorf("staging new binary: %w", err)
 	}
-	defer os.Remove(stagedPath) // Clean up on failure
+	defer func() { _ = os.Remove(stagedPath) }() // Clean up on failure
 
 	// Back up the current binary if it exists. A missing target is valid:
 	// it means this is a fresh install of a secondary binary (e.g. a user
@@ -138,13 +138,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return err
@@ -192,7 +192,7 @@ func CanWrite(path string) bool {
 	// Try to open for writing
 	f, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err == nil {
-		f.Close()
+		_ = f.Close()
 		return true
 	}
 
@@ -203,7 +203,7 @@ func CanWrite(path string) bool {
 	if err != nil {
 		return false
 	}
-	f.Close()
-	os.Remove(testFile)
+	_ = f.Close()
+	_ = os.Remove(testFile)
 	return true
 }

@@ -10,6 +10,7 @@ Before declaring any Go change complete:
 2. `golangci-lint run` — must exit 0. Run on just the touched package for speed (e.g. `golangci-lint run ./internal/app/...`).
 3. No `.go` file may exceed **500 lines**. `make lint` enforces this; if you hit it, split by concern into sibling files in the same package rather than inflating a single file.
 4. Tests pass for the touched package.
+5. **At the end of development**, run `make lint` — it mirrors CI by running `go test -race -v ./...` followed by golangci-lint and the 500-line check. The race detector catches issues plain `go test` misses (e.g. value-receiver methods like `Workspace.Root()` copy the whole struct, so a goroutine calling them races with any concurrent field write). `make test-race` is the same race run without lint, handy for reproducing a CI failure in isolation.
 
 Don't batch these up for a later cleanup pass — fix as you go.
 
@@ -20,7 +21,8 @@ make build            # builds `medusa` and `medusa-approve-compound`
 make run              # build + run the TUI
 make dev              # hot-reload via air
 make test             # go test -v ./...
-make lint             # full gate: test + golangci-lint + 500-line check
+make test-race        # go test -race -v ./... (mirrors CI; slower)
+make lint             # full gate: test-race + golangci-lint + 500-line check
 make fmt              # gofmt + goimports
 make bench            # compositor render benchmarks
 ```
@@ -94,4 +96,4 @@ Per-repo workspace config lives at `.medusa/workspaces.json` (setup-workspace, r
 
 Conventional-commit-lite — the `.goreleaser.yml` changelog filter depends on the prefix. See `.claude/skills/medusa-commits-and-releases/SKILL.md` for the full table and the release walkthrough.
 
-Short version: `feat:` / `fix:` / `refactor:` / `perf:` surface in release notes; `docs:` / `test:` / `ci:` / `chore:` don't. Do NOT commit or push unless the user explicitly asks for it.
+Short version: `feat:` / `fix:` / `refactor:` / `perf:` surface in release notes; `docs:` / `test:` / `ci:` / `chore:` don't.

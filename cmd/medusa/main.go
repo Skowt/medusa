@@ -72,7 +72,7 @@ func main() {
 		// Logging is optional, continue without it
 		fmt.Fprintf(os.Stderr, "Warning: could not initialize logging: %v\n", err)
 	}
-	defer logging.Close()
+	defer func() { _ = logging.Close() }()
 
 	logging.Info("Starting medusa")
 

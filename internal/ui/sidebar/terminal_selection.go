@@ -68,7 +68,7 @@ func (m *TerminalModel) closeTabAt(idx int) (*TerminalModel, tea.Cmd) {
 		m.stopPTYReader(tab.State)
 		tab.State.mu.Lock()
 		if tab.State.Terminal != nil {
-			tab.State.Terminal.Close()
+			_ = tab.State.Terminal.Close()
 		}
 		tab.State.Running = false
 		tab.State.ptyRestartBackoff = 0

@@ -199,7 +199,7 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 	// Focus center pane when workspace has active tabs.
 	// If the workspace was already active and activated via mouse click,
 	// keep focus on the dashboard instead. Enter key always focuses center.
-	if msg.Workspace != nil && !(alreadyActive && msg.ViaClick) {
+	if msg.Workspace != nil && (!alreadyActive || !msg.ViaClick) {
 		wsID := string(msg.Workspace.ID())
 		if a.center.HasTabsForWorkspace(wsID) || workspaceHasLiveTabs(msg.Workspace) {
 			if a.monitorMode {
@@ -239,7 +239,7 @@ func (a *App) syncWorkspaceTabsFromTmux(ws *data.Workspace) tea.Cmd {
 				continue
 			}
 			if strings.EqualFold(tab.Status, "detached") {
-				if !(state.Exists && state.HasLivePane) {
+				if !state.Exists || !state.HasLivePane {
 					updates = append(updates, tmuxTabStatusUpdate{
 						SessionName:   tab.SessionName,
 						Status:        "stopped",

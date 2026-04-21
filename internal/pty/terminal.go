@@ -122,7 +122,7 @@ func (t *Terminal) Close() error {
 	t.closed = true
 
 	if t.ptyFile != nil {
-		t.ptyFile.Close()
+		_ = t.ptyFile.Close()
 	}
 
 	if t.cmd != nil {

@@ -92,7 +92,7 @@ func (m *Model) createScriptTab(command, displayName string, env map[string]stri
 	// by tmux's shellutil.Quote — adding inner quotes would break escaping.
 	var envPrefix strings.Builder
 	for k, v := range env {
-		envPrefix.WriteString(fmt.Sprintf("export %s=%s; ", k, v))
+		fmt.Fprintf(&envPrefix, "export %s=%s; ", k, v)
 	}
 	fullCmd := envPrefix.String() + command
 

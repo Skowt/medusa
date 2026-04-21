@@ -29,7 +29,7 @@ func TestPerfScenario(t *testing.T) {
 	if err := logging.Initialize(logDir, logging.LevelInfo); err != nil {
 		t.Fatalf("logging init: %v", err)
 	}
-	defer logging.Close()
+	defer func() { _ = logging.Close() }()
 
 	cfg, err := config.DefaultConfig()
 	if err != nil {
