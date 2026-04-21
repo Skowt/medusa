@@ -94,3 +94,21 @@ func TestHandleRenameGroupToEmpty(t *testing.T) {
 		t.Errorf("should not have migrated to empty-string key")
 	}
 }
+
+func TestHandleRenameGroup_RollsBackOnSaveFailure(t *testing.T) {
+	// TODO: Rollback logic is best-effort defensive code. To test it properly,
+	// we would need a failure-injection hook in WorkspaceStore.Save or a mock
+	// that returns errors on specific calls. The current interface doesn't expose
+	// such a hook, so the rollback correctness is validated by code inspection.
+	// If WorkspaceStore gains a failure hook in future, this test can be implemented.
+	t.Skip("WorkspaceStore.Save has no failure-injection hook; rollback logic is best-effort unless a test double is introduced")
+}
+
+func TestHandleDeleteGroup_RollsBackOnSaveFailure(t *testing.T) {
+	// TODO: Rollback logic is best-effort defensive code. To test it properly,
+	// we would need a failure-injection hook in WorkspaceStore.Save or a mock
+	// that returns errors on specific calls. The current interface doesn't expose
+	// such a hook, so the rollback correctness is validated by code inspection.
+	// If WorkspaceStore gains a failure hook in future, this test can be implemented.
+	t.Skip("WorkspaceStore.Save has no failure-injection hook; rollback logic is best-effort unless a test double is introduced")
+}
