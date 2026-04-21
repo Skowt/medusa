@@ -210,20 +210,15 @@ func (m *Model) renderWorkspaceLine3(ws *data.Workspace, contentWidth int) strin
 // renderRepoChip returns the line-2 repo chip for a workspace.
 // - 0 repos: "".
 // - 1 repo: "medusa".
-// - >=2 repos: "medusa +N" (the full list is shown on line 3 when selected).
+// - >=2 repos: "N Repos" (the full list is shown on line 3 when selected).
 func (m *Model) renderRepoChip(ws *data.Workspace) string {
 	if len(ws.Repos) == 0 {
 		return ""
 	}
-	names := make([]string, len(ws.Repos))
-	for i, r := range ws.Repos {
-		names[i] = r.Name
+	if len(ws.Repos) == 1 {
+		return ws.Repos[0].Name
 	}
-	sort.Strings(names)
-	if len(names) == 1 {
-		return names[0]
-	}
-	return fmt.Sprintf("%s +%d", names[0], len(names)-1)
+	return fmt.Sprintf("%d Repos", len(ws.Repos))
 }
 
 // formatGitSummary returns a short summary of git changes, e.g. "3M 2A 1?"
