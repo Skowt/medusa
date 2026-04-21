@@ -90,6 +90,10 @@ type Tab struct {
 	Isolated        bool
 	SkipPermissions bool
 
+	// Script tabs retain the full shell command (env-prefixed) so Restart
+	// can relaunch the same process in a fresh tmux session.
+	ScriptFullCmd string
+
 	// WorkspaceRenamed is set when the workspace is renamed while this tab is active.
 	// The agent's shell still references the old directory, so it may not work correctly.
 	WorkspaceRenamed bool

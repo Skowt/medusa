@@ -177,7 +177,9 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 	}
 	if autoLaunch {
 		wsID := string(msg.Workspace.ID())
-		if !a.center.HasTabsForWorkspace(wsID) && !workspaceHasLiveTabs(msg.Workspace) {
+		// Only agent tabs suppress auto-launch — a script tab created by the
+		// `run` command shouldn't prevent the initial Claude tab from opening.
+		if !a.center.HasAgentTabsForWorkspace(wsID) && !workspaceHasLiveAgentTabs(msg.Workspace) {
 			ws := msg.Workspace
 			allowEdits := a.config.UI.LastAllowEdits
 			isolated := a.config.UI.LastIsolated

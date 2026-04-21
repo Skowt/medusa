@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/safego"
@@ -24,11 +26,18 @@ const (
 
 const configFilename = "workspaces.json"
 
+// RunCommand is a named command for a run script tab.
+type RunCommand struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
 // WorkspaceConfig holds per-project workspace configuration
 type WorkspaceConfig struct {
-	SetupWorkspace []string `json:"setup-workspace"`
-	RunScript      string   `json:"run"`
-	ArchiveScript  string   `json:"archive"`
+	SetupWorkspace []string     `json:"setup-workspace"`
+	RunCommands    []RunCommand `json:"-"` // parsed from "run" (string or array)
+	RunScript      string       `json:"-"` // kept for RunScript() backward compat
+	ArchiveScript  string       `json:"archive"`
 }
 
 // ScriptRunner manages script execution for workspaces
@@ -61,11 +70,39 @@ func (r *ScriptRunner) LoadConfig(repoPath string) (*WorkspaceConfig, error) {
 		return nil, err
 	}
 
-	var config WorkspaceConfig
-	if err := json.Unmarshal(fileData, &config); err != nil {
+	// Parse with raw "run" field to handle string or array
+	var raw struct {
+		SetupWorkspace []string        `json:"setup-workspace"`
+		Run            json.RawMessage `json:"run"`
+		Archive        string          `json:"archive"`
+	}
+	if err := json.Unmarshal(fileData, &raw); err != nil {
 		return nil, err
 	}
-	return &config, nil
+
+	config := &WorkspaceConfig{
+		SetupWorkspace: raw.SetupWorkspace,
+		ArchiveScript:  raw.Archive,
+	}
+
+	// "run" can be a string or an array of {name, command} objects
+	if len(raw.Run) > 0 {
+		var single string
+		if err := json.Unmarshal(raw.Run, &single); err == nil {
+			config.RunScript = single
+			config.RunCommands = []RunCommand{{Command: single}}
+		} else {
+			var multi []RunCommand
+			if err := json.Unmarshal(raw.Run, &multi); err == nil {
+				config.RunCommands = multi
+				if len(multi) == 1 {
+					config.RunScript = multi[0].Command
+				}
+			}
+		}
+	}
+
+	return config, nil
 }
 
 // RunSetup runs the setup scripts for a workspace
@@ -148,6 +185,75 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 	})
 
 	return cmd, nil
+}
+
+// GetRunCommands returns the run commands, environment map, and any warnings
+// produced while normalizing tab names for a workspace. Falls back to
+// ws.Scripts.Run if no config file commands are defined.
+func (r *ScriptRunner) GetRunCommands(ws *data.Workspace) ([]RunCommand, map[string]string, []string, error) {
+	config, err := r.LoadConfig(ws.PrimaryRepo().Path)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	cmds := config.RunCommands
+	if len(cmds) == 0 && ws.Scripts.Run != "" {
+		cmds = []RunCommand{{Command: ws.Scripts.Run}}
+	}
+	if len(cmds) == 0 {
+		return nil, nil, nil, fmt.Errorf("no run script configured")
+	}
+	cmds, warnings := normalizeRunCommandNames(cmds)
+	envMap := r.envBuilder.BuildEnvMap(ws)
+	return cmds, envMap, warnings, nil
+}
+
+// deriveScriptTabName returns a display name for a run-script tab: the
+// caller-supplied name when set, otherwise the command (trimmed, and truncated
+// with an ellipsis if longer than 24 runes). Falls back to "dev server" only
+// when neither is available.
+func deriveScriptTabName(rc RunCommand) string {
+	if name := strings.TrimSpace(rc.Name); name != "" {
+		return name
+	}
+	cmd := strings.TrimSpace(rc.Command)
+	if cmd == "" {
+		return "dev server"
+	}
+	const maxLen = 24
+	const truncTo = 21
+	if utf8.RuneCountInString(cmd) <= maxLen {
+		return cmd
+	}
+	return string([]rune(cmd)[:truncTo]) + "…"
+}
+
+// normalizeRunCommandNames fills in empty names from the command and appends
+// " (N)" suffixes to any duplicates. Returns the updated list and a list of
+// human-readable warnings describing the renamings.
+func normalizeRunCommandNames(cmds []RunCommand) ([]RunCommand, []string) {
+	if len(cmds) == 0 {
+		return cmds, nil
+	}
+	taken := make(map[string]struct{}, len(cmds))
+	out := make([]RunCommand, len(cmds))
+	var warnings []string
+	for i, rc := range cmds {
+		base := deriveScriptTabName(rc)
+		final := base
+		for n := 2; ; n++ {
+			if _, clash := taken[final]; !clash {
+				break
+			}
+			final = fmt.Sprintf("%s (%d)", base, n)
+		}
+		if final != base {
+			warnings = append(warnings, fmt.Sprintf("run script name %q already used; renamed to %q", base, final))
+		}
+		taken[final] = struct{}{}
+		rc.Name = final
+		out[i] = rc
+	}
+	return out, warnings
 }
 
 // Stop stops the running script for a workspace

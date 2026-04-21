@@ -69,28 +69,60 @@ Each worktree tracks a repo checkout and its metadata. For local workflows, work
 - **Keyboard + mouse**: Can be operated with just the keyboard or with a mouse
 - **All-in-one tool**: Run agents, view diffs, and access terminal
 
-## Configuration
+## Workspace Scripts
 
-Create `.medusa/workspaces.json` in your project to customize how Medusa provisions workspaces:
+You can configure setup and run scripts per repository by creating a `.medusa/workspaces.json` file in your repo root.
+
+### Configuration
 
 ```json
 {
   "setup-workspace": [
-    "npm install",
-    "cp $ROOT_WORKSPACE_PATH/.env.local .env.local"
+    "uv venv && uv sync",
+    "cd client && npm i"
   ],
-  "run": "npm run dev",
-  "archive": "rm -rf node_modules"
+  "run": [
+    {"name": "backend", "command": "python server.py"},
+    {"name": "frontend", "command": "cd client && npm start"}
+  ],
+  "archive": "echo done"
 }
 ```
 
-- `setup-workspace` — shell commands run sequentially after a new workspace is created. Failures abort the workspace setup.
-- `run` — the command invoked when you start the workspace's run script.
-- `archive` — the command invoked when you archive the workspace.
+| Field | Type | Description |
+|---|---|---|
+| `setup-workspace` | `string[]` | Commands run sequentially when a workspace is created |
+| `run` | `string` or `object[]` | Dev server commands — one visible tab per entry. Launched automatically once `setup-workspace` finishes, or manually via Ctrl-a r |
+| `archive` | `string` | Command run when archiving a workspace |
 
-Each command runs from the workspace's primary worktree root. Environment variables provided to every command include `$ROOT_WORKSPACE_PATH` (the project's root repo checkout) and an auto-allocated free port (see `internal/process/env.go`).
+The `run` field supports two formats:
+- **String**: `"run": "npm start"` — opens a single "dev server" tab
+- **Array**: `"run": [{"name": "...", "command": "..."}]` — opens a named tab per entry
 
-Workspace metadata is tracked in `~/.medusa/workspaces.json`.
+### Environment Variables
+
+The following variables are injected into all script environments:
+
+| Variable | Example | Description |
+|---|---|---|
+| `WORKSPACE_PORT` | `6200` | Base port allocated for this workspace |
+| `WORKSPACE_PORT_RANGE` | `6200-6209` | Full port range (10 ports per workspace) |
+| `MEDUSA_WORKSPACE_NAME` | `my-feature` | Workspace name |
+| `MEDUSA_WORKSPACE_ROOT` | `/path/to/worktree` | Worktree root directory |
+| `MEDUSA_WORKSPACE_BRANCH` | `my-feature` | Git branch name |
+| `ROOT_WORKSPACE_PATH` | `/path/to/source/repo` | Source repository path |
+
+Each workspace gets a unique port range starting from 6200 (configurable), incremented by 10 per workspace. Use `WORKSPACE_PORT` in your scripts to avoid port collisions when running multiple workspaces simultaneously.
+
+### When run commands fire
+
+Run commands fire once, automatically, as soon as `setup-workspace` finishes for a newly created workspace — each entry opens in its own visible tab. They're independent of agent tabs: setup-complete and agent-tab creation aren't ordered relative to each other, and a workspace can have any mix of agent tabs and script tabs (or none).
+
+Press **Ctrl-a r** at any time to relaunch the run scripts for the active workspace. This closes existing script tabs first (killing their tmux sessions) and starts fresh ones — also the way to pick up edits to `workspaces.json`.
+
+### Notes
+
+Each command runs from the workspace's primary worktree root; failures in `setup-workspace` abort workspace setup. Workspace metadata (not to be confused with the per-repo config file above) is tracked in `~/.medusa/workspaces.json`.
 
 ## Development
 

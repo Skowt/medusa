@@ -20,6 +20,11 @@ func (m *Model) updateLaunchAgent(msg messages.LaunchAgent) (*Model, tea.Cmd) {
 	return m, m.createAgentTab(msg.Assistant, msg.Workspace, msg.AllowEdits, msg.Isolated, msg.SkipPermissions)
 }
 
+// updateLaunchScript handles messages.LaunchScript.
+func (m *Model) updateLaunchScript(msg messages.LaunchScript) (*Model, tea.Cmd) {
+	return m, m.createScriptTab(msg.Command, msg.DisplayName, msg.Env, msg.Workspace)
+}
+
 // updateOpenFileInVim handles messages.OpenFileInVim.
 func (m *Model) updateOpenFileInVim(msg messages.OpenFileInVim) (*Model, tea.Cmd) {
 	return m, m.createVimTab(msg.Path, msg.Workspace)

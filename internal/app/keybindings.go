@@ -20,6 +20,7 @@ type KeyMap struct {
 	CleanupTmux    key.Binding
 	NewAgentTab    key.Binding
 	NewTerminalTab key.Binding
+	RunScript      key.Binding
 	Help           key.Binding
 	Monitor        key.Binding
 	GlobalPerms    key.Binding
@@ -98,6 +99,10 @@ func DefaultKeyMap() KeyMap {
 		NewTerminalTab: key.NewBinding(
 			key.WithKeys("t"),
 			key.WithHelp("t", "new terminal tab"),
+		),
+		RunScript: key.NewBinding(
+			key.WithKeys("r"),
+			key.WithHelp("r", "run script"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),

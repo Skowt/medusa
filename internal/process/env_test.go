@@ -47,13 +47,13 @@ func TestEnvBuilder_BuildEnv(t *testing.T) {
 	// Check port variables
 	portFound := false
 	for _, e := range env {
-		if strings.HasPrefix(e, "MEDUSA_PORT=") {
+		if strings.HasPrefix(e, "WORKSPACE_PORT=") {
 			portFound = true
 			break
 		}
 	}
 	if !portFound {
-		t.Error("Missing MEDUSA_PORT env var")
+		t.Error("Missing WORKSPACE_PORT env var")
 	}
 }
 
@@ -68,8 +68,8 @@ func TestEnvBuilder_BuildEnvMap(t *testing.T) {
 	if envMap["MEDUSA_WORKSPACE_NAME"] != "feature-1" {
 		t.Errorf("MEDUSA_WORKSPACE_NAME = %v, want feature-1", envMap["MEDUSA_WORKSPACE_NAME"])
 	}
-	if envMap["MEDUSA_PORT"] != "6200" {
-		t.Errorf("MEDUSA_PORT = %v, want 6200", envMap["MEDUSA_PORT"])
+	if envMap["WORKSPACE_PORT"] != "6200" {
+		t.Errorf("WORKSPACE_PORT = %v, want 6200", envMap["WORKSPACE_PORT"])
 	}
 }
 
@@ -83,8 +83,8 @@ func TestEnvBuilder_NilPortAllocator(t *testing.T) {
 	// Should not crash with nil port allocator
 	// And should not have port vars
 	for _, e := range env {
-		if strings.HasPrefix(e, "MEDUSA_PORT=") {
-			t.Error("Should not have MEDUSA_PORT with nil allocator")
+		if strings.HasPrefix(e, "WORKSPACE_PORT=") {
+			t.Error("Should not have WORKSPACE_PORT with nil allocator")
 		}
 	}
 }

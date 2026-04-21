@@ -94,6 +94,39 @@ func (m *Model) removeTab(idx int) {
 	}
 }
 
+// appendTabOrdered adds tab to the workspace's tab list, maintaining the
+// invariant that script tabs are always last so the bar always reads
+// Info → agents → scripts. Non-script tabs inserted while script tabs are
+// already present shift those scripts right and bump the active-tab pointer
+// accordingly. Returns the index at which the new tab was placed.
+func (m *Model) appendTabOrdered(wsID string, tab *Tab) int {
+	tabs := m.tabsByWorkspace[wsID]
+	if tab == nil || tab.Assistant == "script" {
+		m.tabsByWorkspace[wsID] = append(tabs, tab)
+		return len(m.tabsByWorkspace[wsID]) - 1
+	}
+	firstScriptIdx := -1
+	for i, t := range tabs {
+		if t != nil && t.Assistant == "script" {
+			firstScriptIdx = i
+			break
+		}
+	}
+	if firstScriptIdx < 0 {
+		m.tabsByWorkspace[wsID] = append(tabs, tab)
+		return len(m.tabsByWorkspace[wsID]) - 1
+	}
+	if idx, ok := m.activeTabByWorkspace[wsID]; ok && idx >= firstScriptIdx {
+		m.activeTabByWorkspace[wsID] = idx + 1
+	}
+	newTabs := make([]*Tab, len(tabs)+1)
+	copy(newTabs, tabs[:firstScriptIdx])
+	newTabs[firstScriptIdx] = tab
+	copy(newTabs[firstScriptIdx+1:], tabs[firstScriptIdx:])
+	m.tabsByWorkspace[wsID] = newTabs
+	return firstScriptIdx
+}
+
 // CleanupWorkspace removes all tabs and state for a deleted workspace
 func (m *Model) CleanupWorkspace(ws *data.Workspace) {
 	if ws == nil {

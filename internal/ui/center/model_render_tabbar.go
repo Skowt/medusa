@@ -62,21 +62,28 @@ func (m *Model) renderTabBar() string {
 		tabDisconnected := tab.Detached || !tab.Running
 		tab.mu.Unlock()
 
-		// Brand-color indicator for agent tabs (running = solid dot, idle = ring).
+		// Brand-color indicator for agent and script tabs
+		// (running = solid dot, idle = ring).
 		var indicator string
 		var tabActive bool
 		isChat := m.isChatTab(tab)
-		if isChat {
+		isScript := tab.Assistant == "script"
+		if isChat || isScript {
 			if tabDisconnected {
 				indicator = common.Icons.Idle + " "
 			} else {
 				indicator = common.Icons.Running + " "
 			}
-			tabActive = m.IsTabActive(tab)
+			if isChat {
+				tabActive = m.IsTabActive(tab)
+			}
 		}
 
 		agentStyle := m.styles.AgentClaude
-		if tab.Assistant != "claude" {
+		switch {
+		case isScript:
+			agentStyle = m.styles.AgentScript
+		case tab.Assistant != "claude":
 			agentStyle = m.styles.AgentTerm
 		}
 

@@ -46,6 +46,7 @@ type Styles struct {
 	// Center pane - Agent indicators
 	AgentClaude lipgloss.Style
 	AgentTerm   lipgloss.Style
+	AgentScript lipgloss.Style
 
 	// Sidebar
 	SidebarHeader lipgloss.Style
@@ -190,6 +191,9 @@ func DefaultStyles() Styles {
 
 		AgentTerm: lipgloss.NewStyle().
 			Foreground(ColorForeground),
+
+		AgentScript: lipgloss.NewStyle().
+			Foreground(ColorSuccess),
 
 		// Sidebar
 		SidebarHeader: lipgloss.NewStyle().

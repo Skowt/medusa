@@ -13,6 +13,7 @@ import (
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/sandbox"
 	"github.com/Skowt/medusa/internal/shellutil"
 	"github.com/Skowt/medusa/internal/tmux"
@@ -245,6 +246,7 @@ func (m *AgentManager) CreateViewerWithTags(ws *data.Workspace, command string, 
 	}
 
 	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root(), command, tmux.DefaultOptions(), tags)
+	logging.Info("CreateViewerWithTags: termCommand=%s", termCommand)
 	term, err := NewWithSize(termCommand, ws.Root(), env, rows, cols)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create terminal: %w", err)

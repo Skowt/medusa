@@ -13,6 +13,7 @@ import (
 	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/tmux"
 )
 
@@ -274,7 +275,36 @@ func (a *App) handleWorkspaceSetupComplete(msg messages.WorkspaceSetupComplete) 
 	if msg.Err != nil {
 		return a.toast.ShowWarning(fmt.Sprintf("Setup failed for %s: %v", msg.Workspace.Name, msg.Err))
 	}
+	// Auto-start the "run" scripts (dev servers) in visible tabs if configured.
+	if msg.Workspace != nil {
+		cmds, env, warnings, err := a.scripts.GetRunCommands(msg.Workspace)
+		if err == nil {
+			ws := msg.Workspace
+			launch := a.launchScriptCmds(ws, cmds, env)
+			if len(warnings) > 0 {
+				return tea.Batch(a.toast.ShowWarning(strings.Join(warnings, "\n")), launch)
+			}
+			return launch
+		}
+	}
 	return nil
+}
+
+// launchScriptCmds returns a tea.Cmd that emits LaunchScript messages for each run command.
+func (a *App) launchScriptCmds(ws *data.Workspace, cmds []process.RunCommand, env map[string]string) tea.Cmd {
+	var teaCmds []tea.Cmd
+	for _, rc := range cmds {
+		rc := rc
+		teaCmds = append(teaCmds, func() tea.Msg {
+			return messages.LaunchScript{
+				Workspace:   ws,
+				Command:     rc.Command,
+				DisplayName: rc.Name,
+				Env:         env,
+			}
+		})
+	}
+	return tea.Batch(teaCmds...)
 }
 
 // handleWorkspaceCreateFailed handles the WorkspaceCreateFailed message.
