@@ -20,14 +20,19 @@ const (
 	// Inactive tabs still need to advance their terminal state, but can flush less frequently.
 	ptyFlushInactiveMultiplier = 4
 	ptyFlushMonitorMultiplier  = 6
-	ptyReadBufferSize          = 32 * 1024
-	ptyReadQueueSize           = 64
-	ptyFrameInterval           = time.Second / 60
-	ptyMaxPendingBytes         = 512 * 1024
-	ptyReaderStallTimeout      = 10 * time.Second
-	tabActorStallTimeout       = 10 * time.Second
-	ptyRestartMax              = 5
-	ptyRestartWindow           = time.Minute
+	// Cap bytes parsed per flush so tab.mu isn't held for long stretches.
+	// VTerm.Write is O(bytes) at ~30-50 MB/s, and rendering also takes tab.mu,
+	// so one unchunked flush on a big backlog freezes the UI for the duration.
+	// pendingOutput remains uncapped; if more remains after a chunk, we reschedule.
+	ptyFlushChunkSize     = 32 * 1024
+	ptyReadBufferSize     = 32 * 1024
+	ptyReadQueueSize      = 64
+	ptyFrameInterval      = time.Second / 60
+	ptyMaxPendingBytes    = 512 * 1024
+	ptyReaderStallTimeout = 10 * time.Second
+	tabActorStallTimeout  = 10 * time.Second
+	ptyRestartMax         = 5
+	ptyRestartWindow      = time.Minute
 
 	// Auto-restart: when a tmux session dies, automatically attempt to restart
 	// the agent tab. After exhausting attempts, show a manual-restart hint.

@@ -201,15 +201,29 @@ func (m *TerminalModel) Update(msg tea.Msg) (*TerminalModel, tea.Cmd) {
 			ts.flushScheduled = false
 			ts.flushPendingSince = time.Time{}
 			if len(ts.pendingOutput) > 0 {
+				var chunk []byte
 				ts.mu.Lock()
 				if ts.VTerm != nil {
-					data := ts.pendingOutput
-					ts.pendingOutput = nil
-					ts.VTerm.Write(data)
+					chunkSize := len(ts.pendingOutput)
+					if chunkSize > ptyFlushChunkSize {
+						chunkSize = ptyFlushChunkSize
+					}
+					chunk = append(chunk, ts.pendingOutput[:chunkSize]...)
+					copy(ts.pendingOutput, ts.pendingOutput[chunkSize:])
+					ts.pendingOutput = ts.pendingOutput[:len(ts.pendingOutput)-chunkSize]
+					ts.VTerm.Write(chunk)
 				} else {
 					ts.pendingOutput = nil
 				}
 				ts.mu.Unlock()
+				if len(ts.pendingOutput) > 0 {
+					ts.flushScheduled = true
+					ts.flushPendingSince = time.Now()
+					tabIDLocal := msg.TabID
+					cmds = append(cmds, common.SafeTick(time.Millisecond, func(t time.Time) tea.Msg {
+						return messages.SidebarPTYFlush{WorkspaceID: wsID, TabID: tabIDLocal}
+					}))
+				}
 			}
 		}
 

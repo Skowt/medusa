@@ -16,10 +16,13 @@ import (
 )
 
 const (
-	ptyFlushQuiet         = 12 * time.Millisecond
-	ptyFlushMaxInterval   = 50 * time.Millisecond
-	ptyFlushQuietAlt      = 30 * time.Millisecond
-	ptyFlushMaxAlt        = 120 * time.Millisecond
+	ptyFlushQuiet       = 12 * time.Millisecond
+	ptyFlushMaxInterval = 50 * time.Millisecond
+	ptyFlushQuietAlt    = 30 * time.Millisecond
+	ptyFlushMaxAlt      = 120 * time.Millisecond
+	// See model_pty.go (center) for rationale — caps per-flush parse time so
+	// VTerm.Write doesn't hold the terminal lock long enough to stall renders.
+	ptyFlushChunkSize     = 32 * 1024
 	ptyReadBufferSize     = 32 * 1024
 	ptyReadQueueSize      = 32
 	ptyFrameInterval      = time.Second / 60
