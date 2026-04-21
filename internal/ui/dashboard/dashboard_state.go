@@ -125,55 +125,102 @@ func (m *Model) rebuildRows() {
 		return all[i].Created.Before(all[j].Created)
 	})
 
-	// Group workspaces by repo name(s): single-repo by repo name,
-	// multi-repo by sorted comma-joined repo names (truncated to 15 chars).
-	repoGroups := make(map[string][]*data.Workspace) // group key -> workspaces
-	groupLabels := make(map[string]string)           // group key -> display label
-	var groupOrder []string                          // first-seen order of keys
+	// Partition workspaces by user group. Groups are derived from distinct non-empty Group values.
+	groupMembers := make(map[string][]*data.Workspace)
+	groupMinCreated := make(map[string]time.Time)
+	var ungrouped []*data.Workspace
+	hasGroups := false
 
 	for _, ws := range all {
-		var key, label string
-		if len(ws.Repos) == 0 {
-			key = "other"
-			label = "other"
-		} else {
-			names := make([]string, len(ws.Repos))
-			for i, r := range ws.Repos {
-				names[i] = r.Name
-			}
-			sort.Strings(names)
-			label = strings.Join(names, ", ")
-			if len(label) > 15 {
-				label = label[:15] + "..."
-			}
-			key = strings.Join(names, ",") // stable key (no truncation)
+		if ws.Group == "" {
+			ungrouped = append(ungrouped, ws)
+			continue
 		}
-		if _, seen := repoGroups[key]; !seen {
-			groupOrder = append(groupOrder, key)
-			groupLabels[key] = label
+		hasGroups = true
+		groupMembers[ws.Group] = append(groupMembers[ws.Group], ws)
+		if cur, ok := groupMinCreated[ws.Group]; !ok || ws.Created.Before(cur) {
+			groupMinCreated[ws.Group] = ws.Created
 		}
-		repoGroups[key] = append(repoGroups[key], ws)
 	}
 
-	sort.Strings(groupOrder)
-
-	for _, key := range groupOrder {
-		groupWs := repoGroups[key]
-		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: groupLabels[key]})
-		for _, ws := range groupWs {
-			m.rows = append(m.rows, Row{
-				Type:      RowWorkspace,
-				Workspace: ws,
-			})
+	// Group order: ascending by each group's earliest member Created (first-use).
+	// Ties broken alphabetically to keep output deterministic.
+	groupOrder := make([]string, 0, len(groupMembers))
+	for g := range groupMembers {
+		groupOrder = append(groupOrder, g)
+	}
+	sort.SliceStable(groupOrder, func(i, j int) bool {
+		ti, tj := groupMinCreated[groupOrder[i]], groupMinCreated[groupOrder[j]]
+		if ti.Equal(tj) {
+			return groupOrder[i] < groupOrder[j]
 		}
-		lastWs := groupWs[len(groupWs)-1]
-		m.rows = append(m.rows, Row{
-			Type:             RowQuickDuplicate,
-			GroupRepos:       lastWs.Repos,
-			GroupProfile:     lastWs.Profile,
-			GroupCopyIgnored: lastWs.CopyIgnored,
+		return ti.Before(tj)
+	})
+
+	// Within-group sort: sorted-joined repo names (same comparator the old repo grouping used).
+	sortMembers := func(members []*data.Workspace) {
+		sort.SliceStable(members, func(i, j int) bool {
+			ki := repoSortKey(members[i])
+			kj := repoSortKey(members[j])
+			if ki == kj {
+				return members[i].Created.Before(members[j].Created)
+			}
+			return ki < kj
 		})
-		m.rows = append(m.rows, Row{Type: RowSpacer})
+	}
+
+	// Emit named groups in first-use order.
+	for _, label := range groupOrder {
+		members := groupMembers[label]
+		sortMembers(members)
+		collapsed := m.collapsedGroups[label]
+		header := Row{
+			Type:        RowSectionHeader,
+			Label:       label,
+			IsUserGroup: true,
+			Collapsed:   collapsed,
+		}
+		if collapsed {
+			header.MemberCount = len(members)
+		}
+		m.rows = append(m.rows, header)
+		if !collapsed {
+			for _, ws := range members {
+				m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: ws})
+			}
+			m.rows = append(m.rows, Row{Type: RowSpacer})
+		}
+	}
+
+	// Ungrouped pseudo-section: only when at least one named group exists.
+	if hasGroups && len(ungrouped) > 0 {
+		sortMembers(ungrouped)
+		collapsed := m.collapsedGroups[""]
+		header := Row{
+			Type:        RowSectionHeader,
+			Label:       "Ungrouped",
+			IsUserGroup: true,
+			Collapsed:   collapsed,
+		}
+		if collapsed {
+			header.MemberCount = len(ungrouped)
+		}
+		m.rows = append(m.rows, header)
+		if !collapsed {
+			for _, ws := range ungrouped {
+				m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: ws})
+			}
+			m.rows = append(m.rows, Row{Type: RowSpacer})
+		}
+	} else if !hasGroups {
+		// No named groups — flat list sorted by repo names, no headers at all.
+		sortMembers(ungrouped)
+		for _, ws := range ungrouped {
+			m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: ws})
+		}
+		if len(ungrouped) > 0 {
+			m.rows = append(m.rows, Row{Type: RowSpacer})
+		}
 	}
 
 	// Orphans section
@@ -224,7 +271,7 @@ func (m *Model) rebuildRows() {
 			if m.cursor < 0 {
 				m.cursor = 0
 			}
-			if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor].Type) {
+			if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor]) {
 				if next := m.findSelectableRow(m.cursor, -1); next != -1 {
 					m.cursor = next
 				} else if next := m.findSelectableRow(m.cursor, 1); next != -1 {
@@ -240,7 +287,7 @@ func (m *Model) rebuildRows() {
 		if m.cursor < 0 {
 			m.cursor = 0
 		}
-		if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor].Type) {
+		if len(m.rows) > 0 && !isSelectable(m.rows[m.cursor]) {
 			if next := m.findSelectableRow(m.cursor, 1); next != -1 {
 				m.cursor = next
 			} else if prev := m.findSelectableRow(m.cursor, -1); prev != -1 {
@@ -302,4 +349,18 @@ func (m *Model) clampScrollOffset() {
 	if m.scrollOffset < 0 {
 		m.scrollOffset = 0
 	}
+}
+
+// repoSortKey returns a stable within-group sort key based on the workspace's sorted repo names.
+// Single-repo workspaces sort by repo name; multi-repo workspaces sort by sorted, comma-joined names.
+func repoSortKey(ws *data.Workspace) string {
+	if len(ws.Repos) == 0 {
+		return ""
+	}
+	names := make([]string, len(ws.Repos))
+	for i, r := range ws.Repos {
+		names[i] = r.Name
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }

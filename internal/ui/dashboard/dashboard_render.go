@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -34,19 +35,16 @@ func (m *Model) renderRow(row Row, selected bool) string {
 		}
 		return style.Render(" " + common.Icons.Add + " New Workspace ")
 
-	case RowQuickDuplicate:
-		style := m.styles.CreateButton
-		if selected {
-			style = m.styles.SelectedRow
-		}
-		return "\n" + style.Render(" "+common.Icons.Add+" Quick Duplicate ")
-
 	case RowSectionHeader:
-		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
 		contentWidth := m.width - 3
 		if contentWidth < 1 {
 			contentWidth = 1
 		}
+		if row.IsUserGroup {
+			return m.renderUserGroupHeader(row, selected, contentWidth)
+		}
+		// Non-interactive drawer headers (archived/orphans) — existing behavior.
+		style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
 		if row.Label == "archived" {
 			sep := lipgloss.NewStyle().Foreground(common.ColorSurface2).Render(strings.Repeat("─", contentWidth))
 			return sep + "\n" + style.Render(" "+row.Label)
@@ -270,17 +268,17 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		style = lipgloss.NewStyle().Bold(true).Foreground(common.ColorForeground).Background(common.ColorSelection)
 	}
 
-	// Delete icon
-	deleteSlot := "   "
-	deleteSlotWidth := 3
+	// Right-edge icon slot: " + × " when selected (6 cols), "      " otherwise (6 cols).
+	rightSlot := "      "
+	rightSlotWidth := 6
 	if selected {
-		deleteSlot = " " + common.Icons.Close + " "
+		rightSlot = " " + common.Icons.Add + " " + common.Icons.Close + " "
 	}
 
 	// Truncate name
 	name := ws.Name
 	prefixWidth := 2 + indicatorWidth // " " prefix + " " styled prefix + indicator
-	maxNameWidth := contentWidth - lipgloss.Width(statusText) - deleteSlotWidth - prefixWidth
+	maxNameWidth := contentWidth - lipgloss.Width(statusText) - rightSlotWidth - prefixWidth
 	if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
 		runes := []rune(name)
 		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
@@ -290,10 +288,12 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	}
 
 	if selected {
-		m.deleteIconX = prefixWidth + lipgloss.Width(style.Render(name))
+		nameEnd := prefixWidth + lipgloss.Width(style.Render(name))
+		m.duplicateIconX = nameEnd + 1 // leading space before "+"
+		m.deleteIconX = nameEnd + 4    // "+" + space, then "×" starts at offset +3 past the leading space
 	}
 
-	return style.Render(" ") + renderedIndicator + style.Render(name) + style.Render(deleteSlot) + statusText
+	return style.Render(" ") + renderedIndicator + style.Render(name) + style.Render(rightSlot) + statusText
 }
 
 // renderWorkspaceLine2: profile · git changes · created day
@@ -316,6 +316,11 @@ func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentW
 	indent := bg.Render(" ") + arrowStyle.Render("└ ")
 
 	var parts []string
+
+	// Repo chip: "medusa" (single), "medusa +N" (multi), or omitted (no repos).
+	if chip := m.renderRepoChip(ws, selected); chip != "" {
+		parts = append(parts, mutedStyle.Render(chip))
+	}
 
 	// Profile name
 	profileName := "Default"
@@ -415,4 +420,52 @@ func formatGitSummary(status *git.StatusResult) string {
 		parts = append(parts, fmt.Sprintf("%d?", untracked))
 	}
 	return strings.Join(parts, " ")
+}
+
+// renderUserGroupHeader renders a collapsible user-group header with a chevron
+// and a "(N)" member count when collapsed.
+func (m *Model) renderUserGroupHeader(row Row, selected bool, contentWidth int) string {
+	chevron := "▾ "
+	if row.Collapsed {
+		chevron = "▸ "
+	}
+
+	style := lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true)
+	if selected {
+		style = style.Background(common.ColorSelection)
+	}
+
+	label := row.Label
+	if row.Collapsed && row.MemberCount > 0 {
+		label = fmt.Sprintf("%s (%d)", label, row.MemberCount)
+	}
+
+	line := style.Render(" " + chevron + label)
+	if selected {
+		return padWithBg(line, contentWidth, lipgloss.NewStyle().Background(common.ColorSelection))
+	}
+	return line
+}
+
+// renderRepoChip returns the line-2 repo chip for a workspace.
+// - 0 repos: "".
+// - 1 repo: "medusa".
+// - >=2 repos, not selected: "medusa +N".
+// - >=2 repos, selected: "medusa, other-repo, third" (full sorted list; truncation handled upstream by contentWidth).
+func (m *Model) renderRepoChip(ws *data.Workspace, selected bool) string {
+	if len(ws.Repos) == 0 {
+		return ""
+	}
+	names := make([]string, len(ws.Repos))
+	for i, r := range ws.Repos {
+		names[i] = r.Name
+	}
+	sort.Strings(names)
+	if len(names) == 1 {
+		return names[0]
+	}
+	if selected {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s +%d", names[0], len(names)-1)
 }
