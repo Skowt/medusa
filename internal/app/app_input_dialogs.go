@@ -38,6 +38,11 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 		return nil
 	}
 
+	// Delegate to group dialog handler (handles confirmed group dialogs)
+	if cmd, handled := a.handleGroupDialogResult(result.ID, result.Confirmed, result.Value, workspace, defaultName); handled {
+		return cmd
+	}
+
 	switch result.ID {
 	case DialogSelectRecentRepos:
 		// Use the snapshot stored when the dialog was opened to avoid race conditions
@@ -198,34 +203,6 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			return func() tea.Msg {
 				return messages.SetWorkspaceNote{Workspace: ws, Note: note}
 			}
-		}
-
-	case DialogSetWorkspaceGroup:
-		if workspace != nil {
-			label := validation.SanitizeInput(result.Value)
-			ws := workspace
-			return func() tea.Msg {
-				return messages.SetWorkspaceGroup{Workspace: ws, Label: label}
-			}
-		}
-
-	case DialogRenameGroup:
-		old := defaultName
-		if old == "" {
-			return nil
-		}
-		newLabel := validation.SanitizeInput(result.Value)
-		return func() tea.Msg {
-			return messages.RenameGroup{OldLabel: old, NewLabel: newLabel}
-		}
-
-	case DialogDeleteGroup:
-		label := defaultName
-		if label == "" {
-			return nil
-		}
-		return func() tea.Msg {
-			return messages.DeleteGroup{Label: label}
 		}
 
 	case DialogRenameWorkspace:
