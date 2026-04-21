@@ -180,6 +180,50 @@ func TestRenderWorkspaceRow_SingleRepoSelected_StaysTwoLines(t *testing.T) {
 	}
 }
 
+func TestRebuildRows_GroupsWithArchivedAndOrphanSections(t *testing.T) {
+	m := New()
+	active := mkWS("a", "shipping", []string{"medusa"}, time.Unix(1, 0))
+	archived := mkWS("old", "", []string{"medusa"}, time.Unix(2, 0))
+	archived.Status = data.StatusArchived
+	archived.ArchivedAt = time.Unix(100, 0)
+	orphan := mkWS("ghost", "", []string{"medusa"}, time.Unix(3, 0))
+	orphan.Orphan = data.OrphanMetadata
+
+	m.workspaces = []*data.Workspace{active, archived, orphan}
+	m.rebuildRows()
+
+	// Find indices of key rows.
+	idx := map[string]int{}
+	for i, r := range m.rows {
+		switch {
+		case r.Type == RowSectionHeader && r.Label == "shipping":
+			idx["shipping"] = i
+		case r.Type == RowSectionHeader && r.Label == "orphans":
+			idx["orphans"] = i
+		case r.Type == RowCreate:
+			idx["create"] = i
+		case r.Type == RowSectionHeader && r.Label == "archived":
+			idx["archived"] = i
+		}
+	}
+	if _, ok := idx["shipping"]; !ok {
+		t.Fatalf("missing shipping group header: %v", idx)
+	}
+	if _, ok := idx["create"]; !ok {
+		t.Fatalf("missing create row: %v", idx)
+	}
+	// Ordering: user group -> orphans -> create -> archived.
+	if orph, ok := idx["orphans"]; ok && orph <= idx["shipping"] {
+		t.Errorf("orphans must come after user group (orphans=%d shipping=%d)", orph, idx["shipping"])
+	}
+	if orph, ok := idx["orphans"]; ok && orph >= idx["create"] {
+		t.Errorf("orphans must come before create (orphans=%d create=%d)", orph, idx["create"])
+	}
+	if arch, ok := idx["archived"]; ok && arch <= idx["create"] {
+		t.Errorf("archived must come after create (archived=%d create=%d)", arch, idx["create"])
+	}
+}
+
 func TestRowLineCount_SelectedMultiRepo(t *testing.T) {
 	m := New()
 	m.workspaces = []*data.Workspace{
