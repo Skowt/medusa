@@ -149,6 +149,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 		allowEdits := tab.AllowEdits
 		isolated := tab.Isolated
 		skipPerms := tab.SkipPermissions
+		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
 		if detached {
@@ -165,6 +166,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			AllowEdits:      allowEdits,
 			Isolated:        isolated,
 			SkipPermissions: skipPerms,
+			ScriptFullCmd:   scriptFullCmd,
 		})
 	}
 	return result, m.getActiveTabIdx()
@@ -189,6 +191,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 		allowEdits := tab.AllowEdits
 		isolated := tab.Isolated
 		skipPerms := tab.SkipPermissions
+		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
 		if detached {
@@ -205,6 +208,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			AllowEdits:      allowEdits,
 			Isolated:        isolated,
 			SkipPermissions: skipPerms,
+			ScriptFullCmd:   scriptFullCmd,
 		})
 	}
 	return result, m.activeTabByWorkspace[wsID]

@@ -56,6 +56,9 @@ type TabInfo struct {
 	AllowEdits      bool   `json:"allow_edits,omitempty"`
 	Isolated        bool   `json:"isolated,omitempty"`
 	SkipPermissions bool   `json:"skip_permissions,omitempty"`
+	// ScriptFullCmd is the env-prefixed shell command for script tabs,
+	// persisted so Restart can rerun the same command after a medusa restart.
+	ScriptFullCmd string `json:"script_full_cmd,omitempty"`
 }
 
 // ScriptsConfig holds the setup/run/archive script commands

@@ -410,6 +410,7 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		AllowEdits:      info.AllowEdits,
 		Isolated:        info.Isolated,
 		SkipPermissions: info.SkipPermissions,
+		ScriptFullCmd:   info.ScriptFullCmd,
 	}
 	wsID := string(ws.ID())
 	m.appendTabOrdered(wsID, tab)
