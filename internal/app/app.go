@@ -51,6 +51,9 @@ const (
 	DialogArchiveWorkspace    = "archive_workspace"
 	DialogArchivedWorkspace   = "archived_workspace"
 	DialogSetNote             = "set_note"
+	DialogSetWorkspaceGroup   = "set_workspace_group"
+	DialogRenameGroup         = "rename_group"
+	DialogDeleteGroup         = "delete_group"
 )
 
 // Prefix mode constants

@@ -99,6 +99,35 @@ func (a *App) handleSetWorkspaceNote(msg messages.SetWorkspaceNote) tea.Cmd {
 	return nil
 }
 
+// handleShowSetWorkspaceGroupDialog opens the group-label input dialog.
+func (a *App) handleShowSetWorkspaceGroupDialog(msg messages.ShowSetWorkspaceGroupDialog) {
+	if msg.Workspace == nil {
+		return
+	}
+	a.dialogWorkspace = msg.Workspace
+	a.dialog = common.NewInputDialog(DialogSetWorkspaceGroup, "Set Group", msg.Workspace.Group)
+	a.dialog.SetMessage("Group label to organize workspaces (leave empty to ungroup).")
+	a.dialog.SetSize(a.width, a.height)
+	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
+	a.dialog.Show()
+}
+
+// handleSetWorkspaceGroup persists a group label on a workspace.
+func (a *App) handleSetWorkspaceGroup(msg messages.SetWorkspaceGroup) tea.Cmd {
+	if msg.Workspace == nil {
+		return nil
+	}
+	msg.Workspace.Group = msg.Label
+	if err := a.workspaces.Save(msg.Workspace); err != nil {
+		logging.Error("Failed to save workspace group: %v", err)
+		return a.toast.ShowError("Failed to save group")
+	}
+	if a.dashboard != nil {
+		a.dashboard.SetWorkspaces(a.allWorkspaces)
+	}
+	return nil
+}
+
 // handleSetWorkspaceProfile persists a profile for a workspace and reloads.
 func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cmd {
 	if msg.Workspace == nil {
@@ -436,3 +465,15 @@ func (a *App) handleActionBarOpenMR(msg messages.ActionBarOpenMR) tea.Cmd {
 		return messages.Toast{Message: "Opened in browser", Level: messages.ToastSuccess}
 	}
 }
+
+// TODO(task-9): implement group rename cascade.
+func (a *App) handleShowRenameGroupDialog(msg messages.ShowRenameGroupDialog) {}
+func (a *App) handleRenameGroup(msg messages.RenameGroup) tea.Cmd             { return nil }
+
+// TODO(task-9): implement group delete cascade.
+func (a *App) handleShowDeleteGroupDialog(msg messages.ShowDeleteGroupDialog) {}
+func (a *App) handleDeleteGroup(msg messages.DeleteGroup) tea.Cmd             { return nil }
+
+// TODO(task-10): implement collapse toggle + duplicate.
+func (a *App) handleToggleGroupCollapse(msg messages.ToggleGroupCollapse) tea.Cmd { return nil }
+func (a *App) handleDuplicateWorkspace(msg messages.DuplicateWorkspace) tea.Cmd   { return nil }

@@ -43,7 +43,8 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch result.ID {
 		case DialogAddRepos, DialogAddReposToWorkspace, DialogCreateWorkspace, DialogDeleteWorkspace, DialogCustomizeTab, DialogQuit, DialogCleanupTmux, DialogSetProfile, DialogRenameWorkspace, DialogRenameProfile, DialogCreateProfile, DialogDeleteProfile, DialogCommit,
 			DialogSelectBranchMode, DialogCustomBranch, DialogSelectRecentRepos, DialogCloseTab, DialogSetProfileForCreate, DialogQuickDuplicate,
-			DialogArchiveWorkspace, DialogArchivedWorkspace, DialogSetNote:
+			DialogArchiveWorkspace, DialogArchivedWorkspace, DialogSetNote,
+			DialogSetWorkspaceGroup, DialogRenameGroup, DialogDeleteGroup:
 			return a, a.safeCmd(a.handleDialogResult(result))
 		}
 		// If not an App-level dialog, let it fall through to components
@@ -470,6 +471,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		if a.routeSystemMsg(msg, &cmds) {
+			break
+		}
+		if a.routeGroupMsg(msg, &cmds) {
 			break
 		}
 		// Forward unknown messages to center pane (e.g., commit viewer internal messages)

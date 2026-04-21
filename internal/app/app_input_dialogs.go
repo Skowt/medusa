@@ -200,6 +200,15 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			}
 		}
 
+	case DialogSetWorkspaceGroup:
+		if workspace != nil {
+			label := validation.SanitizeInput(result.Value)
+			ws := workspace
+			return func() tea.Msg {
+				return messages.SetWorkspaceGroup{Workspace: ws, Label: label}
+			}
+		}
+
 	case DialogRenameWorkspace:
 		if workspace != nil {
 			name := validation.SanitizeInput(result.Value)
