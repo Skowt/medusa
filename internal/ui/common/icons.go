@@ -61,7 +61,7 @@ var Icons = struct {
 	Delete: "×",
 	Edit:   "~",
 	Close:  "×",
-	Group:  "#",
+	Group:  "≡",
 
 	// Navigation
 	Cursor:      ">",
