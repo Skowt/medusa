@@ -66,8 +66,12 @@ func (m *Model) rowLineCount(idx int) int {
 	}
 	switch m.rows[idx].Type {
 	case RowWorkspace:
-		if m.rows[idx].Workspace != nil && m.rows[idx].Workspace.Archived() {
+		ws := m.rows[idx].Workspace
+		if ws != nil && ws.Archived() {
 			return 1
+		}
+		if idx == m.cursor && ws != nil && len(ws.Repos) >= 2 {
+			return 3
 		}
 		return 2
 	case RowSectionHeader:

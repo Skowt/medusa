@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -124,5 +125,81 @@ func TestRebuildRows_WithinGroup_SortedByRepoNames(t *testing.T) {
 	}
 	if len(names) != 3 || names[0] != "a" || names[1] != "m" || names[2] != "z" {
 		t.Fatalf("expected within-group sort [a, m, z], got %v", names)
+	}
+}
+
+func TestRenderWorkspaceRow_MultiRepoSelected_ShowsThreeLines(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.workspaces = []*data.Workspace{
+		mkWS("alpha", "", []string{"medusa", "billing"}, time.Unix(1, 0)),
+	}
+	m.rebuildRows()
+	wsIdx := -1
+	for i, r := range m.rows {
+		if r.Type == RowWorkspace {
+			wsIdx = i
+			break
+		}
+	}
+	if wsIdx == -1 {
+		t.Fatal("expected a workspace row")
+	}
+	m.cursor = wsIdx
+
+	out := m.renderWorkspaceRow(m.rows[wsIdx], true)
+	lines := strings.Split(out, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines for selected multi-repo, got %d:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[2], "billing") {
+		t.Errorf("line 3 missing repo: %q", lines[2])
+	}
+}
+
+func TestRenderWorkspaceRow_SingleRepoSelected_StaysTwoLines(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.workspaces = []*data.Workspace{
+		mkWS("alpha", "", []string{"medusa"}, time.Unix(1, 0)),
+	}
+	m.rebuildRows()
+	wsIdx := -1
+	for i, r := range m.rows {
+		if r.Type == RowWorkspace {
+			wsIdx = i
+			break
+		}
+	}
+	m.cursor = wsIdx
+
+	out := m.renderWorkspaceRow(m.rows[wsIdx], true)
+	lines := strings.Split(out, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines for selected single-repo, got %d:\n%s", len(lines), out)
+	}
+}
+
+func TestRowLineCount_SelectedMultiRepo(t *testing.T) {
+	m := New()
+	m.workspaces = []*data.Workspace{
+		mkWS("alpha", "", []string{"medusa", "billing"}, time.Unix(1, 0)),
+	}
+	m.rebuildRows()
+	wsIdx := -1
+	for i, r := range m.rows {
+		if r.Type == RowWorkspace {
+			wsIdx = i
+			break
+		}
+	}
+	m.cursor = wsIdx
+	if got := m.rowLineCount(wsIdx); got != 3 {
+		t.Errorf("rowLineCount selected multi-repo = %d, want 3", got)
+	}
+
+	m.cursor = -1
+	if got := m.rowLineCount(wsIdx); got != 2 {
+		t.Errorf("rowLineCount non-selected multi-repo = %d, want 2", got)
 	}
 }
