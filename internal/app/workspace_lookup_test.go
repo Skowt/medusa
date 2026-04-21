@@ -184,3 +184,62 @@ func TestCreateWorkspace_PassesValidationForUniqueName(t *testing.T) {
 		t.Error("unique name was incorrectly rejected as duplicate")
 	}
 }
+
+func TestCreateWorkspace_PersistsGroup(t *testing.T) {
+	skipIfNoGit(t)
+
+	// Set up a git repo with initial commit
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("ok\n"), 0644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "init")
+
+	// Set up workspace root and temporary registry/store
+	wsRoot := normalizePath(t.TempDir())
+	tmp := t.TempDir()
+	registry := data.NewRegistry(filepath.Join(tmp, "workspaces.json"))
+	store := data.NewWorkspaceStore(filepath.Join(tmp, "workspaces-metadata"))
+	recents := data.NewRecentsStore(filepath.Join(tmp, "recents.json"))
+
+	// Create the app with registry, store, and recents
+	app := &App{
+		config: &config.Config{
+			Paths: &config.Paths{
+				WorkspacesRoot: wsRoot,
+			},
+		},
+		registry:      registry,
+		workspaces:    store,
+		recents:       recents,
+		allWorkspaces: []*data.Workspace{},
+	}
+
+	// Call createWorkspace with a group
+	repos := []data.RepoRef{{Path: repo, Name: "repo"}}
+	bases := []string{"main"}
+	cmd := app.createWorkspace("test-group-ws", repos, bases, "", "shipping-q2", false)
+	msg := cmd()
+
+	// Check that the message is WorkspaceCreated (not failed)
+	created, ok := msg.(messages.WorkspaceCreated)
+	if !ok {
+		t.Fatalf("expected WorkspaceCreated, got %T: %v", msg, msg)
+	}
+
+	// Verify in-memory workspace has the group set
+	if created.Workspace.Group != "shipping-q2" {
+		t.Errorf("in-memory Group = %q, want %q", created.Workspace.Group, "shipping-q2")
+	}
+
+	// Verify on disk: reload from store and check Group persists
+	reloaded, err := store.Load(created.Workspace.ID())
+	if err != nil {
+		t.Fatalf("Load workspace from store: %v", err)
+	}
+	if reloaded.Group != "shipping-q2" {
+		t.Errorf("on-disk Group = %q, want %q", reloaded.Group, "shipping-q2")
+	}
+}

@@ -127,11 +127,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("P"))):
 			return m, m.handleSetProfile()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
-			if m.cursor >= 0 && m.cursor < len(m.rows) {
-				if m.rows[m.cursor].Type == RowWorkspace {
-					return m, m.handleRename()
-				}
-			}
+			return m, m.handleRename()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("S"))):
 			return m, m.handleToggleStatus()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):

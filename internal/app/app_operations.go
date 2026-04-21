@@ -335,6 +335,16 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 
 		ws.CopyIgnored = copyIgnored
 
+		// Set profile on workspace (before save so it persists)
+		if profile != "" {
+			ws.Profile = profile
+		}
+
+		// Set group on workspace (before save so it persists)
+		if group != "" {
+			ws.Group = group
+		}
+
 		// Save workspace
 		if err := a.workspaces.Save(ws); err != nil {
 			// Rollback
@@ -354,16 +364,6 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 				git.RemoveGroupWorkspace(specs)
 			}
 			return messages.WorkspaceCreateFailed{Workspace: ws, Err: err}
-		}
-
-		// Set profile on workspace
-		if profile != "" {
-			ws.Profile = profile
-		}
-
-		// Set group on workspace
-		if group != "" {
-			ws.Group = group
 		}
 
 		// Register in registry
