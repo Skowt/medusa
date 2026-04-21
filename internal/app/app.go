@@ -78,16 +78,26 @@ type App struct {
 	workspaces *data.WorkspaceStore
 
 	// State
-	allWorkspaces    []*data.Workspace
-	recents          *data.RecentsStore
-	activeWorkspace  *data.Workspace
-	gitStatusRR      int // round-robin index for git status polling
-	focusedPane      messages.PaneType
-	showWelcome      bool
-	monitorMode      bool
-	monitorFilter    string
-	monitorLayoutKey string
-	monitorCanvas    *compositor.Canvas
+	allWorkspaces   []*data.Workspace
+	recents         *data.RecentsStore
+	activeWorkspace *data.Workspace
+	gitStatusRR     int // round-robin index for git status polling
+	// gitStatusInFlight deduplicates concurrent git.GetStatus calls per workspace
+	// root. Large repos (lots of untracked files) can take hundreds of ms per call,
+	// and without this guard, overlapping refresh triggers (tab switch, file-watcher
+	// event, ticker) pile up subprocesses that land back in the Update loop in a
+	// burst and cause visible UI stutter.
+	//
+	// Accessed from both the Update goroutine (on request) and the fetch goroutine
+	// (on clear), so it needs a mutex.
+	gitStatusInFlight   map[string]bool
+	gitStatusInFlightMu sync.Mutex
+	focusedPane         messages.PaneType
+	showWelcome         bool
+	monitorMode         bool
+	monitorFilter       string
+	monitorLayoutKey    string
+	monitorCanvas       *compositor.Canvas
 
 	// Update state
 	updateAvailable  *update.CheckResult // nil if no update or dismissed

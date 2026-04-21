@@ -5,6 +5,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/perf"
 )
 
 // joinStrings joins strings with a separator.
@@ -19,10 +20,41 @@ func joinStrings(strs []string, sep string) string {
 	return result
 }
 
-// requestGitStatus requests git status for a workspace (always fetches fresh)
+// requestGitStatus requests git status for a workspace (always fetches fresh).
+//
+// Coalesces concurrent requests for the same root: if a fetch is already in
+// flight, additional calls return nil and the in-flight fetch's result will
+// update the UI once it lands. The flag is cleared inside the fetch goroutine
+// (under mutex) so cache-hit results flowing through requestGitStatusCached
+// don't interfere.
 func (a *App) requestGitStatus(root string) tea.Cmd {
+	if root == "" {
+		return nil
+	}
+	a.gitStatusInFlightMu.Lock()
+	if a.gitStatusInFlight == nil {
+		a.gitStatusInFlight = make(map[string]bool)
+	}
+	if a.gitStatusInFlight[root] {
+		a.gitStatusInFlightMu.Unlock()
+		perf.Count("git_status_skip_inflight", 1)
+		return nil
+	}
+	a.gitStatusInFlight[root] = true
+	a.gitStatusInFlightMu.Unlock()
+
 	return func() tea.Msg {
+		// Clear the in-flight flag even if GetStatus panics, so the workspace
+		// isn't permanently marked busy.
+		defer func() {
+			a.gitStatusInFlightMu.Lock()
+			delete(a.gitStatusInFlight, root)
+			a.gitStatusInFlightMu.Unlock()
+		}()
+		done := perf.Time("git_status")
 		status, err := git.GetStatus(root)
+		done()
+		perf.Count("git_status_fetch", 1)
 		// Update cache directly (no async refresh needed, we just fetched)
 		if a.statusManager != nil && err == nil {
 			a.statusManager.UpdateCache(root, status)
