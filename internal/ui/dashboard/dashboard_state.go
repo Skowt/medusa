@@ -143,14 +143,12 @@ func (m *Model) rebuildRows() {
 	groupMembers := make(map[string][]*data.Workspace)
 	groupMinCreated := make(map[string]time.Time)
 	var ungrouped []*data.Workspace
-	hasGroups := false
 
 	for _, ws := range all {
 		if ws.Group == "" {
 			ungrouped = append(ungrouped, ws)
 			continue
 		}
-		hasGroups = true
 		groupMembers[ws.Group] = append(groupMembers[ws.Group], ws)
 		if cur, ok := groupMinCreated[ws.Group]; !ok || ws.Created.Before(cur) {
 			groupMinCreated[ws.Group] = ws.Created
@@ -206,8 +204,9 @@ func (m *Model) rebuildRows() {
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
 
-	// Ungrouped pseudo-section: only when at least one named group exists.
-	if hasGroups && len(ungrouped) > 0 {
+	// Ungrouped pseudo-section: always rendered when ungrouped workspaces exist,
+	// so the group structure is visible even before any named group is created.
+	if len(ungrouped) > 0 {
 		sortMembers(ungrouped)
 		collapsed := m.collapsedGroups[""]
 		header := Row{
@@ -226,15 +225,6 @@ func (m *Model) rebuildRows() {
 			}
 		}
 		m.rows = append(m.rows, Row{Type: RowSpacer})
-	} else if !hasGroups {
-		// No named groups — flat list sorted by repo names, no headers at all.
-		sortMembers(ungrouped)
-		for _, ws := range ungrouped {
-			m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: ws})
-		}
-		if len(ungrouped) > 0 {
-			m.rows = append(m.rows, Row{Type: RowSpacer})
-		}
 	}
 
 	// Orphans section

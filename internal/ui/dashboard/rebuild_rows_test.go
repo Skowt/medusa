@@ -24,7 +24,7 @@ func mkWS(name, group string, repos []string, created time.Time) *data.Workspace
 	}
 }
 
-func TestRebuildRows_NoGroups_FlatListNoHeaders(t *testing.T) {
+func TestRebuildRows_NoGroups_UngroupedHeaderAlwaysVisible(t *testing.T) {
 	m := New()
 	m.workspaces = []*data.Workspace{
 		mkWS("alpha", "", []string{"medusa"}, time.Unix(1, 0)),
@@ -32,14 +32,14 @@ func TestRebuildRows_NoGroups_FlatListNoHeaders(t *testing.T) {
 	}
 	m.rebuildRows()
 
-	var headers int
+	var gotLabels []string
 	for _, r := range m.rows {
-		if r.Type == RowSectionHeader {
-			headers++
+		if r.Type == RowSectionHeader && r.IsUserGroup {
+			gotLabels = append(gotLabels, r.Label)
 		}
 	}
-	if headers != 0 {
-		t.Fatalf("expected no section headers when no groups exist, got %d", headers)
+	if len(gotLabels) != 1 || gotLabels[0] != "Ungrouped" {
+		t.Fatalf("expected a single [Ungrouped] header when no named groups exist, got %v", gotLabels)
 	}
 }
 
