@@ -97,3 +97,5 @@ Per-repo workspace config lives at `.medusa/workspaces.json` (setup-workspace, r
 Conventional-commit-lite — the `.goreleaser.yml` changelog filter depends on the prefix. See `.claude/skills/medusa-commits-and-releases/SKILL.md` for the full table and the release walkthrough.
 
 Short version: `feat:` / `fix:` / `refactor:` / `perf:` surface in release notes; `docs:` / `test:` / `ci:` / `chore:` don't.
+
+Local merges to `main`: `git merge --squash <branch> && git commit` — plain `git merge` produces `Merge branch` commits that clutter release notes.
