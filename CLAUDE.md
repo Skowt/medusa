@@ -98,4 +98,4 @@ Conventional-commit-lite — the `.goreleaser.yml` changelog filter depends on t
 
 Short version: `feat:` / `fix:` / `refactor:` / `perf:` surface in release notes; `docs:` / `test:` / `ci:` / `chore:` don't.
 
-Local merges to `main`: `git merge --squash <branch> && git commit` — plain `git merge` produces `Merge branch` commits that clutter release notes.
+Local merges to `main`: `git merge --squash <branch>` then `git commit -m '<conventional subject>'`. Do not run bare `git commit` — its default template ("Squashed commit of the following:") becomes the commit message if you don't edit it. Plain `git merge` (no `--squash`) produces `Merge branch` commits that clutter release notes.
