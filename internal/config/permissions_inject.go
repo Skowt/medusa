@@ -133,16 +133,6 @@ func InjectAdditionalDirectories(primaryRoot string, additionalRoots []string) e
 	})
 }
 
-// InjectAllowEdits adds Edit(**) to a workspace's .claude/settings.local.json.
-// This pre-grants the Edit permission for this specific workspace only.
-func InjectAllowEdits(workspaceRoot string) error {
-	return readModifyWriteJSON(filepath.Join(workspaceRoot, ".claude", "settings.local.json"), func(settings map[string]any) {
-		perms := getOrCreatePerms(settings)
-		perms["allow"] = mergeUnique(toStringSlice(perms["allow"]), []string{"Edit(**)"})
-		settings["permissions"] = perms
-	})
-}
-
 // InjectSkipPermissionPrompt sets skipDangerousModePermissionPrompt=true
 // in the profile's settings.json so Claude Code doesn't show the bypass
 // permissions confirmation dialog when --dangerously-skip-permissions is used.

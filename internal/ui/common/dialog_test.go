@@ -1,7 +1,6 @@
 package common
 
 import (
-	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -45,20 +44,18 @@ func TestDialogCursorPositionInput(t *testing.T) {
 	}
 }
 
-func TestDialogConfirmClickYes(t *testing.T) {
-	d := NewConfirmDialog("quit", "Quit?", "Are you sure you want to quit?")
-	d.SetSize(80, 24)
-	d.Show()
-
-	lines := d.renderLines()
-	content := strings.Join(lines, "\n")
-	dialogView := d.dialogStyle().Render(content)
-	dialogW, dialogH := viewDimensions(dialogView)
-	t.Logf("Content lines (%d):", len(lines))
-	for i, line := range lines {
-		t.Logf("  [%d]: %q", i, line)
+// clickRegion sends a left-click at the centre of the named region and
+// returns the resulting tea.Cmd. It exercises the same code path as a real
+// mouse click — the dialog's build() output is the source of truth, so any
+// drift between rendered rows and click regions surfaces here.
+func clickRegion(t *testing.T, d *Dialog, regionID string) tea.Cmd {
+	t.Helper()
+	b := d.build()
+	region, ok := b.RegionByID(regionID)
+	if !ok {
+		t.Fatalf("region %q not found in dialog build", regionID)
 	}
-
+	dialogW, dialogH := b.Size()
 	dialogX := (d.width - dialogW) / 2
 	dialogY := (d.height - dialogH) / 2
 	if dialogX < 0 {
@@ -67,52 +64,29 @@ func TestDialogConfirmClickYes(t *testing.T) {
 	if dialogY < 0 {
 		dialogY = 0
 	}
-	t.Logf("Dialog bounds: x=%d, y=%d, w=%d, h=%d", dialogX, dialogY, dialogW, dialogH)
-
-	frameX, frameY, contentOffsetX, contentOffsetY := d.dialogFrame()
-	t.Logf("Frame: x=%d, y=%d, offsetX=%d, offsetY=%d", frameX, frameY, contentOffsetX, contentOffsetY)
-
-	t.Logf("Option hits (%d):", len(d.optionHits))
-	for i, hit := range d.optionHits {
-		t.Logf("  [%d]: cursorIdx=%d optionIdx=%d region=(%d,%d,%d,%d)",
-			i, hit.cursorIndex, hit.optionIndex, hit.region.X, hit.region.Y, hit.region.Width, hit.region.Height)
-	}
-
-	// Find the "Yes" button hit region (optionIndex=0)
-	var yesHit dialogOptionHit
-	for _, hit := range d.optionHits {
-		if hit.optionIndex == 0 {
-			yesHit = hit
-			break
-		}
-	}
-
-	// Calculate screen coordinates for clicking "Yes"
-	// screenX = dialogX + contentOffsetX + localX
-	// screenY = dialogY + contentOffsetY + localY
-	screenX := dialogX + contentOffsetX + yesHit.region.X + 1 // +1 to be inside the button
-	screenY := dialogY + contentOffsetY + yesHit.region.Y
-	t.Logf("Clicking at screen (%d,%d) for Yes button at local (%d,%d)", screenX, screenY, yesHit.region.X, yesHit.region.Y)
-
-	// Send click
+	contentX, contentY := b.ContentOffset()
+	screenX := dialogX + contentX + region.X + region.Width/2
+	screenY := dialogY + contentY + region.Y + region.Height/2
 	msg := tea.MouseClickMsg{X: screenX, Y: screenY, Button: tea.MouseLeft}
 	_, cmd := d.Update(msg)
+	return cmd
+}
 
+func TestDialogConfirmClickYes(t *testing.T) {
+	d := NewConfirmDialog("quit", "Quit?", "Are you sure you want to quit?")
+	d.SetSize(80, 24)
+	d.Show()
+
+	cmd := clickRegion(t, d, dialogIDOptPrefix+"0")
 	if cmd == nil {
-		t.Fatalf("Expected command from clicking Yes button, got nil")
+		t.Fatalf("expected command from clicking Yes button, got nil")
 	}
-
-	// Execute the command and check the result
-	result := cmd()
-	dialogResult, ok := result.(DialogResult)
+	res, ok := cmd().(DialogResult)
 	if !ok {
-		t.Fatalf("Expected DialogResult, got %T", result)
+		t.Fatalf("expected DialogResult, got %T", cmd())
 	}
-	if dialogResult.ID != "quit" {
-		t.Fatalf("Expected ID 'quit', got %q", dialogResult.ID)
-	}
-	if !dialogResult.Confirmed {
-		t.Fatalf("Expected Confirmed=true, got false")
+	if res.ID != "quit" || !res.Confirmed {
+		t.Fatalf("unexpected result: %+v", res)
 	}
 }
 
@@ -121,51 +95,16 @@ func TestDialogConfirmClickNo(t *testing.T) {
 	d.SetSize(80, 24)
 	d.Show()
 
-	lines := d.renderLines()
-	content := strings.Join(lines, "\n")
-	dialogView := d.dialogStyle().Render(content)
-	dialogW, dialogH := viewDimensions(dialogView)
-	dialogX := (d.width - dialogW) / 2
-	dialogY := (d.height - dialogH) / 2
-	if dialogX < 0 {
-		dialogX = 0
-	}
-	if dialogY < 0 {
-		dialogY = 0
-	}
-	_, _, contentOffsetX, contentOffsetY := d.dialogFrame()
-
-	var noHit dialogOptionHit
-	for _, hit := range d.optionHits {
-		if hit.optionIndex == 1 {
-			noHit = hit
-			break
-		}
-	}
-	if noHit.region.Width == 0 {
-		t.Fatalf("expected hit region for No option")
-	}
-
-	screenX := dialogX + contentOffsetX + noHit.region.X + 1
-	screenY := dialogY + contentOffsetY + noHit.region.Y
-
-	msg := tea.MouseClickMsg{X: screenX, Y: screenY, Button: tea.MouseLeft}
-	_, cmd := d.Update(msg)
-
+	cmd := clickRegion(t, d, dialogIDOptPrefix+"1")
 	if cmd == nil {
 		t.Fatalf("expected command from clicking No button, got nil")
 	}
-
-	result := cmd()
-	dialogResult, ok := result.(DialogResult)
+	res, ok := cmd().(DialogResult)
 	if !ok {
-		t.Fatalf("expected DialogResult, got %T", result)
+		t.Fatalf("expected DialogResult, got %T", cmd())
 	}
-	if dialogResult.ID != "quit" {
-		t.Fatalf("expected ID 'quit', got %q", dialogResult.ID)
-	}
-	if dialogResult.Confirmed {
-		t.Fatalf("expected Confirmed=false, got true")
+	if res.ID != "quit" || res.Confirmed {
+		t.Fatalf("unexpected result: %+v", res)
 	}
 }
 
@@ -175,50 +114,49 @@ func TestDialogInputClickCancel(t *testing.T) {
 	d.Show()
 	d.input.SetValue("feature-1")
 
-	lines := d.renderLines()
-	content := strings.Join(lines, "\n")
-	dialogView := d.dialogStyle().Render(content)
-	dialogW, dialogH := viewDimensions(dialogView)
-	dialogX := (d.width - dialogW) / 2
-	dialogY := (d.height - dialogH) / 2
-	if dialogX < 0 {
-		dialogX = 0
-	}
-	if dialogY < 0 {
-		dialogY = 0
-	}
-	_, _, contentOffsetX, contentOffsetY := d.dialogFrame()
-
-	var cancelHit dialogOptionHit
-	for _, hit := range d.optionHits {
-		if hit.optionIndex == 1 {
-			cancelHit = hit
-			break
-		}
-	}
-	if cancelHit.region.Width == 0 {
-		t.Fatalf("expected hit region for Cancel option")
-	}
-
-	screenX := dialogX + contentOffsetX + cancelHit.region.X + 1
-	screenY := dialogY + contentOffsetY + cancelHit.region.Y
-
-	msg := tea.MouseClickMsg{X: screenX, Y: screenY, Button: tea.MouseLeft}
-	_, cmd := d.Update(msg)
-
+	cmd := clickRegion(t, d, dialogIDCancel)
 	if cmd == nil {
 		t.Fatalf("expected command from clicking Cancel button, got nil")
 	}
-
-	result := cmd()
-	dialogResult, ok := result.(DialogResult)
+	res, ok := cmd().(DialogResult)
 	if !ok {
-		t.Fatalf("expected DialogResult, got %T", result)
+		t.Fatalf("expected DialogResult, got %T", cmd())
 	}
-	if dialogResult.ID != "create_workspace" {
-		t.Fatalf("expected ID 'create_workspace', got %q", dialogResult.ID)
+	if res.ID != "create_workspace" || res.Confirmed {
+		t.Fatalf("unexpected result: %+v", res)
 	}
-	if dialogResult.Confirmed {
-		t.Fatalf("expected Confirmed=false, got true")
+}
+
+// TestDialogInputClickCancelAfterLongDescriptions reproduces the bug that
+// motivated the LineBuilder migration: descriptions that wrap to 3+ lines
+// previously drifted the row count out of sync with hit regions, so Cancel
+// was no longer where the click handler thought. Now build() is the single
+// source of truth, so this stays accurate regardless of description length.
+func TestDialogInputClickCancelAfterLongDescriptions(t *testing.T) {
+	d := NewInputDialog("customize", "New Claude Tab", "")
+	d.SetInputHidden(true)
+	d.SetMessage("Configure settings for this tab.")
+	d.SetSelect("Starting Mode:", []SelectOption{
+		{Value: "auto", Label: "Auto", Description: "Auto-approves tool calls; a background classifier checks each action against your request before allowing it to run."},
+		{Value: "plan", Label: "Plan", Description: "Read-only exploration."},
+	}, "auto")
+	d.SetCheckbox("Sandboxed", true)
+	d.SetCheckboxDescription(1, "Sandboxes subprocess calls including Bash commands. Tool use does not use sandbox (e.g. Write, Edit). Long descriptions used to drift the click target.")
+	d.SetCheckbox2("Allow unsandboxed commands", false)
+	d.SetCheckboxDescription(2, "Allows Claude to try run blocked commands outside of the sandbox, using the user's allowed permissions. Do not use in 'Bypass Permissions' mode.")
+	d.SetCheckbox2RequiresFirst(true)
+	d.SetSize(120, 40)
+	d.Show()
+
+	cmd := clickRegion(t, d, dialogIDCancel)
+	if cmd == nil {
+		t.Fatalf("expected command from clicking Cancel after long descriptions, got nil")
+	}
+	res, ok := cmd().(DialogResult)
+	if !ok {
+		t.Fatalf("expected DialogResult, got %T", cmd())
+	}
+	if res.ID != "customize" || res.Confirmed {
+		t.Fatalf("unexpected result: %+v", res)
 	}
 }

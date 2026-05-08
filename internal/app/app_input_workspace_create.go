@@ -181,16 +181,16 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 		// `run` command shouldn't prevent the initial Claude tab from opening.
 		if !a.center.HasAgentTabsForWorkspace(wsID) && !workspaceHasLiveAgentTabs(msg.Workspace) {
 			ws := msg.Workspace
-			allowEdits := a.config.UI.LastAllowEdits
 			isolated := a.config.UI.LastIsolated
-			skipPerms := a.config.UI.LastSkipPermissions
+			allowUnsandboxed := a.config.UI.LastAllowUnsandboxedCommands
+			permMode := defaultPermissionMode(a.config.UI.LastPermissionMode)
 			cmds = append(cmds, func() tea.Msg {
 				return messages.LaunchAgent{
-					Assistant:       "claude",
-					Workspace:       ws,
-					AllowEdits:      allowEdits,
-					Isolated:        isolated,
-					SkipPermissions: skipPerms,
+					Assistant:                "claude",
+					Workspace:                ws,
+					Isolated:                 isolated,
+					AllowUnsandboxedCommands: allowUnsandboxed,
+					PermissionMode:           permMode,
 				}
 			})
 		}

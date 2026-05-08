@@ -24,9 +24,6 @@ type SettingsResult struct {
 // ShowPermissionsEditor is sent when the user clicks "Edit Global Allow/Deny List".
 type ShowPermissionsEditor struct{}
 
-// ShowSandboxRulesEditor is sent when the user clicks "Edit Sandbox Path Rules".
-type ShowSandboxRulesEditor struct{}
-
 // TriggerUpgradeRequest is sent when the user clicks "Install update" in settings.
 // The app handler translates this into messages.TriggerUpgrade{}.
 type TriggerUpgradeRequest struct{}
@@ -47,7 +44,6 @@ const (
 	settingsItemEditPermissions
 	settingsItemCompoundApprove // Agents section
 	settingsItemNotificationSound
-	settingsItemEditSandboxRules
 	settingsItemAutoStart // Tmux section
 	settingsItemTmuxPersistence
 	settingsItemManageProfiles
@@ -218,10 +214,6 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 	case settingsItemCompoundApprove:
 		s.compoundApprove = !s.compoundApprove
 		return s, nil
-
-	case settingsItemEditSandboxRules:
-		s.visible = false
-		return s, func() tea.Msg { return ShowSandboxRulesEditor{} }
 
 	case settingsItemReleases:
 		if !s.updateAvailable {

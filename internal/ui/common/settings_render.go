@@ -48,7 +48,6 @@ func (s *SettingsDialog) build() *LineBuilder {
 		soundLabel = s.notificationSound
 	}
 	s.appendLink(b, settingsItemNotificationSound, muted, "[Notification sound: "+soundLabel+"]")
-	s.appendLink(b, settingsItemEditSandboxRules, muted, "[Edit Sandbox Path Rules]")
 	b.Blank()
 
 	// ── Tmux ─────────────────────────────────────────────────

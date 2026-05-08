@@ -8,26 +8,26 @@ import (
 
 // UISettings stores user-facing display preferences.
 type UISettings struct {
-	ShowKeymapHints     bool
-	HideSidebar         bool
-	HideTerminal        bool
-	AutoStartAgent      bool
-	SyncProfilePlugins  bool
-	GlobalPermissions   bool
-	AutoAddPermissions  bool
-	LastProfile         string // Most recently selected profile name
-	LastAllowEdits      bool   // Last state of "allow edits" checkbox for new workspaces
-	LastIsolated        bool   // Last state of "run isolated" checkbox for new workspaces
-	LastSkipPermissions bool   // Last state of "skip permissions" checkbox for new workspaces
-	Theme               string // Theme ID, defaults to "gruvbox"
-	TmuxServer          string
-	TmuxConfigPath      string
-	TmuxSyncInterval    string
-	TmuxPersistence     bool
-	NotificationSound   string          // Sound name from /System/Library/Sounds (empty = none)
-	IDE                 string          // CLI command for IDE (e.g., "code", "cursor", "pycharm")
-	CompoundApprove     bool            // Auto-approve compound Bash commands via hook
-	CollapsedGroups     map[string]bool // Dashboard group collapse state, keyed by group label ("" = Ungrouped)
+	ShowKeymapHints              bool
+	HideSidebar                  bool
+	HideTerminal                 bool
+	AutoStartAgent               bool
+	SyncProfilePlugins           bool
+	GlobalPermissions            bool
+	AutoAddPermissions           bool
+	LastProfile                  string // Most recently selected profile name
+	LastIsolated                 bool   // Last state of "run isolated" checkbox for new workspaces
+	LastAllowUnsandboxedCommands bool   // Last state of "allow unsandboxed commands" checkbox
+	LastPermissionMode           string // Last selected starting mode (default "auto")
+	Theme                        string // Theme ID, defaults to "gruvbox"
+	TmuxServer                   string
+	TmuxConfigPath               string
+	TmuxSyncInterval             string
+	TmuxPersistence              bool
+	NotificationSound            string          // Sound name from /System/Library/Sounds (empty = none)
+	IDE                          string          // CLI command for IDE (e.g., "code", "cursor", "pycharm")
+	CompoundApprove              bool            // Auto-approve compound Bash commands via hook
+	CollapsedGroups              map[string]bool // Dashboard group collapse state, keyed by group label ("" = Ungrouped)
 }
 
 func defaultUISettings() UISettings {
@@ -38,7 +38,7 @@ func defaultUISettings() UISettings {
 		SyncProfilePlugins: true,
 		GlobalPermissions:  true,
 		AutoAddPermissions: false,
-		LastAllowEdits:     true,
+		LastPermissionMode: "auto",
 		Theme:              "gruvbox",
 		TmuxServer:         "",
 		TmuxConfigPath:     "",
@@ -59,25 +59,26 @@ func loadUISettings(path string) UISettings {
 
 	var raw struct {
 		UI struct {
-			ShowKeymapHints     *bool           `json:"show_keymap_hints"`
-			HideSidebar         *bool           `json:"hide_sidebar"`
-			HideTerminal        *bool           `json:"hide_terminal"`
-			AutoStartAgent      *bool           `json:"auto_start_agent"`
-			SyncProfilePlugins  *bool           `json:"sync_profile_plugins"`
-			GlobalPermissions   *bool           `json:"global_permissions"`
-			AutoAddPermissions  *bool           `json:"auto_add_permissions"`
-			LastProfile         *string         `json:"last_profile"`
-			LastAllowEdits      *bool           `json:"last_allow_edits"`
-			LastIsolated        *bool           `json:"last_isolated"`
-			LastSkipPermissions *bool           `json:"last_skip_permissions"`
-			Theme               *string         `json:"theme"`
-			TmuxServer          *string         `json:"tmux_server"`
-			TmuxConfigPath      *string         `json:"tmux_config"`
-			TmuxSyncInterval    *string         `json:"tmux_sync_interval"`
-			TmuxPersistence     *bool           `json:"tmux_persistence"`
-			NotificationSound   *string         `json:"notification_sound"`
-			CompoundApprove     *bool           `json:"compound_approve"`
-			CollapsedGroups     map[string]bool `json:"collapsed_groups"`
+			ShowKeymapHints              *bool           `json:"show_keymap_hints"`
+			HideSidebar                  *bool           `json:"hide_sidebar"`
+			HideTerminal                 *bool           `json:"hide_terminal"`
+			AutoStartAgent               *bool           `json:"auto_start_agent"`
+			SyncProfilePlugins           *bool           `json:"sync_profile_plugins"`
+			GlobalPermissions            *bool           `json:"global_permissions"`
+			AutoAddPermissions           *bool           `json:"auto_add_permissions"`
+			LastProfile                  *string         `json:"last_profile"`
+			LastIsolated                 *bool           `json:"last_isolated"`
+			LastSkipPermissions          *bool           `json:"last_skip_permissions"` // legacy → coalesced into LastPermissionMode
+			LastAllowUnsandboxedCommands *bool           `json:"last_allow_unsandboxed_commands"`
+			LastPermissionMode           *string         `json:"last_permission_mode"`
+			Theme                        *string         `json:"theme"`
+			TmuxServer                   *string         `json:"tmux_server"`
+			TmuxConfigPath               *string         `json:"tmux_config"`
+			TmuxSyncInterval             *string         `json:"tmux_sync_interval"`
+			TmuxPersistence              *bool           `json:"tmux_persistence"`
+			NotificationSound            *string         `json:"notification_sound"`
+			CompoundApprove              *bool           `json:"compound_approve"`
+			CollapsedGroups              map[string]bool `json:"collapsed_groups"`
 		} `json:"ui"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -107,14 +108,17 @@ func loadUISettings(path string) UISettings {
 	if raw.UI.LastProfile != nil {
 		settings.LastProfile = *raw.UI.LastProfile
 	}
-	if raw.UI.LastAllowEdits != nil {
-		settings.LastAllowEdits = *raw.UI.LastAllowEdits
-	}
 	if raw.UI.LastIsolated != nil {
 		settings.LastIsolated = *raw.UI.LastIsolated
 	}
-	if raw.UI.LastSkipPermissions != nil {
-		settings.LastSkipPermissions = *raw.UI.LastSkipPermissions
+	if raw.UI.LastAllowUnsandboxedCommands != nil {
+		settings.LastAllowUnsandboxedCommands = *raw.UI.LastAllowUnsandboxedCommands
+	}
+	if raw.UI.LastPermissionMode != nil && *raw.UI.LastPermissionMode != "" {
+		settings.LastPermissionMode = *raw.UI.LastPermissionMode
+	} else if raw.UI.LastSkipPermissions != nil && *raw.UI.LastSkipPermissions {
+		// Legacy: skip_permissions=true mapped to bypassPermissions.
+		settings.LastPermissionMode = "bypassPermissions"
 	}
 	if raw.UI.Theme != nil {
 		settings.Theme = *raw.UI.Theme
@@ -165,9 +169,11 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["global_permissions"] = settings.GlobalPermissions
 	ui["auto_add_permissions"] = settings.AutoAddPermissions
 	ui["last_profile"] = settings.LastProfile
-	ui["last_allow_edits"] = settings.LastAllowEdits
+	delete(ui, "last_allow_edits")      // legacy field, removed in favor of per-tab settings
+	delete(ui, "last_skip_permissions") // legacy field, replaced by last_permission_mode
 	ui["last_isolated"] = settings.LastIsolated
-	ui["last_skip_permissions"] = settings.LastSkipPermissions
+	ui["last_allow_unsandboxed_commands"] = settings.LastAllowUnsandboxedCommands
+	ui["last_permission_mode"] = settings.LastPermissionMode
 	ui["theme"] = settings.Theme
 	ui["tmux_server"] = settings.TmuxServer
 	ui["tmux_config"] = settings.TmuxConfigPath

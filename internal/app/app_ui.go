@@ -201,11 +201,11 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			ws := a.activeWorkspace
 			return true, func() tea.Msg {
 				return messages.LaunchAgent{
-					Assistant:       "claude",
-					Workspace:       ws,
-					AllowEdits:      a.config.UI.LastAllowEdits,
-					Isolated:        a.config.UI.LastIsolated,
-					SkipPermissions: a.config.UI.LastSkipPermissions,
+					Assistant:                "claude",
+					Workspace:                ws,
+					Isolated:                 a.config.UI.LastIsolated,
+					AllowUnsandboxedCommands: a.config.UI.LastAllowUnsandboxedCommands,
+					PermissionMode:           defaultPermissionMode(a.config.UI.LastPermissionMode),
 				}
 			}
 		}
@@ -384,9 +384,6 @@ func (a *App) updateLayout() {
 	}
 	if a.permissionsEditor != nil {
 		a.permissionsEditor.SetSize(a.width, a.height)
-	}
-	if a.sandboxRulesEditor != nil {
-		a.sandboxRulesEditor.SetSize(a.width, a.height)
 	}
 }
 

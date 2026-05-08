@@ -3,9 +3,25 @@ package common
 import (
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+)
+
+// HitRegion IDs registered by the Dialog builder. handleClick dispatches by
+// these IDs rather than iterating regions in declaration order, so adding a
+// new region can't accidentally shadow an existing one.
+const (
+	dialogIDInput       = "input"
+	dialogIDFilterInput = "filter-input"
+	dialogIDCheckbox1   = "checkbox-1"
+	dialogIDCheckbox2   = "checkbox-2"
+	dialogIDCheckbox3   = "checkbox-3"
+	dialogIDSelectField = "select"
+	dialogIDSelectLeft  = "select-left"
+	dialogIDSelectRight = "select-right"
+	dialogIDOK          = "ok"
+	dialogIDCancel      = "cancel"
+	dialogIDOptPrefix   = "option-" // followed by index: option-0, option-1, …
 )
 
 func viewDimensions(view string) (width, height int) {
@@ -19,71 +35,54 @@ func viewDimensions(view string) (width, height int) {
 	return width, height
 }
 
-// View renders the dialog
+// View renders the dialog through the LineBuilder pipeline so click regions
+// always align with the actually-drawn rows (lipgloss soft-wrapping was
+// previously drifting the row count out of sync with hit regions).
 func (d *Dialog) View() string {
 	if !d.visible {
 		return ""
 	}
-
-	lines := d.renderLines()
-	content := strings.Join(lines, "\n")
-	return d.dialogStyle().Render(content)
+	return d.build().View()
 }
 
-// Cursor returns the cursor position relative to the dialog view.
+// Cursor returns the cursor position relative to the dialog view. We look
+// up the input row's region in the builder rather than recomputing prefix
+// height — the builder is the single source of truth for layout.
 func (d *Dialog) Cursor() *tea.Cursor {
 	if !d.visible {
 		return nil
 	}
 
-	var input *textinput.Model
-	var prefix strings.Builder
-
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ColorPrimary).
-		MarginBottom(1)
-	prefix.WriteString(titleStyle.Render(d.title))
-	prefix.WriteString("\n")
-
+	var inputID string
+	var c *tea.Cursor
 	switch d.dtype {
 	case DialogInput:
-		if d.message != "" {
-			msgStyle := lipgloss.NewStyle().Foreground(ColorMuted).Width(d.dialogContentWidth())
-			prefix.WriteString(msgStyle.Render(d.message))
-			prefix.WriteString("\n\n")
+		if d.inputHidden || d.input.VirtualCursor() || !d.input.Focused() {
+			return nil
 		}
-		if !d.inputHidden {
-			input = &d.input
-		}
+		inputID = dialogIDInput
+		c = d.input.Cursor()
 	case DialogSelect:
-		if d.filterEnabled {
-			if d.message != "" {
-				wrapped := lipgloss.NewStyle().Width(d.dialogContentWidth()).Render(d.message)
-				prefix.WriteString(wrapped)
-				prefix.WriteString("\n\n")
-			}
-			input = &d.filterInput
+		if !d.filterEnabled || d.filterInput.VirtualCursor() || !d.filterInput.Focused() {
+			return nil
 		}
+		inputID = dialogIDFilterInput
+		c = d.filterInput.Cursor()
 	default:
 		return nil
 	}
-
-	if input == nil || input.VirtualCursor() || !input.Focused() {
-		return nil
-	}
-
-	c := input.Cursor()
 	if c == nil {
 		return nil
 	}
 
-	c.Y += lipgloss.Height(prefix.String()) - 1
-
-	// Account for border + padding (Border=1, Padding=(1,2)).
-	c.X += 3
-	c.Y += 2
-
+	b := d.build()
+	region, ok := b.RegionByID(inputID)
+	if !ok {
+		return nil
+	}
+	contentX, contentY := b.ContentOffset()
+	c.X += contentX
+	c.Y += contentY + region.Y
 	return c
 }
 
@@ -103,220 +102,161 @@ func (d *Dialog) dialogStyle() lipgloss.Style {
 		Width(d.dialogContentWidth())
 }
 
-func (d *Dialog) dialogFrame() (frameX, frameY, offsetX, offsetY int) {
-	frameX, frameY = d.dialogStyle().GetFrameSize()
-	offsetX = frameX / 2
-	offsetY = frameY / 2
-	return frameX, frameY, offsetX, offsetY
-}
-
-func (d *Dialog) renderLines() []string {
-	d.optionHits = d.optionHits[:0]
-	lines := []string{}
-
-	appendLines := func(s string) {
-		if s == "" {
-			return
-		}
-		lines = append(lines, strings.Split(s, "\n")...)
-	}
-	appendBlank := func(count int) {
-		for i := 0; i < count; i++ {
-			lines = append(lines, "")
-		}
-	}
+// build constructs the full dialog as a LineBuilder. Render output, click
+// dispatch, and Cursor positioning all derive from this single source of
+// truth, so they cannot disagree about where things are drawn.
+func (d *Dialog) build() *LineBuilder {
+	b := NewLineBuilder(d.dialogStyle(), d.dialogContentWidth())
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(ColorPrimary).
 		MarginBottom(1)
-	appendLines(titleStyle.Render(d.title))
+	b.Append("", titleStyle.Render(d.title))
 
 	switch d.dtype {
 	case DialogInput:
-		if d.message != "" {
-			msgStyle := lipgloss.NewStyle().Foreground(ColorMuted)
-			appendLines(msgStyle.Render(d.message))
-			appendBlank(1)
-		}
-		if !d.inputHidden {
-			appendLines(d.input.View())
-			// Show validation error if present
-			if d.validationErr != "" {
-				errStyle := lipgloss.NewStyle().Foreground(ColorError)
-				appendLines(errStyle.Render(d.validationErr))
-			}
-		}
-		// Render checkbox if configured. Skip the leading blank when the input
-		// is hidden — the message already has a trailing blank, and doubling
-		// them leaves an empty gap before the checkboxes.
-		if d.checkboxLabel != "" {
-			if !d.inputHidden || d.message == "" {
-				appendBlank(1)
-			}
-			checkbox := "[ ]"
-			if d.checkboxValue {
-				checkbox = "[" + Icons.Clean + "]"
-			}
-			checkboxStyle := lipgloss.NewStyle().Foreground(ColorForeground)
-			if d.checkboxFocused {
-				checkboxStyle = checkboxStyle.Foreground(ColorPrimary)
-			}
-			checkboxLine := len(lines)
-			checkboxText := checkbox + " " + d.checkboxLabel
-			appendLines(checkboxStyle.Render(checkboxText))
-			// Set hit region for checkbox click handling
-			d.checkboxHit = HitRegion{
-				X:      0,
-				Y:      checkboxLine,
-				Width:  d.dialogContentWidth(),
-				Height: 1,
-			}
-		}
-		// Render second checkbox if configured
-		if d.checkbox2Label != "" {
-			if d.checkboxLabel == "" {
-				appendBlank(1)
-			}
-			checkbox2 := "[ ]"
-			if d.checkbox2Value {
-				checkbox2 = "[" + Icons.Clean + "]"
-			}
-			checkbox2Style := lipgloss.NewStyle().Foreground(ColorForeground)
-			if d.checkbox2Focused {
-				checkbox2Style = checkbox2Style.Foreground(ColorPrimary)
-			}
-			checkbox2Line := len(lines)
-			checkbox2Text := checkbox2 + " " + d.checkbox2Label
-			appendLines(checkbox2Style.Render(checkbox2Text))
-			d.checkbox2Hit = HitRegion{
-				X:      0,
-				Y:      checkbox2Line,
-				Width:  d.dialogContentWidth(),
-				Height: 1,
-			}
-		}
-		// Render third checkbox if configured
-		if d.checkbox3Label != "" {
-			if d.checkboxLabel == "" && d.checkbox2Label == "" {
-				appendBlank(1)
-			}
-			checkbox3 := "[ ]"
-			if d.checkbox3Value {
-				checkbox3 = "[" + Icons.Clean + "]"
-			}
-			checkbox3Style := lipgloss.NewStyle().Foreground(ColorForeground)
-			if d.checkbox3Focused {
-				checkbox3Style = checkbox3Style.Foreground(ColorPrimary)
-			}
-			checkbox3Line := len(lines)
-			checkbox3Text := checkbox3 + " " + d.checkbox3Label
-			appendLines(checkbox3Style.Render(checkbox3Text))
-			d.checkbox3Hit = HitRegion{
-				X:      0,
-				Y:      checkbox3Line,
-				Width:  d.dialogContentWidth(),
-				Height: 1,
-			}
-		}
-		appendBlank(1)
-		line := d.renderInputButtonsLine(len(lines))
-		lines = append(lines, line)
+		d.buildInput(b)
 	case DialogConfirm:
-		appendLines(d.message)
-		appendBlank(1)
-		lines = append(lines, d.renderOptionsLines(len(lines))...)
+		d.buildConfirm(b)
 	case DialogSelect:
-		if d.message != "" {
-			appendLines(d.message)
-			appendBlank(1)
-		}
-		lines = append(lines, d.renderOptionsLines(len(lines))...)
+		d.buildSelect(b)
 	}
 
 	if d.showKeymapHints {
-		helpStyle := lipgloss.NewStyle().
-			Foreground(ColorMuted).
-			MarginTop(1)
-		appendBlank(1)
-		appendLines(helpStyle.Render(d.helpText()))
+		helpStyle := lipgloss.NewStyle().Foreground(ColorMuted).MarginTop(1)
+		b.Blank()
+		b.Append("", helpStyle.Render(d.helpText()))
 	}
 
-	return lines
+	return b
 }
 
-func (d *Dialog) renderOptionsLines(baseLine int) []string {
-	if d.verticalLayout {
-		return d.renderVerticalOptionsLines(baseLine)
+func (d *Dialog) buildInput(b *LineBuilder) {
+	if d.message != "" {
+		msgStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+		b.Append("", msgStyle.Render(d.message))
+		b.Blank()
 	}
-	return []string{d.renderHorizontalOptionsLine(baseLine)}
+	if !d.inputHidden {
+		b.Append(dialogIDInput, d.input.View())
+		if d.validationErr != "" {
+			errStyle := lipgloss.NewStyle().Foreground(ColorError)
+			b.Append("", errStyle.Render(d.validationErr))
+		}
+	}
+	// Inline select first — primary control of the dialog.
+	if d.selectLabel != "" && len(d.selectOptions) > 0 {
+		if !d.inputHidden || d.message == "" {
+			b.Blank()
+		}
+		d.appendSelectField(b)
+	}
+	// Then checkboxes.
+	if d.checkboxLabel != "" {
+		if d.selectLabel != "" || !d.inputHidden || d.message == "" {
+			b.Blank()
+		}
+		d.appendCheckbox(b, dialogIDCheckbox1, d.checkboxLabel, d.checkboxValue, d.checkboxFocused, false, d.checkboxDesc)
+	}
+	if d.checkbox2Label != "" {
+		if d.checkboxLabel == "" {
+			b.Blank()
+		}
+		d.appendCheckbox(b, dialogIDCheckbox2, d.checkbox2Label, d.checkbox2Value, d.checkbox2Focused, d.checkbox2Disabled(), d.checkbox2Desc)
+	}
+	if d.checkbox3Label != "" {
+		if d.checkboxLabel == "" && d.checkbox2Label == "" {
+			b.Blank()
+		}
+		d.appendCheckbox(b, dialogIDCheckbox3, d.checkbox3Label, d.checkbox3Value, d.checkbox3Focused, false, d.checkbox3Desc)
+	}
+	b.Blank()
+	d.appendInputButtons(b)
 }
 
-func (d *Dialog) renderVerticalOptionsLines(baseLine int) []string {
-	var lines []string
-	lineIndex := baseLine
-
-	indices := make([]int, len(d.options))
-	for i := range d.options {
-		indices[i] = i
-	}
-
-	for cursorIdx, originalIdx := range indices {
-		opt := d.options[originalIdx]
-		cursor := Icons.CursorEmpty + " "
-		if cursorIdx == d.cursor {
-			cursor = Icons.Cursor + " "
-		}
-
-		nameStyle := lipgloss.NewStyle().Foreground(ColorForeground)
-		if cursorIdx == d.cursor {
-			nameStyle = nameStyle.Bold(true)
-		}
-		line := cursor + nameStyle.Render(opt)
-
-		width := d.dialogContentWidth()
-		d.addOptionHit(cursorIdx, originalIdx, lineIndex, 0, width)
-		lines = append(lines, line)
-		lineIndex++
-	}
-	return lines
+func (d *Dialog) buildConfirm(b *LineBuilder) {
+	b.Append("", d.message)
+	b.Blank()
+	d.appendOptions(b)
 }
 
-func (d *Dialog) renderHorizontalOptionsLine(baseLine int) string {
-	bracketStyle := lipgloss.NewStyle().Foreground(ColorPrimary)
-	selectedTextStyle := lipgloss.NewStyle().Foreground(ColorForeground)
-	normalStyle := lipgloss.NewStyle().Foreground(ColorMuted)
-
-	const gap = 2 // gap between buttons
-	var b strings.Builder
-	x := 0
-	for i, opt := range d.options {
-		var rendered string
-		if i == d.cursor {
-			rendered = bracketStyle.Render("[") + selectedTextStyle.Render(" "+opt+" ") + bracketStyle.Render("]")
-		} else {
-			rendered = normalStyle.Render("[ " + opt + " ]")
-		}
-		width := min(lipgloss.Width(rendered), d.dialogContentWidth()-x)
-		// Extend hit region to include gap (for easier clicking)
-		hitWidth := width
-		if i < len(d.options)-1 {
-			hitWidth += gap // extend to cover the gap after this button
-		}
-		d.addOptionHit(i, i, baseLine, x, hitWidth)
-		b.WriteString(rendered)
-		if i < len(d.options)-1 {
-			b.WriteString("  ")
-			x += width + gap
-		} else {
-			x += width
-		}
+func (d *Dialog) buildSelect(b *LineBuilder) {
+	if d.message != "" {
+		b.Append("", d.message)
+		b.Blank()
 	}
-
-	return b.String()
+	if d.filterEnabled {
+		b.Append(dialogIDFilterInput, d.filterInput.View())
+		b.Blank()
+	}
+	d.appendOptions(b)
 }
 
-func (d *Dialog) renderInputButtonsLine(baseLine int) string {
+// appendCheckbox renders one checkbox row + an optional indented description.
+// The description is pre-wrapped to known widths and appended via AppendRaw
+// so the builder's row count tracks reality (lipgloss soft-wrapping caused
+// drift previously).
+func (d *Dialog) appendCheckbox(b *LineBuilder, id, label string, value, focused, disabled bool, desc string) {
+	box := "[ ]"
+	if value {
+		box = "[" + Icons.Clean + "]"
+	}
+	style := lipgloss.NewStyle().Foreground(ColorForeground)
+	switch {
+	case disabled:
+		style = style.Foreground(ColorMuted)
+	case focused:
+		style = style.Foreground(ColorPrimary)
+	}
+	b.Append(id, style.Render(box+" "+label))
+	if desc != "" {
+		descStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+		for _, line := range wordWrap(desc, b.ContentWidth()-4) {
+			b.AppendRaw("", "    "+descStyle.Render(line))
+		}
+	}
+}
+
+// appendSelectField renders the inline cycler ("Label:  < Current >") plus
+// the current option's description. The full row is registered as
+// dialogIDSelectField; the chevrons get inline regions so clicks can
+// distinguish "cycle back" vs "cycle forward".
+func (d *Dialog) appendSelectField(b *LineBuilder) {
+	labelStyle := lipgloss.NewStyle().Foreground(ColorForeground)
+	if d.selectFocused {
+		labelStyle = labelStyle.Foreground(ColorPrimary)
+	}
+	arrowStyle := lipgloss.NewStyle().Foreground(ColorPrimary)
+	valueStyle := lipgloss.NewStyle().Foreground(ColorForeground).Bold(d.selectFocused)
+
+	current := d.selectOptions[d.selectIndex]
+	left := arrowStyle.Render("<")
+	right := arrowStyle.Render(">")
+	value := valueStyle.Render(current.Label)
+	row := labelStyle.Render(d.selectLabel) + "  " + left + " " + value + " " + right
+
+	rowY := b.CurrentRow()
+	b.Append(dialogIDSelectField, row)
+
+	labelW := lipgloss.Width(d.selectLabel) + 2 // label + "  "
+	leftW := lipgloss.Width(left)
+	b.AddRegion(dialogIDSelectLeft, labelW, rowY, leftW, 1)
+	rightX := labelW + leftW + 1 + lipgloss.Width(value) + 1
+	b.AddRegion(dialogIDSelectRight, rightX, rowY, lipgloss.Width(right), 1)
+
+	if current.Description != "" {
+		descStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+		for _, line := range wordWrap(current.Description, b.ContentWidth()-4) {
+			b.AppendRaw("", "    "+descStyle.Render(line))
+		}
+	}
+}
+
+// appendInputButtons renders the OK / Cancel button row for a DialogInput
+// with two inline regions — clicking the OK column submits, clicking the
+// Cancel column dismisses.
+func (d *Dialog) appendInputButtons(b *LineBuilder) {
 	bracketStyle := lipgloss.NewStyle().Foreground(ColorPrimary)
 	textStyle := lipgloss.NewStyle().Foreground(ColorForeground)
 	normalStyle := lipgloss.NewStyle().Foreground(ColorMuted)
@@ -326,35 +266,93 @@ func (d *Dialog) renderInputButtonsLine(baseLine int) string {
 
 	const gap = 2
 	okWidth := lipgloss.Width(ok)
-	// Extend OK hit region to include gap
-	d.addOptionHit(0, 0, baseLine, 0, okWidth+gap)
-
 	cancelX := okWidth + gap
-	cancelWidth := min(lipgloss.Width(cancel), max(0, d.dialogContentWidth()-cancelX))
-	d.addOptionHit(1, 1, baseLine, cancelX, cancelWidth)
+	cancelWidth := min(lipgloss.Width(cancel), max(0, b.ContentWidth()-cancelX))
 
-	return ok + "  " + cancel
+	rowY := b.CurrentRow()
+	b.Append("", ok+"  "+cancel)
+	b.AddRegion(dialogIDOK, 0, rowY, okWidth+gap, 1)
+	b.AddRegion(dialogIDCancel, cancelX, rowY, cancelWidth, 1)
 }
 
-func (d *Dialog) addOptionHit(cursorIdx, optionIdx, line, x, width int) {
-	if width <= 0 {
+// appendOptions renders DialogConfirm/DialogSelect options either vertically
+// (one per row, registered as option-N) or horizontally (single row with
+// inline regions per option).
+func (d *Dialog) appendOptions(b *LineBuilder) {
+	if d.verticalLayout || (d.dtype == DialogSelect && d.filterEnabled) {
+		d.appendVerticalOptions(b)
 		return
 	}
-	d.optionHits = append(d.optionHits, dialogOptionHit{
-		cursorIndex: cursorIdx,
-		optionIndex: optionIdx,
-		region: HitRegion{
-			X:      x,
-			Y:      line,
-			Width:  width,
-			Height: 1,
-		},
-	})
+	d.appendHorizontalOptions(b)
+}
+
+func (d *Dialog) appendVerticalOptions(b *LineBuilder) {
+	indices := d.visibleOptionIndices()
+	for cursorIdx, originalIdx := range indices {
+		opt := d.options[originalIdx]
+		cursor := Icons.CursorEmpty + " "
+		nameStyle := lipgloss.NewStyle().Foreground(ColorForeground)
+		if cursorIdx == d.cursor {
+			cursor = Icons.Cursor + " "
+			nameStyle = nameStyle.Bold(true)
+		}
+		id := dialogIDOptPrefix + itoa(originalIdx)
+		b.Append(id, cursor+nameStyle.Render(opt))
+	}
+}
+
+func (d *Dialog) appendHorizontalOptions(b *LineBuilder) {
+	bracketStyle := lipgloss.NewStyle().Foreground(ColorPrimary)
+	selectedTextStyle := lipgloss.NewStyle().Foreground(ColorForeground)
+	normalStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+
+	const gap = 2
+	rowY := b.CurrentRow()
+	var sb strings.Builder
+	x := 0
+	for i, opt := range d.options {
+		var rendered string
+		if i == d.cursor {
+			rendered = bracketStyle.Render("[") + selectedTextStyle.Render(" "+opt+" ") + bracketStyle.Render("]")
+		} else {
+			rendered = normalStyle.Render("[ " + opt + " ]")
+		}
+		w := min(lipgloss.Width(rendered), b.ContentWidth()-x)
+		hitWidth := w
+		if i < len(d.options)-1 {
+			hitWidth += gap // extend hit region to cover the gap for easier clicking
+		}
+		b.AddRegion(dialogIDOptPrefix+itoa(i), x, rowY, hitWidth, 1)
+		sb.WriteString(rendered)
+		if i < len(d.options)-1 {
+			sb.WriteString("  ")
+			x += w + gap
+		} else {
+			x += w
+		}
+	}
+	b.Append("", sb.String())
+}
+
+// visibleOptionIndices returns the option indices in render order, accounting
+// for fuzzy filtering on DialogSelect.
+func (d *Dialog) visibleOptionIndices() []int {
+	if d.filterEnabled && d.filteredIndices != nil {
+		return d.filteredIndices
+	}
+	indices := make([]int, len(d.options))
+	for i := range d.options {
+		indices[i] = i
+	}
+	return indices
 }
 
 func (d *Dialog) helpText() string {
 	switch d.dtype {
 	case DialogInput:
+		if d.selectLabel != "" {
+			return "↑/↓: navigate • ←/→: change mode • space: toggle • enter: confirm • esc: cancel"
+		}
 		if d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "" {
 			return "↑/↓: navigate • space: toggle • enter: confirm • esc: cancel"
 		}
@@ -372,4 +370,28 @@ func (d *Dialog) helpText() string {
 	default:
 		return "enter: confirm • esc: cancel"
 	}
+}
+
+// itoa is a tiny stdlib-free int→string converter for option-ID suffixes.
+// Avoids pulling fmt into the render hot path.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
 }

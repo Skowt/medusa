@@ -458,9 +458,6 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				logging.Error("Failed to inject trusted directory: %v", err)
 				cmds = append(cmds, a.toast.ShowError("Profile config corrupt: "+err.Error()))
 			}
-			if msg.AllowEdits {
-				_ = config.InjectAllowEdits(msg.Workspace.Root())
-			}
 		}
 		if cmd := a.handleLaunchAgent(msg); cmd != nil {
 			cmds = append(cmds, cmd)

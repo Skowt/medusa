@@ -138,21 +138,6 @@ func (a *App) routeOverlayInput(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		}
 	}
 
-	// Handle sandbox rules editor if visible
-	if a.sandboxRulesEditor != nil && a.sandboxRulesEditor.Visible() {
-		newEditor, cmd := a.sandboxRulesEditor.Update(msg)
-		a.sandboxRulesEditor = newEditor
-		if cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
-		if _, ok := msg.(tea.KeyPressMsg); ok {
-			return true
-		}
-		if _, ok := msg.(tea.MouseClickMsg); ok {
-			return true
-		}
-	}
-
 	// Handle profile manager if visible
 	if a.profileManager != nil && a.profileManager.Visible() {
 		newManager, cmd := a.profileManager.Update(msg)

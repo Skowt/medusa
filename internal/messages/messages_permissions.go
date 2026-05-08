@@ -1,9 +1,5 @@
 package messages
 
-import (
-	"github.com/Skowt/medusa/internal/config"
-)
-
 // PermissionWatcherEvent is sent when a watched settings.local.json changes
 type PermissionWatcherEvent struct {
 	Root     string
@@ -45,10 +41,4 @@ type PermissionsEditorResult struct {
 	Confirmed bool
 	Allow     []string
 	Deny      []string
-}
-
-// SandboxRulesEditorResult contains the updated sandbox rules from the editor
-type SandboxRulesEditorResult struct {
-	Confirmed bool
-	Rules     []config.SandboxRule
 }

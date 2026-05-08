@@ -176,22 +176,21 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 
 	case DialogCustomizeTab:
 		if a.activeWorkspace != nil {
-			// Read checkbox values and save as last-used settings
-			allowEdits := result.CheckboxValue
-			isolated := result.Checkbox2Value
-			skipPerms := result.Checkbox3Value
-			a.config.UI.LastAllowEdits = allowEdits
+			isolated := result.CheckboxValue
+			allowUnsandboxed := result.Checkbox2Value
+			permMode := defaultPermissionMode(result.SelectValue)
 			a.config.UI.LastIsolated = isolated
-			a.config.UI.LastSkipPermissions = skipPerms
+			a.config.UI.LastAllowUnsandboxedCommands = allowUnsandboxed
+			a.config.UI.LastPermissionMode = permMode
 			_ = a.config.SaveUISettings()
 			ws := a.activeWorkspace
 			return func() tea.Msg {
 				return messages.LaunchAgent{
-					Assistant:       "claude",
-					Workspace:       ws,
-					AllowEdits:      allowEdits,
-					Isolated:        isolated,
-					SkipPermissions: skipPerms,
+					Assistant:                "claude",
+					Workspace:                ws,
+					Isolated:                 isolated,
+					AllowUnsandboxedCommands: allowUnsandboxed,
+					PermissionMode:           permMode,
 				}
 			}
 		}

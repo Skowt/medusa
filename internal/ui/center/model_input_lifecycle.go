@@ -17,7 +17,7 @@ import (
 
 // updateLaunchAgent handles messages.LaunchAgent.
 func (m *Model) updateLaunchAgent(msg messages.LaunchAgent) (*Model, tea.Cmd) {
-	return m, m.createAgentTab(msg.Assistant, msg.Workspace, msg.AllowEdits, msg.Isolated, msg.SkipPermissions)
+	return m, m.createAgentTab(msg.Assistant, msg.Workspace, msg.Isolated, msg.AllowUnsandboxedCommands, msg.PermissionMode)
 }
 
 // updateLaunchScript handles messages.LaunchScript.
@@ -198,9 +198,9 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 	tab.mu.Lock()
 	sessionName := tab.SessionName
 	claudeSessionID := tab.ClaudeSessionID
-	tabAllowEdits := tab.AllowEdits
 	tabIsolated := tab.Isolated
-	tabSkipPerms := tab.SkipPermissions
+	tabAllowUnsandboxed := tab.AllowUnsandboxedCommands
+	tabPermissionMode := tab.PermissionMode
 	tab.autoRestartAttempt = msg.Attempt
 	tab.mu.Unlock()
 
@@ -236,9 +236,9 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 		_ = tmux.KillSession(sessionName, tmuxOpts)
 
 		agentOpts := appPty.AgentOptions{
-			AllowEdits:      tabAllowEdits,
-			Isolated:        tabIsolated,
-			SkipPermissions: tabSkipPerms,
+			Isolated:                 tabIsolated,
+			AllowUnsandboxedCommands: tabAllowUnsandboxed,
+			PermissionMode:           tabPermissionMode,
 		}
 		if claudeSessionID != "" {
 			agentOpts.ClaudeSessionID = claudeSessionID

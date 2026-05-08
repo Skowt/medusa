@@ -48,14 +48,14 @@ type WorktreeRef struct {
 
 // TabInfo stores information about an open tab
 type TabInfo struct {
-	Assistant       string `json:"assistant"`
-	Name            string `json:"name"`
-	SessionName     string `json:"session_name,omitempty"`
-	Status          string `json:"status,omitempty"`
-	ClaudeSessionID string `json:"claude_session_id,omitempty"`
-	AllowEdits      bool   `json:"allow_edits,omitempty"`
-	Isolated        bool   `json:"isolated,omitempty"`
-	SkipPermissions bool   `json:"skip_permissions,omitempty"`
+	Assistant                string `json:"assistant"`
+	Name                     string `json:"name"`
+	SessionName              string `json:"session_name,omitempty"`
+	Status                   string `json:"status,omitempty"`
+	ClaudeSessionID          string `json:"claude_session_id,omitempty"`
+	Isolated                 bool   `json:"isolated,omitempty"`
+	AllowUnsandboxedCommands bool   `json:"allow_unsandboxed_commands,omitempty"`
+	PermissionMode           string `json:"permission_mode,omitempty"`
 	// ScriptFullCmd is the env-prefixed shell command for script tabs,
 	// persisted so Restart can rerun the same command after a medusa restart.
 	ScriptFullCmd string `json:"script_full_cmd,omitempty"`
@@ -106,12 +106,10 @@ type Workspace struct {
 	StatusChanged time.Time       `json:"status_changed,omitempty"`
 	ArchivedAt    time.Time       `json:"archived_at,omitempty"`
 
-	// Permissions
-	AllowEdits bool `json:"allow_edits,omitempty"` // Pre-grant Edit permission when true
-
 	// Isolation
-	Isolated        bool `json:"isolated,omitempty"`         // Run in sandbox-exec
-	SkipPermissions bool `json:"skip_permissions,omitempty"` // Run with --dangerously-skip-permissions
+	Isolated                 bool   `json:"isolated,omitempty"`                   // Enable Claude sandbox via --settings
+	AllowUnsandboxedCommands bool   `json:"allow_unsandboxed_commands,omitempty"` // sandbox.allowUnsandboxedCommands when Isolated
+	PermissionMode           string `json:"permission_mode,omitempty"`            // claude --permission-mode value
 
 	// Worktree setup
 	CopyIgnored bool `json:"copy_ignored,omitempty"` // Copy gitignored files from source repo

@@ -35,9 +35,10 @@ type DialogResult struct {
 	Value          string
 	Values         []string // Multi-select results (e.g. file picker multi-select)
 	Index          int
-	CheckboxValue  bool // Value of checkbox if dialog had one
-	Checkbox2Value bool // Value of second checkbox if dialog had one
-	Checkbox3Value bool // Value of third checkbox if dialog had one
+	CheckboxValue  bool   // Value of checkbox if dialog had one
+	Checkbox2Value bool   // Value of second checkbox if dialog had one
+	Checkbox3Value bool   // Value of third checkbox if dialog had one
+	SelectValue    string // Value of select field if dialog had one (DialogInput)
 }
 
 // InputTransformFunc transforms input text before it's added to the input field
@@ -73,42 +74,44 @@ type Dialog struct {
 	filteredIndices []int // indices into options
 
 	// Layout
-	verticalLayout bool // render options vertically instead of horizontally
-	width          int
-	height         int
-	optionHits     []dialogOptionHit
-	// Display settings
+	verticalLayout  bool // render options vertically instead of horizontally
+	width           int
+	height          int
 	showKeymapHints bool
 
-	// Checkbox (for DialogInput)
-	checkboxLabel   string    // Label shown next to checkbox (empty = no checkbox)
-	checkboxValue   bool      // Current checkbox state
-	checkboxHit     HitRegion // Click region for checkbox
-	checkboxFocused bool      // True when checkbox is focused (vs input)
+	// Checkboxes (for DialogInput). All three slots share the same shape;
+	// hit regions are owned by the LineBuilder produced via build().
+	checkboxLabel    string
+	checkboxValue    bool
+	checkboxFocused  bool
+	checkbox2Label   string
+	checkbox2Value   bool
+	checkbox2Focused bool
+	checkbox3Label   string
+	checkbox3Value   bool
+	checkbox3Focused bool
 
-	// Second checkbox (for DialogInput)
-	checkbox2Label   string    // Label shown next to second checkbox (empty = no checkbox)
-	checkbox2Value   bool      // Current second checkbox state
-	checkbox2Hit     HitRegion // Click region for second checkbox
-	checkbox2Focused bool      // True when second checkbox is focused
+	// Optional muted description rendered under each checkbox (DialogInput only)
+	checkboxDesc  string
+	checkbox2Desc string
+	checkbox3Desc string
 
-	// Third checkbox (for DialogInput)
-	checkbox3Label   string    // Label shown next to third checkbox (empty = no checkbox)
-	checkbox3Value   bool      // Current third checkbox state
-	checkbox3Hit     HitRegion // Click region for third checkbox
-	checkbox3Focused bool      // True when third checkbox is focused
+	// When true, checkbox 2 is disabled (rendered muted, unclickable, not
+	// togglable by space/enter) whenever checkbox 1 is unchecked. Used for
+	// nested settings like "Allow unsandboxed commands" under "Sandboxed".
+	checkbox2RequiresFirst bool
+
+	// Select field (for DialogInput): a single-line cycler with description.
+	selectLabel   string         // e.g. "Starting Mode:" (empty = no select field)
+	selectOptions []SelectOption // available choices
+	selectIndex   int            // current cursor into selectOptions
+	selectFocused bool
 
 	// Input visibility
 	inputHidden bool // Hide the text input field (checkbox-only dialog)
 
 	// Default cursor position (restored by Show)
 	defaultCursor int
-}
-
-type dialogOptionHit struct {
-	cursorIndex int
-	optionIndex int
-	region      HitRegion
 }
 
 // NewInputDialog creates a new input dialog
@@ -346,7 +349,8 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 	checkboxVal := d.checkboxValue
 	checkbox2Val := d.checkbox2Value
 	checkbox3Val := d.checkbox3Value
-	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val)
+	selectVal := d.SelectValue()
+	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v select=%s", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val, selectVal)
 	return func() tea.Msg {
 		return DialogResult{
 			ID:             id,
@@ -355,6 +359,7 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 			CheckboxValue:  checkboxVal,
 			Checkbox2Value: checkbox2Val,
 			Checkbox3Value: checkbox3Val,
+			SelectValue:    selectVal,
 		}
 	}
 }
@@ -392,62 +397,79 @@ func (d *Dialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 
-	lines := d.renderLines()
-	if len(lines) == 0 {
-		return nil
-	}
-
-	content := strings.Join(lines, "\n")
-	dialogView := d.dialogStyle().Render(content)
-	dialogW, dialogH := viewDimensions(dialogView)
-	dialogX := (d.width - dialogW) / 2
-	dialogY := (d.height - dialogH) / 2
-	if dialogX < 0 {
-		dialogX = 0
-	}
-	if dialogY < 0 {
-		dialogY = 0
-	}
+	b := d.build()
+	dialogW, dialogH := b.Size()
+	dialogX := max(0, (d.width-dialogW)/2)
+	dialogY := max(0, (d.height-dialogH)/2)
 	if msg.X < dialogX || msg.X >= dialogX+dialogW || msg.Y < dialogY || msg.Y >= dialogY+dialogH {
 		return nil
 	}
-
-	_, _, contentOffsetX, contentOffsetY := d.dialogFrame()
-	localX := msg.X - dialogX - contentOffsetX
-	localY := msg.Y - dialogY - contentOffsetY
+	contentX, contentY := b.ContentOffset()
+	localX := msg.X - dialogX - contentX
+	localY := msg.Y - dialogY - contentY
 	if localX < 0 || localY < 0 {
 		return nil
 	}
 
-	// Check for checkbox clicks
-	if d.dtype == DialogInput && d.checkboxLabel != "" && d.checkboxHit.Contains(localX, localY) {
-		d.checkboxValue = !d.checkboxValue
-		return nil
+	hit := func(id string) bool {
+		r, ok := b.RegionByID(id)
+		return ok && r.Contains(localX, localY)
 	}
-	if d.dtype == DialogInput && d.checkbox2Label != "" && d.checkbox2Hit.Contains(localX, localY) {
-		d.checkbox2Value = !d.checkbox2Value
-		return nil
-	}
-	if d.dtype == DialogInput && d.checkbox3Label != "" && d.checkbox3Hit.Contains(localX, localY) {
-		d.checkbox3Value = !d.checkbox3Value
+
+	// Inline controls take priority over the row regions they sit on.
+	if d.dtype == DialogInput {
+		switch {
+		case d.checkboxLabel != "" && hit(dialogIDCheckbox1):
+			d.checkboxValue = !d.checkboxValue
+			return nil
+		case d.checkbox2Label != "" && hit(dialogIDCheckbox2):
+			if !d.checkbox2Disabled() {
+				d.checkbox2Value = !d.checkbox2Value
+			}
+			return nil
+		case d.checkbox3Label != "" && hit(dialogIDCheckbox3):
+			d.checkbox3Value = !d.checkbox3Value
+			return nil
+		case d.selectLabel != "" && hit(dialogIDSelectLeft):
+			d.setFocus(4)
+			d.cycleSelect(-1)
+			return nil
+		case d.selectLabel != "" && hit(dialogIDSelectRight):
+			d.setFocus(4)
+			d.cycleSelect(+1)
+			return nil
+		case d.selectLabel != "" && hit(dialogIDSelectField):
+			d.setFocus(4)
+			d.cycleSelect(+1)
+			return nil
+		case hit(dialogIDOK):
+			return d.submitInput(true)
+		case hit(dialogIDCancel):
+			return d.submitInput(false)
+		}
 		return nil
 	}
 
-	for _, hit := range d.optionHits {
-		if hit.region.Contains(localX, localY) {
-			d.cursor = hit.cursorIndex
-
+	// Confirm/Select dispatch via option-N regions.
+	for i, opt := range d.options {
+		if hit(dialogIDOptPrefix + itoa(i)) {
+			d.cursor = i
+			if d.filterEnabled && d.filteredIndices != nil {
+				for c, original := range d.filteredIndices {
+					if original == i {
+						d.cursor = c
+						break
+					}
+				}
+			}
 			switch d.dtype {
-			case DialogInput:
-				return d.submitInput(hit.optionIndex == 0)
 			case DialogConfirm:
-				return d.submitConfirm(hit.optionIndex == 0)
+				return d.submitConfirm(i == 0)
 			case DialogSelect:
-				return d.submitSelect(hit.optionIndex, d.options[hit.optionIndex])
+				return d.submitSelect(i, opt)
 			}
 		}
 	}
-
 	return nil
 }
 

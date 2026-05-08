@@ -86,9 +86,9 @@ type Tab struct {
 	autoRestartAttempt int // tracks auto-restart attempts after session death
 
 	// Per-tab agent settings (configured at tab creation time)
-	AllowEdits      bool
-	Isolated        bool
-	SkipPermissions bool
+	Isolated                 bool
+	AllowUnsandboxedCommands bool
+	PermissionMode           string
 
 	// Script tabs retain the full shell command (env-prefixed) so Restart
 	// can relaunch the same process in a fresh tmux session.
