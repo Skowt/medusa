@@ -13,6 +13,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/safego"
+	"github.com/Skowt/medusa/internal/shellutil"
 )
 
 // ScriptType identifies the type of script
@@ -105,26 +106,32 @@ func (r *ScriptRunner) LoadConfig(repoPath string) (*WorkspaceConfig, error) {
 	return config, nil
 }
 
-// RunSetup runs the setup scripts for a workspace
+// RunSetup runs the setup scripts for a workspace.
+// For multi-repo workspaces it loads each repo's .medusa/workspaces.json and
+// runs that repo's setup-workspace commands inside the matching worktree.
 func (r *ScriptRunner) RunSetup(ws *data.Workspace) error {
-	config, err := r.LoadConfig(ws.PrimaryRepo().Path)
-	if err != nil {
-		return err
-	}
-
 	env := r.envBuilder.BuildEnv(ws)
 
-	// Run each setup command sequentially
-	for _, cmdStr := range config.SetupWorkspace {
-		cmd := exec.Command("sh", "-c", cmdStr)
-		cmd.Dir = ws.PrimaryWorktreeRoot()
-		cmd.Env = env
+	for i, repo := range ws.Repos {
+		if i >= len(ws.Worktrees) {
+			break
+		}
+		config, err := r.LoadConfig(repo.Path)
+		if err != nil {
+			return err
+		}
+		worktreeRoot := ws.Worktrees[i].Root
+		for _, cmdStr := range config.SetupWorkspace {
+			cmd := exec.Command("sh", "-c", cmdStr)
+			cmd.Dir = worktreeRoot
+			cmd.Env = env
 
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
 
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("setup command failed: %s: %s", cmdStr, stderr.String())
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("setup command failed in %s: %s: %s", repo.Name, cmdStr, stderr.String())
+			}
 		}
 	}
 
@@ -193,21 +200,50 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 }
 
 // GetRunCommands returns the run commands, environment map, and any warnings
-// produced while normalizing tab names for a workspace. Falls back to
-// ws.Scripts.Run if no config file commands are defined.
+// produced while normalizing tab names for a workspace. For multi-repo
+// workspaces it collects commands from every repo's .medusa/workspaces.json,
+// wraps each command with `cd <worktree>` so it executes inside the right
+// worktree (the tmux session cwd is ws.Root(), which is the parent dir for
+// multi-repo), and prefixes tab names with the repo name to keep them
+// distinguishable. Falls back to ws.Scripts.Run if no per-repo commands are
+// defined.
 func (r *ScriptRunner) GetRunCommands(ws *data.Workspace) ([]RunCommand, map[string]string, []string, error) {
-	config, err := r.LoadConfig(ws.PrimaryRepo().Path)
-	if err != nil {
-		return nil, nil, nil, err
+	wsRoot := ws.Root()
+	multiRepo := ws.IsMultiRepo()
+
+	var allCmds []RunCommand
+	for i, repo := range ws.Repos {
+		if i >= len(ws.Worktrees) {
+			break
+		}
+		config, err := r.LoadConfig(repo.Path)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		worktreeRoot := ws.Worktrees[i].Root
+		for _, rc := range config.RunCommands {
+			cmd := rc
+			if worktreeRoot != "" && worktreeRoot != wsRoot {
+				cmd.Command = "cd " + shellutil.Quote(worktreeRoot) + " && " + rc.Command
+			}
+			if multiRepo {
+				if name := strings.TrimSpace(rc.Name); name != "" {
+					cmd.Name = repo.Name + ": " + name
+				} else {
+					cmd.Name = repo.Name
+				}
+			}
+			allCmds = append(allCmds, cmd)
+		}
 	}
-	cmds := config.RunCommands
-	if len(cmds) == 0 && ws.Scripts.Run != "" {
-		cmds = []RunCommand{{Command: ws.Scripts.Run}}
+
+	if len(allCmds) == 0 && ws.Scripts.Run != "" {
+		allCmds = []RunCommand{{Command: ws.Scripts.Run}}
 	}
-	if len(cmds) == 0 {
+	if len(allCmds) == 0 {
 		return nil, nil, nil, fmt.Errorf("no run script configured")
 	}
-	cmds, warnings := normalizeRunCommandNames(cmds)
+	cmds, warnings := normalizeRunCommandNames(allCmds)
 	envMap := r.envBuilder.BuildEnvMap(ws)
 	return cmds, envMap, warnings, nil
 }
