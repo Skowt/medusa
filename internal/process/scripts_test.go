@@ -291,6 +291,165 @@ func TestNormalizeRunCommandNames(t *testing.T) {
 	}
 }
 
+// newMultiRepoTestWorkspace builds a multi-repo Workspace where each repo has
+// its own source dir and its own worktree dir under a shared parent.
+func newMultiRepoTestWorkspace(t *testing.T, name string, repoNames ...string) (*data.Workspace, []string, []string) {
+	t.Helper()
+	parent := t.TempDir()
+	repos := make([]data.RepoRef, len(repoNames))
+	worktrees := make([]data.WorktreeRef, len(repoNames))
+	repoPaths := make([]string, len(repoNames))
+	worktreePaths := make([]string, len(repoNames))
+	for i, n := range repoNames {
+		repoPath := filepath.Join(t.TempDir(), n)
+		if err := os.MkdirAll(repoPath, 0755); err != nil {
+			t.Fatalf("mkdir repo %s: %v", n, err)
+		}
+		wtPath := filepath.Join(parent, n)
+		if err := os.MkdirAll(wtPath, 0755); err != nil {
+			t.Fatalf("mkdir worktree %s: %v", n, err)
+		}
+		repos[i] = data.RepoRef{Path: repoPath, Name: n}
+		worktrees[i] = data.WorktreeRef{Branch: name, Base: "main", Root: wtPath}
+		repoPaths[i] = repoPath
+		worktreePaths[i] = wtPath
+	}
+	ws := data.NewMultiRepoWorkspace(name, repos, worktrees)
+	return ws, repoPaths, worktreePaths
+}
+
+func TestScriptRunnerRunSetupMultiRepo(t *testing.T) {
+	ws, repoPaths, worktreePaths := newMultiRepoTestWorkspace(t, "feat", "frontend", "backend")
+
+	writeWorkspaceConfig(t, repoPaths[0], `{
+  "setup-workspace": ["printf frontend > setup.txt"]
+}`)
+	writeWorkspaceConfig(t, repoPaths[1], `{
+  "setup-workspace": ["printf backend > setup.txt"]
+}`)
+
+	runner := NewScriptRunner(6200, 10)
+	if err := runner.RunSetup(ws); err != nil {
+		t.Fatalf("RunSetup() error = %v", err)
+	}
+
+	for i, want := range []string{"frontend", "backend"} {
+		got, err := os.ReadFile(filepath.Join(worktreePaths[i], "setup.txt"))
+		if err != nil {
+			t.Fatalf("read setup.txt for %s: %v", ws.Repos[i].Name, err)
+		}
+		if string(got) != want {
+			t.Errorf("setup.txt[%s] = %q, want %q", ws.Repos[i].Name, got, want)
+		}
+	}
+}
+
+func TestScriptRunnerRunSetupMultiRepoOneRepoEmpty(t *testing.T) {
+	ws, repoPaths, worktreePaths := newMultiRepoTestWorkspace(t, "feat", "frontend", "backend")
+
+	writeWorkspaceConfig(t, repoPaths[0], `{
+  "setup-workspace": ["printf only-frontend > setup.txt"]
+}`)
+	// backend has no .medusa/workspaces.json — should be skipped silently.
+
+	runner := NewScriptRunner(6200, 10)
+	if err := runner.RunSetup(ws); err != nil {
+		t.Fatalf("RunSetup() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(worktreePaths[0], "setup.txt")); err != nil {
+		t.Fatalf("expected frontend/setup.txt: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(worktreePaths[1], "setup.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected backend/setup.txt to NOT exist, got err=%v", err)
+	}
+}
+
+func TestScriptRunnerGetRunCommandsMultiRepo(t *testing.T) {
+	ws, repoPaths, worktreePaths := newMultiRepoTestWorkspace(t, "feat", "frontend", "backend")
+
+	writeWorkspaceConfig(t, repoPaths[0], `{
+  "run": [{"name": "dev", "command": "npm start"}]
+}`)
+	writeWorkspaceConfig(t, repoPaths[1], `{
+  "run": [{"name": "api", "command": "go run ."}]
+}`)
+
+	runner := NewScriptRunner(6200, 10)
+	cmds, _, warnings, err := runner.GetRunCommands(ws)
+	if err != nil {
+		t.Fatalf("GetRunCommands() error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", warnings)
+	}
+	if len(cmds) != 2 {
+		t.Fatalf("expected 2 commands, got %d (%+v)", len(cmds), cmds)
+	}
+	wantNames := []string{"frontend: dev", "backend: api"}
+	for i, want := range wantNames {
+		if cmds[i].Name != want {
+			t.Errorf("name[%d] = %q, want %q", i, cmds[i].Name, want)
+		}
+	}
+	// Each command must cd into its worktree first (multi-repo: ws.Root() is
+	// the parent, so wrapping is required to start the dev server in the
+	// correct worktree).
+	for i, wt := range worktreePaths {
+		if !strings.Contains(cmds[i].Command, "cd '"+wt+"'") {
+			t.Errorf("command[%d] = %q, expected to cd into %q", i, cmds[i].Command, wt)
+		}
+	}
+}
+
+func TestScriptRunnerGetRunCommandsSingleRepoNoCdWrap(t *testing.T) {
+	repo := t.TempDir()
+	wsRoot := t.TempDir()
+
+	writeWorkspaceConfig(t, repo, `{
+  "run": "npm start"
+}`)
+
+	runner := NewScriptRunner(6200, 10)
+	ws := data.NewWorkspace("solo", "feat", "main", repo, wsRoot)
+
+	cmds, _, _, err := runner.GetRunCommands(ws)
+	if err != nil {
+		t.Fatalf("GetRunCommands() error = %v", err)
+	}
+	if len(cmds) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(cmds))
+	}
+	// Single-repo: ws.Root() == worktree, so no cd wrapping.
+	if cmds[0].Command != "npm start" {
+		t.Errorf("command = %q, want %q (single-repo should not wrap with cd)", cmds[0].Command, "npm start")
+	}
+}
+
+func TestScriptRunnerGetRunCommandsMultiRepoFallsBackToWorkspaceScripts(t *testing.T) {
+	ws, _, _ := newMultiRepoTestWorkspace(t, "feat", "frontend", "backend")
+	// No per-repo configs, but workspace has a Scripts.Run.
+	ws.Scripts = data.ScriptsConfig{Run: "echo workspace"}
+
+	runner := NewScriptRunner(6200, 10)
+	cmds, _, _, err := runner.GetRunCommands(ws)
+	if err != nil {
+		t.Fatalf("GetRunCommands() error = %v", err)
+	}
+	if len(cmds) != 1 || cmds[0].Command != "echo workspace" {
+		t.Fatalf("expected workspace fallback, got %+v", cmds)
+	}
+}
+
+func TestScriptRunnerGetRunCommandsMultiRepoNoScripts(t *testing.T) {
+	ws, _, _ := newMultiRepoTestWorkspace(t, "feat", "frontend", "backend")
+
+	runner := NewScriptRunner(6200, 10)
+	if _, _, _, err := runner.GetRunCommands(ws); err == nil {
+		t.Fatal("expected GetRunCommands() to fail when no repo has run scripts and ws.Scripts.Run is empty")
+	}
+}
+
 func waitForFile(path string, timeout time.Duration) error {
 	deadline := time.After(timeout)
 	for {
