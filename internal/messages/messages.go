@@ -366,11 +366,11 @@ type ShowCustomizeTabDialog struct{}
 
 // LaunchAgent requests launching an agent in a new tab
 type LaunchAgent struct {
-	Assistant       string
-	Workspace       *data.Workspace
-	AllowEdits      bool
-	Isolated        bool
-	SkipPermissions bool
+	Assistant                string
+	Workspace                *data.Workspace
+	Isolated                 bool
+	AllowUnsandboxedCommands bool   // only meaningful when Isolated is true
+	PermissionMode           string // claude --permission-mode value (acceptEdits, plan, auto, bypassPermissions)
 }
 
 // LaunchScript requests running a shell command in a new visible tab

@@ -73,6 +73,48 @@ func (b *LineBuilder) Blank() {
 	b.rows = append(b.rows, "")
 }
 
+// AddRegion records an extra HitRegion at content-local coordinates. Use for
+// rows with multiple click targets (OK/Cancel buttons, select chevrons) where
+// Append's default full-row region isn't granular enough.
+func (b *LineBuilder) AddRegion(id string, x, y, width, height int) {
+	if id == "" || width <= 0 || height <= 0 {
+		return
+	}
+	b.regions = append(b.regions, HitRegion{
+		ID:     id,
+		X:      x,
+		Y:      y,
+		Width:  width,
+		Height: height,
+	})
+}
+
+// CurrentRow returns the index of the next row that will be appended. Useful
+// to capture the Y of a row that's about to be appended so multiple AddRegion
+// calls can target the same row without recomputing coordinates.
+func (b *LineBuilder) CurrentRow() int {
+	return len(b.rows)
+}
+
+// AppendRaw appends content without any width-based wrapping. Use when the
+// caller has already wrapped lines (e.g. for indented descriptions where
+// lipgloss's Width+MarginLeft combo is unreliable). Multi-line content is
+// split on \n into separate rows. If id is non-empty, a HitRegion covering
+// the appended rows is recorded under that id.
+func (b *LineBuilder) AppendRaw(id, content string) {
+	startY := len(b.rows)
+	b.rows = append(b.rows, strings.Split(content, "\n")...)
+	if id != "" {
+		b.regions = append(b.regions, HitRegion{
+			ID:     id,
+			X:      0,
+			Y:      startY,
+			Width:  b.content,
+			Height: len(b.rows) - startY,
+		})
+	}
+}
+
 // View returns the fully framed, post-wrap rendering of the accumulated rows.
 func (b *LineBuilder) View() string {
 	return b.style.Render(strings.Join(b.rows, "\n"))

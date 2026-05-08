@@ -36,19 +36,6 @@ func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 			a.permissionsEditor.SetSize(a.width, a.height)
 			a.permissionsEditor.Show()
 		}
-	case common.ShowSandboxRulesEditor:
-		rules, err := config.LoadSandboxRules(a.config.Paths.SandboxRulesPath)
-		if err != nil {
-			*cmds = append(*cmds, a.toast.ShowError("Failed to load sandbox rules"))
-		} else {
-			a.sandboxRulesEditor = common.NewSandboxRulesEditor(rules.Rules)
-			a.sandboxRulesEditor.SetSize(a.width, a.height)
-			a.sandboxRulesEditor.Show()
-		}
-	case messages.SandboxRulesEditorResult:
-		if cmd := a.handleSandboxRulesEditorResult(msg); cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
 	case common.ShowProfileManager:
 		profiles := a.listProfiles()
 		a.profileManager = common.NewProfileManager(profiles)

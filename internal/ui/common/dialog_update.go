@@ -38,7 +38,7 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 				d.checkboxValue = !d.checkboxValue
 				return d, nil
 			}
-			if d.dtype == DialogInput && d.checkbox2Label != "" && d.checkbox2Focused {
+			if d.dtype == DialogInput && d.checkbox2Label != "" && d.checkbox2Focused && !d.checkbox2Disabled() {
 				d.checkbox2Value = !d.checkbox2Value
 				return d, nil
 			}
@@ -54,7 +54,7 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 				d.checkboxValue = !d.checkboxValue
 				return d, nil
 			}
-			if d.dtype == DialogInput && d.checkbox2Label != "" && d.checkbox2Focused {
+			if d.dtype == DialogInput && d.checkbox2Label != "" && d.checkbox2Focused && !d.checkbox2Disabled() {
 				d.checkbox2Value = !d.checkbox2Value
 				return d, nil
 			}
@@ -84,52 +84,9 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("tab", "down"))):
-			// Handle navigation in DialogInput with checkboxes
-			// Focus cycle: input → checkbox1 → checkbox2 → checkbox3 → input
-			if d.dtype == DialogInput && (d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "") {
-				if d.checkbox3Focused {
-					// checkbox3 → input
-					d.checkbox3Focused = false
-					d.input.Focus()
-				} else if d.checkbox2Focused {
-					if d.checkbox3Label != "" {
-						// checkbox2 → checkbox3
-						d.checkbox2Focused = false
-						d.checkbox3Focused = true
-					} else {
-						// checkbox2 → input (no checkbox3)
-						d.checkbox2Focused = false
-						d.input.Focus()
-					}
-				} else if d.checkboxFocused {
-					if d.checkbox2Label != "" {
-						// checkbox1 → checkbox2
-						d.checkboxFocused = false
-						d.checkbox2Focused = true
-					} else if d.checkbox3Label != "" {
-						// checkbox1 → checkbox3 (no checkbox2)
-						d.checkboxFocused = false
-						d.checkbox3Focused = true
-					} else {
-						// checkbox1 → input (no checkbox2 or checkbox3)
-						d.checkboxFocused = false
-						d.input.Focus()
-					}
-				} else {
-					if d.checkboxLabel != "" {
-						// input → checkbox1
-						d.checkboxFocused = true
-						d.input.Blur()
-					} else if d.checkbox2Label != "" {
-						// input → checkbox2 (no checkbox1)
-						d.checkbox2Focused = true
-						d.input.Blur()
-					} else if d.checkbox3Label != "" {
-						// input → checkbox3 (no checkbox1 or checkbox2)
-						d.checkbox3Focused = true
-						d.input.Blur()
-					}
-				}
+			// Handle navigation in DialogInput with checkboxes / select field.
+			if d.dtype == DialogInput && d.hasFocusableFields() {
+				d.advanceFocus(+1)
 				return d, nil
 			}
 			if d.dtype != DialogInput {
@@ -143,52 +100,9 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("shift+tab", "up"))):
-			// Handle reverse navigation in DialogInput with checkboxes
-			// Focus cycle: input → checkbox3 → checkbox2 → checkbox1 → input
-			if d.dtype == DialogInput && (d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "") {
-				if d.checkboxFocused {
-					// checkbox1 → input
-					d.checkboxFocused = false
-					d.input.Focus()
-				} else if d.checkbox2Focused {
-					if d.checkboxLabel != "" {
-						// checkbox2 → checkbox1
-						d.checkbox2Focused = false
-						d.checkboxFocused = true
-					} else {
-						// checkbox2 → input (no checkbox1)
-						d.checkbox2Focused = false
-						d.input.Focus()
-					}
-				} else if d.checkbox3Focused {
-					if d.checkbox2Label != "" {
-						// checkbox3 → checkbox2
-						d.checkbox3Focused = false
-						d.checkbox2Focused = true
-					} else if d.checkboxLabel != "" {
-						// checkbox3 → checkbox1 (no checkbox2)
-						d.checkbox3Focused = false
-						d.checkboxFocused = true
-					} else {
-						// checkbox3 → input (no checkbox1 or checkbox2)
-						d.checkbox3Focused = false
-						d.input.Focus()
-					}
-				} else {
-					if d.checkbox3Label != "" {
-						// input → checkbox3
-						d.checkbox3Focused = true
-						d.input.Blur()
-					} else if d.checkbox2Label != "" {
-						// input → checkbox2 (no checkbox3)
-						d.checkbox2Focused = true
-						d.input.Blur()
-					} else if d.checkboxLabel != "" {
-						// input → checkbox1 (no checkbox2 or checkbox3)
-						d.checkboxFocused = true
-						d.input.Blur()
-					}
-				}
+			// Reverse navigation in DialogInput with checkboxes / select field.
+			if d.dtype == DialogInput && d.hasFocusableFields() {
+				d.advanceFocus(-1)
 				return d, nil
 			}
 			if d.dtype != DialogInput {
@@ -205,6 +119,10 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("h", "left"))):
+			if d.dtype == DialogInput && d.selectFocused {
+				d.cycleSelect(-1)
+				return d, nil
+			}
 			if d.dtype == DialogConfirm || (d.dtype == DialogSelect && !d.filterEnabled && !d.verticalLayout) {
 				maxLen := len(d.options)
 				if maxLen > 0 {
@@ -216,6 +134,10 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("l", "right"))):
+			if d.dtype == DialogInput && d.selectFocused {
+				d.cycleSelect(+1)
+				return d, nil
+			}
 			if d.dtype == DialogConfirm || (d.dtype == DialogSelect && !d.filterEnabled && !d.verticalLayout) {
 				maxLen := len(d.options)
 				if maxLen > 0 {

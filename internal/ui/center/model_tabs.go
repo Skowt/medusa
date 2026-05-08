@@ -46,20 +46,20 @@ func nextAssistantName(assistant string, tabs []*Tab) string {
 }
 
 type ptyTabCreateResult struct {
-	Workspace         *data.Workspace
-	Assistant         string
-	DisplayName       string
-	Agent             *appPty.Agent
-	TabID             TabID
-	Activate          bool
-	Rows              int
-	Cols              int
-	ScrollbackCapture []byte
-	ClaudeSessionID   string
-	AllowEdits        bool
-	Isolated          bool
-	SkipPermissions   bool
-	ScriptFullCmd     string // Only set for script tabs; enables in-place Restart.
+	Workspace                *data.Workspace
+	Assistant                string
+	DisplayName              string
+	Agent                    *appPty.Agent
+	TabID                    TabID
+	Activate                 bool
+	Rows                     int
+	Cols                     int
+	ScrollbackCapture        []byte
+	ClaudeSessionID          string
+	Isolated                 bool
+	AllowUnsandboxedCommands bool
+	PermissionMode           string
+	ScriptFullCmd            string // Only set for script tabs; enables in-place Restart.
 }
 
 type ptyTabReattachResult struct {
@@ -88,11 +88,11 @@ func truncateDisplayName(name string) string {
 }
 
 // createAgentTab creates a new agent tab with per-tab settings
-func (m *Model) createAgentTab(assistant string, ws *data.Workspace, allowEdits, isolated, skipPerms bool) tea.Cmd {
-	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", allowEdits, isolated, skipPerms)
+func (m *Model) createAgentTab(assistant string, ws *data.Workspace, isolated, allowUnsandboxed bool, permissionMode string) tea.Cmd {
+	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", isolated, allowUnsandboxed, permissionMode)
 }
 
-func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string, allowEdits, isolated, skipPerms bool) tea.Cmd {
+func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string, isolated, allowUnsandboxed bool, permissionMode string) tea.Cmd {
 	if ws == nil {
 		return func() tea.Msg {
 			return messages.Error{Err: fmt.Errorf("no workspace selected"), Context: "creating agent"}
@@ -114,9 +114,9 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 
 		// Build agent options for Claude session resumption and per-tab settings.
 		agentOpts := appPty.AgentOptions{
-			AllowEdits:      allowEdits,
-			Isolated:        isolated,
-			SkipPermissions: skipPerms,
+			Isolated:                 isolated,
+			AllowUnsandboxedCommands: allowUnsandboxed,
+			PermissionMode:           permissionMode,
 		}
 		if appPty.AgentType(assistant) == appPty.AgentClaude {
 			if claudeSessionID != "" {
@@ -150,19 +150,19 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 		scrollback, _ := tmux.CapturePane(agent.Session, m.getTmuxOptions())
 
 		return ptyTabCreateResult{
-			Workspace:         ws,
-			Assistant:         assistant,
-			Agent:             agent,
-			TabID:             tabID,
-			DisplayName:       displayName,
-			Activate:          activate,
-			Rows:              termHeight,
-			Cols:              termWidth,
-			ScrollbackCapture: scrollback,
-			ClaudeSessionID:   claudeSessionID,
-			AllowEdits:        allowEdits,
-			Isolated:          isolated,
-			SkipPermissions:   skipPerms,
+			Workspace:                ws,
+			Assistant:                assistant,
+			Agent:                    agent,
+			TabID:                    tabID,
+			DisplayName:              displayName,
+			Activate:                 activate,
+			Rows:                     termHeight,
+			Cols:                     termWidth,
+			ScrollbackCapture:        scrollback,
+			ClaudeSessionID:          claudeSessionID,
+			Isolated:                 isolated,
+			AllowUnsandboxedCommands: allowUnsandboxed,
+			PermissionMode:           permissionMode,
 		}
 	}
 }
@@ -202,20 +202,20 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		tabID = generateTabID()
 	}
 	tab := &Tab{
-		ID:              tabID,
-		Name:            displayName,
-		Assistant:       msg.Assistant,
-		Workspace:       msg.Workspace,
-		Agent:           msg.Agent,
-		SessionName:     msg.Agent.Session,
-		ClaudeSessionID: msg.ClaudeSessionID,
-		Terminal:        term,
-		Running:         true, // Agent/viewer starts running
-		monitorDirty:    true,
-		AllowEdits:      msg.AllowEdits,
-		Isolated:        msg.Isolated,
-		SkipPermissions: msg.SkipPermissions,
-		ScriptFullCmd:   msg.ScriptFullCmd,
+		ID:                       tabID,
+		Name:                     displayName,
+		Assistant:                msg.Assistant,
+		Workspace:                msg.Workspace,
+		Agent:                    msg.Agent,
+		SessionName:              msg.Agent.Session,
+		ClaudeSessionID:          msg.ClaudeSessionID,
+		Terminal:                 term,
+		Running:                  true, // Agent/viewer starts running
+		monitorDirty:             true,
+		Isolated:                 msg.Isolated,
+		AllowUnsandboxedCommands: msg.AllowUnsandboxedCommands,
+		PermissionMode:           msg.PermissionMode,
+		ScriptFullCmd:            msg.ScriptFullCmd,
 	}
 
 	// Set up response writer for terminal queries (DSR, DA, etc.)

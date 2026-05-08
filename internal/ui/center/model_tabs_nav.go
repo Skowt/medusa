@@ -146,9 +146,9 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			sessionName = tab.Agent.Session
 		}
 		claudeSessionID := tab.ClaudeSessionID
-		allowEdits := tab.AllowEdits
 		isolated := tab.Isolated
-		skipPerms := tab.SkipPermissions
+		allowUnsandboxed := tab.AllowUnsandboxedCommands
+		permMode := tab.PermissionMode
 		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
@@ -158,15 +158,15 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			status = "running"
 		}
 		result = append(result, data.TabInfo{
-			Assistant:       tab.Assistant,
-			Name:            tab.Name,
-			SessionName:     sessionName,
-			Status:          status,
-			ClaudeSessionID: claudeSessionID,
-			AllowEdits:      allowEdits,
-			Isolated:        isolated,
-			SkipPermissions: skipPerms,
-			ScriptFullCmd:   scriptFullCmd,
+			Assistant:                tab.Assistant,
+			Name:                     tab.Name,
+			SessionName:              sessionName,
+			Status:                   status,
+			ClaudeSessionID:          claudeSessionID,
+			Isolated:                 isolated,
+			AllowUnsandboxedCommands: allowUnsandboxed,
+			PermissionMode:           permMode,
+			ScriptFullCmd:            scriptFullCmd,
 		})
 	}
 	return result, m.getActiveTabIdx()
@@ -188,9 +188,9 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			sessionName = tab.Agent.Session
 		}
 		claudeSessionID := tab.ClaudeSessionID
-		allowEdits := tab.AllowEdits
 		isolated := tab.Isolated
-		skipPerms := tab.SkipPermissions
+		allowUnsandboxed := tab.AllowUnsandboxedCommands
+		permMode := tab.PermissionMode
 		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
@@ -200,15 +200,15 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			status = "running"
 		}
 		result = append(result, data.TabInfo{
-			Assistant:       tab.Assistant,
-			Name:            tab.Name,
-			SessionName:     sessionName,
-			Status:          status,
-			ClaudeSessionID: claudeSessionID,
-			AllowEdits:      allowEdits,
-			Isolated:        isolated,
-			SkipPermissions: skipPerms,
-			ScriptFullCmd:   scriptFullCmd,
+			Assistant:                tab.Assistant,
+			Name:                     tab.Name,
+			SessionName:              sessionName,
+			Status:                   status,
+			ClaudeSessionID:          claudeSessionID,
+			Isolated:                 isolated,
+			AllowUnsandboxedCommands: allowUnsandboxed,
+			PermissionMode:           permMode,
+			ScriptFullCmd:            scriptFullCmd,
 		})
 	}
 	return result, m.activeTabByWorkspace[wsID]

@@ -12,20 +12,18 @@ import (
 
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
-	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/logging"
-	"github.com/Skowt/medusa/internal/sandbox"
 	"github.com/Skowt/medusa/internal/shellutil"
 	"github.com/Skowt/medusa/internal/tmux"
 )
 
 // AgentOptions holds optional flags for agent creation.
 type AgentOptions struct {
-	ClaudeSessionID string // UUID to pass as --session-id or --resume
-	Resume          bool   // If true, use --resume instead of --session-id
-	AllowEdits      bool   // Pre-grant Edit permission
-	Isolated        bool   // Run in sandbox-exec
-	SkipPermissions bool   // Run with --dangerously-skip-permissions
+	ClaudeSessionID          string // UUID to pass as --session-id or --resume
+	Resume                   bool   // If true, use --resume instead of --session-id
+	Isolated                 bool   // Enable Claude's built-in sandbox via --settings
+	AllowUnsandboxedCommands bool   // sandbox.allowUnsandboxedCommands; only used when Isolated is true
+	PermissionMode           string // claude --permission-mode value (acceptEdits, plan, auto, bypassPermissions)
 }
 
 // GenerateSessionID returns a new random UUID v4 string.
@@ -56,12 +54,11 @@ const (
 
 // Agent represents a running AI agent instance
 type Agent struct {
-	Type           AgentType
-	Terminal       *Terminal
-	Workspace      *data.Workspace
-	Config         config.AssistantConfig
-	Session        string
-	sandboxCleanup func() // cleanup function for temp sandbox profile
+	Type      AgentType
+	Terminal  *Terminal
+	Workspace *data.Workspace
+	Config    config.AssistantConfig
+	Session   string
 }
 
 // AgentManager manages agent instances
@@ -123,10 +120,10 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 				_ = config.InjectGlobalPermissions(profileDir, global)
 			}
 		}
-		// Inject Edit permission if AllowEdits enabled
-		if opts.AllowEdits {
-			_ = config.InjectAllowEdits(ws.Root())
-		}
+		// Strip any leftover Edit(**) from a previous agent run so users
+		// aren't silently still operating with the (now-removed) "allow edits"
+		// pre-grant. See config.StripAllowEdits.
+		_ = config.StripAllowEdits(ws.Root())
 		// Inject compound command approval hook if enabled
 		if m.config.UI.CompoundApprove {
 			if exe, err := os.Executable(); err == nil {
@@ -154,16 +151,28 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		}
 	}
 
-	// Skip permissions: append --dangerously-skip-permissions independently of sandbox.
-	var sbplCleanup func()
-	if opts.SkipPermissions && agentType == AgentClaude {
-		agentCommand += " --dangerously-skip-permissions"
-		_ = config.InjectSkipPermissionPrompt(profileDir)
+	// Starting permission mode: pass --permission-mode so the agent boots
+	// straight into the user's chosen mode (acceptEdits / plan / auto /
+	// bypassPermissions). Empty means "let Claude pick its default".
+	if agentType == AgentClaude && opts.PermissionMode != "" {
+		agentCommand += " --permission-mode " + shellutil.Quote(opts.PermissionMode)
+		// bypassPermissions still triggers Claude's confirmation dialog the
+		// first time it's used; suppress that for users who explicitly chose
+		// it from our launcher dropdown.
+		if opts.PermissionMode == "bypassPermissions" {
+			_ = config.InjectSkipPermissionPrompt(profileDir)
+		}
 	}
 
 	// Enable auto mode so it's available via Shift+Tab mode cycling.
 	if agentType == AgentClaude {
 		agentCommand += " --enable-auto-mode"
+	}
+
+	// When Sandboxed is toggled, hand off sandboxing to Claude Code itself
+	// via --settings instead of wrapping the command in macOS sandbox-exec.
+	if opts.Isolated && agentType == AgentClaude {
+		agentCommand += " --settings " + shellutil.Quote(config.ClaudeSandboxSettingsJSON(opts.AllowUnsandboxedCommands))
 	}
 
 	// Create terminal with agent command, falling back to shell on exit
@@ -177,46 +186,18 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// Use -l flag to start login shell so .zshrc/.bashrc are loaded
 	fullCommand := fmt.Sprintf("%s; stty sane; printf '\\033[?1049l\\033[?25h\\033[0m\\033c'; echo 'Agent exited. Dropping to shell...'; export TERM=xterm-256color; exec %s -l", agentCommand, shell)
 
-	// Wrap the entire command chain in sandbox-exec so the fallback shell
-	// also runs inside the sandbox.
-	if opts.Isolated {
-		var gitDirs []string
-		if gd, err := git.ResolveWorktreeGitDir(ws.PrimaryWorktreeRoot()); err == nil {
-			gitDirs = append(gitDirs, gd)
-		}
-		for _, root := range ws.SecondaryRoots() {
-			if gd, err := git.ResolveWorktreeGitDir(root); err == nil {
-				gitDirs = append(gitDirs, gd)
-			}
-		}
-		rules, rulesErr := config.LoadSandboxRules(m.config.Paths.SandboxRulesPath)
-		if rulesErr != nil {
-			rules = config.DefaultSandboxRules()
-		}
-		sbpl := sandbox.GenerateSBPL(ws.Root(), gitDirs, profileDir, m.config.Paths.HooksDir, rules.Rules)
-		sbplPath, cleanup, sErr := sandbox.WriteTempProfile(sbpl)
-		if sErr == nil {
-			sbplCleanup = cleanup
-			fullCommand = sandbox.WrapCommand(fullCommand, sbplPath)
-		}
-	}
-
 	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root(), fullCommand, tmux.DefaultOptions(), tags)
 	term, err := NewWithSize(termCommand, ws.Root(), env, rows, cols)
 	if err != nil {
-		if sbplCleanup != nil {
-			sbplCleanup()
-		}
 		return nil, fmt.Errorf("failed to create terminal: %w", err)
 	}
 
 	agent := &Agent{
-		Type:           agentType,
-		Terminal:       term,
-		Workspace:      ws,
-		Config:         assistantCfg,
-		Session:        sessionName,
-		sandboxCleanup: sbplCleanup,
+		Type:      agentType,
+		Terminal:  term,
+		Workspace: ws,
+		Config:    assistantCfg,
+		Session:   sessionName,
 	}
 
 	m.mu.Lock()
@@ -272,10 +253,6 @@ func (m *AgentManager) CloseAgent(agent *Agent) error {
 	if agent.Terminal != nil {
 		_ = agent.Terminal.Close()
 	}
-	if agent.sandboxCleanup != nil {
-		agent.sandboxCleanup()
-		agent.sandboxCleanup = nil
-	}
 
 	// Remove from list
 	if agent.Workspace != nil {
@@ -304,10 +281,6 @@ func (m *AgentManager) CloseAll() {
 		for _, agent := range agents {
 			if agent.Terminal != nil {
 				_ = agent.Terminal.Close()
-			}
-			if agent.sandboxCleanup != nil {
-				agent.sandboxCleanup()
-				agent.sandboxCleanup = nil
 			}
 		}
 	}

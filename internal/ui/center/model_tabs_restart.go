@@ -61,9 +61,9 @@ func (m *Model) restartTab(index int) tea.Cmd {
 		sessionName = tab.Agent.Session
 	}
 	claudeSessionID := tab.ClaudeSessionID
-	tabAllowEdits := tab.AllowEdits
 	tabIsolated := tab.Isolated
-	tabSkipPerms := tab.SkipPermissions
+	tabAllowUnsandboxed := tab.AllowUnsandboxedCommands
+	tabPermissionMode := tab.PermissionMode
 	scriptFullCmd := tab.ScriptFullCmd
 	tab.mu.Unlock()
 
@@ -120,9 +120,9 @@ func (m *Model) restartTab(index int) tea.Cmd {
 			// Build agent options: resume the Claude conversation if we have
 			// a session ID, and use the tab's per-tab settings.
 			agentOpts := appPty.AgentOptions{
-				AllowEdits:      tabAllowEdits,
-				Isolated:        tabIsolated,
-				SkipPermissions: tabSkipPerms,
+				Isolated:                 tabIsolated,
+				AllowUnsandboxedCommands: tabAllowUnsandboxed,
+				PermissionMode:           tabPermissionMode,
 			}
 			if claudeSessionID != "" {
 				agentOpts.ClaudeSessionID = claudeSessionID

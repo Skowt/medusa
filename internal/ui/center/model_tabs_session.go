@@ -258,11 +258,6 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			}
 		}
 		status := strings.ToLower(strings.TrimSpace(tab.Status))
-		// Migration: tabs without per-tab settings get defaults (AllowEdits=true)
-		tabAllowEdits := tab.AllowEdits
-		if !tab.AllowEdits && !tab.Isolated && !tab.SkipPermissions {
-			tabAllowEdits = true // Default for migrated tabs
-		}
 		activate := !isScript && i == focusPersistedIdx
 		// Script tabs always reattach to their existing tmux session.
 		if isScript {
@@ -275,9 +270,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			continue
 		}
 		if status == "stopped" {
-			info := tab
-			info.AllowEdits = tabAllowEdits
-			placeholder := m.addPlaceholderTab(ws, info, false)
+			placeholder := m.addPlaceholderTab(ws, tab, false)
 			restoreCount++
 			if activate {
 				setFocus(placeholder)
@@ -285,9 +278,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			continue
 		}
 		if status == "detached" {
-			info := tab
-			info.AllowEdits = tabAllowEdits
-			placeholder := m.addPlaceholderTab(ws, info, true)
+			placeholder := m.addPlaceholderTab(ws, tab, true)
 			restoreCount++
 			if activate {
 				setFocus(placeholder)
@@ -298,7 +289,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			continue
 		}
 		restoreCount++
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, tabAllowEdits, tab.Isolated, tab.SkipPermissions))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode))
 	}
 	if restoreCount > 0 && focusPersistedIdx == -1 {
 		// Only scripts were restored — focus the Info tab instead.
@@ -347,21 +338,12 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 			existing[sessionName] = struct{}{}
 		}
 		status := strings.ToLower(strings.TrimSpace(tab.Status))
-		// Migration: tabs without per-tab settings get defaults
-		tabAllowEdits := tab.AllowEdits
-		if !tab.AllowEdits && !tab.Isolated && !tab.SkipPermissions {
-			tabAllowEdits = true
-		}
 		if status == "stopped" {
-			info := tab
-			info.AllowEdits = tabAllowEdits
-			m.addPlaceholderTab(ws, info, false)
+			m.addPlaceholderTab(ws, tab, false)
 			continue
 		}
 		if status == "detached" {
-			info := tab
-			info.AllowEdits = tabAllowEdits
-			m.addPlaceholderTab(ws, info, true)
+			m.addPlaceholderTab(ws, tab, true)
 			// Auto-reattach: find the tab we just added and trigger reattach
 			wsTabs := m.tabsByWorkspace[wsID]
 			if len(wsTabs) > 0 {
@@ -370,7 +352,7 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 			}
 			continue
 		}
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, tabAllowEdits, tab.Isolated, tab.SkipPermissions))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode))
 	}
 	return common.SafeBatch(cmds...)
 }
@@ -398,19 +380,19 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 	term := vterm.New(termWidth, termHeight)
 	term.AllowAltScreenScrollback = true
 	tab := &Tab{
-		ID:              generateTabID(),
-		Name:            displayName,
-		Assistant:       info.Assistant,
-		Workspace:       ws,
-		SessionName:     info.SessionName,
-		ClaudeSessionID: info.ClaudeSessionID,
-		Detached:        detached,
-		Running:         false,
-		Terminal:        term,
-		AllowEdits:      info.AllowEdits,
-		Isolated:        info.Isolated,
-		SkipPermissions: info.SkipPermissions,
-		ScriptFullCmd:   info.ScriptFullCmd,
+		ID:                       generateTabID(),
+		Name:                     displayName,
+		Assistant:                info.Assistant,
+		Workspace:                ws,
+		SessionName:              info.SessionName,
+		ClaudeSessionID:          info.ClaudeSessionID,
+		Detached:                 detached,
+		Running:                  false,
+		Terminal:                 term,
+		Isolated:                 info.Isolated,
+		AllowUnsandboxedCommands: info.AllowUnsandboxedCommands,
+		PermissionMode:           info.PermissionMode,
+		ScriptFullCmd:            info.ScriptFullCmd,
 	}
 	wsID := string(ws.ID())
 	m.appendTabOrdered(wsID, tab)

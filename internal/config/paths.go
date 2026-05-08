@@ -16,7 +16,6 @@ type Paths struct {
 	ProfilesRoot          string // ~/.medusa/profiles
 	SharedProfileRoot     string // ~/.medusa/profiles/shared
 	GlobalPermissionsPath string // ~/.medusa/global_permissions.json
-	SandboxRulesPath      string // ~/.medusa/sandbox_rules.json
 	HooksDir              string // ~/.medusa/hooks
 }
 
@@ -52,7 +51,6 @@ func DefaultPaths() (*Paths, error) {
 		ProfilesRoot:          profilesRoot,
 		SharedProfileRoot:     filepath.Join(profilesRoot, "shared"),
 		GlobalPermissionsPath: filepath.Join(medusaHome, "global_permissions.json"),
-		SandboxRulesPath:      filepath.Join(medusaHome, "sandbox_rules.json"),
 		HooksDir:              filepath.Join(medusaHome, "hooks"),
 	}, nil
 }
