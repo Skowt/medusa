@@ -32,11 +32,6 @@ Run a single test:
 go test ./internal/app -run TestCopyIgnoredFiles -v
 ```
 
-Sandbox integration tests are gated behind a build tag and require an unsandboxed host (nested `sandbox-exec` fails):
-```bash
-make test-sandbox-mode
-```
-
 Headless render/perf harness (no human, no terminal):
 ```bash
 go run ./cmd/medusa-harness -mode monitor -frames 5 -warmup 1

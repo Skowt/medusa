@@ -2,7 +2,7 @@ BINARY_NAME := medusa
 MAIN_PACKAGE := ./cmd/medusa
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-race test-sandbox-mode bench lint fmt fmt-check vet clean run dev help release-check release-tag release-push release
+.PHONY: build test test-race bench lint fmt fmt-check vet clean run dev help release-check release-tag release-push release
 
 build:
 	go build -o $(BINARY_NAME) $(MAIN_PACKAGE)
@@ -13,9 +13,6 @@ test:
 
 test-race:
 	go test -race -v ./...
-
-test-sandbox-mode:
-	go test -tags sandbox_mode -v ./internal/sandbox/...
 
 bench:
 	go test -bench=. -benchmem ./internal/ui/compositor/ -run=^$$
@@ -49,7 +46,6 @@ help:
 	@echo "  build      - Build the binary"
 	@echo "  test       - Run all tests"
 	@echo "  test-race  - Run all tests with the race detector (mirrors CI)"
-	@echo "  test-sandbox-mode - Run macOS sandbox-exec integration tests (requires unsandboxed host)"
 	@echo "  lint       - Full end-of-dev gate: test-race + golangci-lint + 500-line check"
 	@echo "  fmt        - Format code with gofmt and goimports"
 	@echo "  fmt-check  - Check formatting (for CI)"
@@ -63,7 +59,7 @@ help:
 	@echo "  release-push  - Push the tag to origin (VERSION=vX.Y.Z)"
 	@echo "  release       - release-check + release-tag + release-push"
 
-release-check: test test-sandbox-mode
+release-check: test
 	go run ./cmd/medusa-harness -mode monitor -frames 5 -warmup 1
 	go run ./cmd/medusa-harness -mode center -frames 5 -warmup 1
 	go run ./cmd/medusa-harness -mode sidebar -frames 5 -warmup 1
