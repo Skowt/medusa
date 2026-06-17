@@ -25,7 +25,7 @@ type UISettings struct {
 	TmuxSyncInterval             string
 	TmuxPersistence              bool
 	NotificationSound            string          // Sound name from /System/Library/Sounds (empty = none)
-	IDE                          string          // CLI command for IDE (e.g., "code", "cursor", "pycharm")
+	IDE                          string          // Remembered IDE install launch path (.app bundle on macOS, binary on Linux)
 	CompoundApprove              bool            // Auto-approve compound Bash commands via hook
 	CollapsedGroups              map[string]bool // Dashboard group collapse state, keyed by group label ("" = Ungrouped)
 }
@@ -77,6 +77,7 @@ func loadUISettings(path string) UISettings {
 			TmuxSyncInterval             *string         `json:"tmux_sync_interval"`
 			TmuxPersistence              *bool           `json:"tmux_persistence"`
 			NotificationSound            *string         `json:"notification_sound"`
+			IDE                          *string         `json:"ide"`
 			CompoundApprove              *bool           `json:"compound_approve"`
 			CollapsedGroups              map[string]bool `json:"collapsed_groups"`
 		} `json:"ui"`
@@ -138,6 +139,9 @@ func loadUISettings(path string) UISettings {
 	if raw.UI.NotificationSound != nil {
 		settings.NotificationSound = *raw.UI.NotificationSound
 	}
+	if raw.UI.IDE != nil {
+		settings.IDE = *raw.UI.IDE
+	}
 	if raw.UI.CompoundApprove != nil {
 		settings.CompoundApprove = *raw.UI.CompoundApprove
 	}
@@ -180,6 +184,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["tmux_sync_interval"] = settings.TmuxSyncInterval
 	ui["tmux_persistence"] = settings.TmuxPersistence
 	ui["notification_sound"] = settings.NotificationSound
+	ui["ide"] = settings.IDE
 	ui["compound_approve"] = settings.CompoundApprove
 	ui["collapsed_groups"] = settings.CollapsedGroups
 	payload["ui"] = ui

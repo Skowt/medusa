@@ -56,3 +56,18 @@ func TestSaveLoadUISettingsCollapsedGroups(t *testing.T) {
 		t.Errorf("expected ungrouped (empty key) collapsed after reload")
 	}
 }
+
+func TestUISettingsIDERoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	in := defaultUISettings()
+	in.IDE = "/Applications/Cursor.app"
+	if err := saveUISettings(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got := loadUISettings(path)
+	if got.IDE != "/Applications/Cursor.app" {
+		t.Errorf("IDE = %q, want %q", got.IDE, "/Applications/Cursor.app")
+	}
+}

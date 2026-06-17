@@ -126,6 +126,7 @@ type App struct {
 	settingsDialog  *common.SettingsDialog
 	themeDialog     *common.ThemeDialog
 	soundPicker     *common.SoundPicker
+	idePicker       *common.IDEPicker
 
 	// Overlays
 	helpOverlay     *common.HelpOverlay

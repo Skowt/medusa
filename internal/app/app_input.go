@@ -382,6 +382,14 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
+	case common.IDEInstallsDetected:
+		a.handleIDEInstallsDetected(msg)
+
+	case common.IDEPickerResult:
+		if cmd := a.handleIDEPickerResult(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
 	case common.SettingsResult:
 		if cmd := a.handleSettingsResult(msg); cmd != nil {
 			cmds = append(cmds, cmd)

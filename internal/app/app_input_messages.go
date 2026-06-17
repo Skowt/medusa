@@ -369,19 +369,16 @@ func (a *App) handleActionBarCopyDir(msg messages.ActionBarCopyDir) tea.Cmd {
 	}
 }
 
-// handleActionBarOpenIDE opens the workspace folder in the user's IDE.
+// handleActionBarOpenIDE detects IDE installs off the UI thread, then opens the
+// picker (or toasts if none are found).
 func (a *App) handleActionBarOpenIDE(msg messages.ActionBarOpenIDE) tea.Cmd {
 	root := msg.WorkspaceRoot
-	configured := a.config.UI.IDE
 	return func() tea.Msg {
-		ideName := ide.GetOrDetect(configured)
-		if ideName == "" {
+		installs := ide.DetectInstalls()
+		if len(installs) == 0 {
 			return messages.Toast{Message: "No IDE detected (install VS Code, Cursor, or Zed)", Level: messages.ToastWarning}
 		}
-		if err := ide.Open(ideName, root); err != nil {
-			return messages.Toast{Message: "Failed to open IDE: " + err.Error(), Level: messages.ToastError}
-		}
-		return messages.Toast{Message: "Opened in " + ideName, Level: messages.ToastSuccess}
+		return common.IDEInstallsDetected{Installs: installs, Root: root}
 	}
 }
 

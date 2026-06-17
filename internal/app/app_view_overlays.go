@@ -50,6 +50,15 @@ func (a *App) composeOverlays(canvas *lipgloss.Canvas) {
 		canvas.Compose(soundDrawable)
 	}
 
+	// IDE picker overlay
+	if a.idePicker != nil && a.idePicker.Visible() {
+		ideView := a.idePicker.View()
+		ideWidth, ideHeight := viewDimensions(ideView)
+		x, y := a.centeredPosition(ideWidth, ideHeight)
+		ideDrawable := compositor.NewStringDrawable(ideView, x, y)
+		canvas.Compose(ideDrawable)
+	}
+
 	// Theme dialog overlay
 	if a.themeDialog != nil && a.themeDialog.Visible() {
 		themeView := a.themeDialog.View()

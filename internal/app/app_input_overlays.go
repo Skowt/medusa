@@ -108,6 +108,21 @@ func (a *App) routeOverlayInput(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		}
 	}
 
+	// Handle IDE picker if visible
+	if a.idePicker != nil && a.idePicker.Visible() {
+		newPicker, cmd := a.idePicker.Update(msg)
+		a.idePicker = newPicker
+		if cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
+		if _, ok := msg.(tea.KeyPressMsg); ok {
+			return true
+		}
+		if _, ok := msg.(tea.MouseClickMsg); ok {
+			return true
+		}
+	}
+
 	// Handle permissions dialog if visible
 	if a.permissionsDialog != nil && a.permissionsDialog.Visible() {
 		newDialog, cmd := a.permissionsDialog.Update(msg)
