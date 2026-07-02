@@ -11,6 +11,14 @@ import (
 )
 
 // Update handles messages
+// isInterruptInput reports whether forwarded key bytes interrupt the agent:
+// Ctrl+C (0x03) or a bare Esc (0x1b, Claude Code's primary interrupt key).
+// Multi-byte escape sequences (arrow keys etc.) start with 0x1b but are not
+// interrupts, hence the single-byte requirement.
+func isInterruptInput(input []byte) bool {
+	return len(input) == 1 && (input[0] == 0x03 || input[0] == 0x1b)
+}
+
 func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	defer perf.Time("center_update")()
 	var cmds []tea.Cmd
@@ -346,10 +354,10 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				} else {
 					logging.Debug("keyToBytes returned empty for: %s", msg.String())
 				}
-				// Ctrl+C (0x03) interrupts the agent but Claude Code's
-				// Stop hook does not fire on user interrupts. Emit a
-				// message so the app layer can clear the activity spinner.
-				if len(input) == 1 && input[0] == 0x03 {
+				// Interrupt keys stop the agent but Claude Code's Stop
+				// hook does not fire on user interrupts. Emit a message
+				// so the app layer can clear the activity spinner.
+				if isInterruptInput(input) {
 					return m, func() tea.Msg {
 						return messages.AgentInterrupted{WorkspaceID: m.workspaceID()}
 					}

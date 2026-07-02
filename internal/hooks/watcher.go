@@ -30,8 +30,14 @@ const (
 
 // debounceWindow is the quiet period before processing a file change.
 // Filesystem events can fire multiple times per write; this coalesces them
-// and ensures we always read the final state.
+// and ensures we always read the final state. Per-event files are unique per
+// hook invocation, so debouncing per filename never collapses distinct events.
 const debounceWindow = 100 * time.Millisecond
+
+// perEventFilePrefix marks write-once files that carry a single hook event
+// with the session name in the payload. Files without this prefix are legacy
+// per-session files rewritten in place by hooks injected before the upgrade.
+const perEventFilePrefix = "evt-"
 
 // HookEvent is the parsed event delivered to the callback.
 type HookEvent struct {
@@ -122,9 +128,16 @@ func (w *Watcher) processFile(path, sessionName string) {
 	if err != nil {
 		return
 	}
+	// Per-event files are write-once; remove after reading so the hooks dir
+	// does not accumulate. Legacy per-session files are rewritten in place by
+	// old hooks and must stay (removal races with their truncating writes).
+	if strings.HasPrefix(filepath.Base(path), perEventFilePrefix) {
+		_ = os.Remove(path)
+	}
 	var raw struct {
 		Event   string `json:"event"`
 		TS      int64  `json:"ts"`
+		Session string `json:"session"`
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -132,6 +145,9 @@ func (w *Watcher) processFile(path, sessionName string) {
 	}
 	if raw.Event == "" {
 		return
+	}
+	if raw.Session != "" {
+		sessionName = raw.Session
 	}
 	he := HookEvent{
 		SessionName: sessionName,

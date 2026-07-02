@@ -134,11 +134,14 @@ func (a *App) handleAgentInterrupted(wsID string) []tea.Cmd {
 
 // hookActiveIDs returns the set of workspace IDs that are currently active
 // based on hook state (PreToolUse or UserPromptSubmit = agent actively working).
+// SubagentStop counts as active: it fires mid-turn when a subagent finishes
+// while the main agent keeps working; treating it as inactive caused false
+// "ready for review" pings and a prematurely stopped spinner.
 func (a *App) hookActiveIDs() map[string]bool {
 	active := make(map[string]bool)
 	for wsID, evt := range a.hookWorkspaceStates {
 		switch evt {
-		case hooks.EventPreToolUse, hooks.EventPostToolUse, hooks.EventUserPromptSubmit:
+		case hooks.EventPreToolUse, hooks.EventPostToolUse, hooks.EventUserPromptSubmit, hooks.EventSubagentStop:
 			active[wsID] = true
 		}
 	}

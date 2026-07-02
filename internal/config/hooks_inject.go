@@ -2,23 +2,33 @@ package config
 
 import "strings"
 
-// upsertHookRule appends rule to the existing hook event array, replacing any
-// entry whose command matches cmd to avoid duplicates.
-func upsertHookRule(existing any, rule map[string]any, cmd string) []any {
-	arr, _ := existing.([]any)
-	var result []any
-	for _, entry := range arr {
-		m, ok := entry.(map[string]any)
+// medusaHookCommandPrefix identifies commands injected by Medusa across all
+// versions: every Medusa hook command starts with this session-name guard.
+const medusaHookCommandPrefix = `if [ -n "$MEDUSA_SESSION_NAME"`
+
+// stripMedusaHookRules removes every Medusa-injected rule from all hook event
+// arrays so re-injection replaces rules instead of accumulating duplicates —
+// including rules written by older versions with a different command format.
+// Foreign rules (e.g. compound approve, user-defined hooks) are preserved.
+func stripMedusaHookRules(hooks map[string]any) {
+	for event, v := range hooks {
+		arr, ok := v.([]any)
 		if !ok {
-			result = append(result, entry)
 			continue
 		}
-		if hookRuleHasCommand(m, cmd) {
-			continue // Will be replaced by the new rule
+		var kept []any
+		for _, entry := range arr {
+			if m, ok := entry.(map[string]any); ok && hookRuleHasCommandPrefix(m, medusaHookCommandPrefix) {
+				continue
+			}
+			kept = append(kept, entry)
 		}
-		result = append(result, entry)
+		if len(kept) == 0 {
+			delete(hooks, event)
+		} else {
+			hooks[event] = kept
+		}
 	}
-	return append(result, rule)
 }
 
 // hookRuleHasCommand returns true if a hook rule entry contains the given command.

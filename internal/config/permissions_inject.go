@@ -240,21 +240,26 @@ func getOrCreateMap(settings map[string]any, key string) map[string]any {
 }
 
 // InjectHooks merges Claude Code hook definitions into a profile's settings.json.
-// Each hook writes a JSON event file to hooksDir so the Medusa watcher can detect
-// agent lifecycle transitions. The shell guard ensures non-Medusa sessions are no-ops.
-// Existing hook entries (e.g. compound approve) are preserved via append-and-dedup.
+// Each hook writes its own uniquely-named JSON event file to hooksDir (written to
+// a .tmp path, then renamed so the watcher only ever sees complete content) with
+// the session name carried in the payload. One file per event means concurrent
+// hooks (parallel tool calls, subagents) and rapid successive events can never
+// overwrite each other. The shell guard ensures non-Medusa sessions are no-ops.
+// All previously injected Medusa rules (including old-format ones) are replaced;
+// foreign hook entries (e.g. compound approve) are preserved.
 func InjectHooks(profileDir, hooksDir string) error {
 	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
 		hooks := getOrCreateMap(settings, "hooks")
+		stripMedusaHookRules(hooks)
 
 		makeCommand := func(eventName string) string {
-			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then printf '{"event":"` + eventName + `","ts":%s}\n' "$(date +%s)" > ` + hooksDir + `/"$MEDUSA_SESSION_NAME".json; fi`
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then TS=$(date +%s); F="` + hooksDir + `/evt-$$-$TS.json"; printf '{"event":"` + eventName + `","ts":%s,"session":"%s"}\n' "$TS" "$MEDUSA_SESSION_NAME" > "$F.tmp" && mv "$F.tmp" "$F"; fi`
 		}
 
 		// makeNotificationCommand reads stdin (JSON from Claude Code) to extract
 		// the "message" field and include it in the event file.
 		makeNotificationCommand := func(eventName string) string {
-			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); MSG=$(echo "$INPUT" | grep -o '"message":"[^"]*"' | head -1 | sed 's/"message":"//;s/"$//'); printf '{"event":"` + eventName + `","ts":%s,"message":"%s"}\n' "$(date +%s)" "$MSG" > ` + hooksDir + `/"$MEDUSA_SESSION_NAME".json; fi`
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); MSG=$(echo "$INPUT" | grep -o '"message":"[^"]*"' | head -1 | sed 's/"message":"//;s/"$//'); TS=$(date +%s); F="` + hooksDir + `/evt-$$-$TS.json"; printf '{"event":"` + eventName + `","ts":%s,"session":"%s","message":"%s"}\n' "$TS" "$MEDUSA_SESSION_NAME" "$MSG" > "$F.tmp" && mv "$F.tmp" "$F"; fi`
 		}
 
 		type hookDef struct {
@@ -285,7 +290,8 @@ func InjectHooks(profileDir, hooksDir string) error {
 			if def.matcher != "" {
 				rule["matcher"] = def.matcher
 			}
-			hooks[def.event] = upsertHookRule(hooks[def.event], rule, cmd)
+			existing, _ := hooks[def.event].([]any)
+			hooks[def.event] = append(existing, rule)
 		}
 
 		// Split Notification into sub-matchers so written JSON
@@ -295,16 +301,8 @@ func InjectHooks(profileDir, hooksDir string) error {
 			{event: "NotificationPermission", matcher: "permission_prompt"},
 			{event: "NotificationElicitation", matcher: "elicitation_dialog"},
 		}
-		var notificationRules []any
-		existing, _ := hooks["Notification"].([]any)
-		// Preserve non-medusa notification entries
-		for _, e := range existing {
-			if m, ok := e.(map[string]any); ok {
-				if !hookRuleHasCommandPrefix(m, "if [ -n \"$MEDUSA_SESSION_NAME\"") {
-					notificationRules = append(notificationRules, e)
-				}
-			}
-		}
+		// Non-medusa notification entries survived stripMedusaHookRules.
+		notificationRules, _ := hooks["Notification"].([]any)
 		for _, def := range notificationDefs {
 			cmd := makeNotificationCommand(def.event)
 			rule := map[string]any{

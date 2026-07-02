@@ -280,9 +280,9 @@ func (m *Model) HandleMonitorInput(tabID TabID, msg tea.Msg) tea.Cmd {
 				}
 			}
 		}
-		// Ctrl+C (0x03) interrupts the agent — emit a message so the
-		// app layer can clear the activity spinner.
-		if len(input) == 1 && input[0] == 0x03 {
+		// Interrupt keys stop the agent — emit a message so the app
+		// layer can clear the activity spinner.
+		if isInterruptInput(input) {
 			return func() tea.Msg {
 				return messages.AgentInterrupted{WorkspaceID: wtID}
 			}

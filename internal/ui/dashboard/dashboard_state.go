@@ -48,7 +48,8 @@ func (m *Model) startSpinnerIfNeeded() tea.Cmd {
 // (detected via hook lifecycle events).
 func (m *Model) hasActiveAgents() bool {
 	for _, state := range m.hookStates {
-		if state == "PreToolUse" || state == "PostToolUse" || state == "UserPromptSubmit" {
+		switch state {
+		case "PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStop":
 			return true
 		}
 	}
