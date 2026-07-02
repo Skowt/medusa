@@ -156,6 +156,7 @@ func (m *Model) CleanupWorkspace(ws *data.Workspace) {
 
 	delete(m.tabsByWorkspace, wsID)
 	delete(m.activeTabByWorkspace, wsID)
+	delete(m.restoredWorkspaces, wsID)
 	// Clean up any rename redirects pointing to this workspace.
 	for oldID, newID := range m.wsIDRedirects {
 		if newID == wsID {

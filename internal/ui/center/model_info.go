@@ -140,6 +140,10 @@ func (m *Model) MigrateWorkspaceTabs(oldID, newID string, ws *data.Workspace, ol
 		m.activeTabByWorkspace[newID] = idx
 		delete(m.activeTabByWorkspace, oldID)
 	}
+	if _, ok := m.restoredWorkspaces[oldID]; ok {
+		m.restoredWorkspaces[newID] = struct{}{}
+		delete(m.restoredWorkspaces, oldID)
+	}
 	// Redirect old workspace ID → new so PTY reader messages are routed correctly.
 	// Also update any existing redirects that pointed to oldID (handles chained renames).
 	for k, v := range m.wsIDRedirects {

@@ -200,6 +200,9 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 	if len(m.tabsByWorkspace[wsID]) > 0 {
 		return nil
 	}
+	if _, ok := m.restoredWorkspaces[wsID]; ok {
+		return nil
+	}
 
 	activeIdx := ws.ActiveTabIndex
 	// Pre-scan to pick the persisted index of the tab that should receive
@@ -290,6 +293,9 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		}
 		restoreCount++
 		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode))
+	}
+	if restoreCount > 0 {
+		m.restoredWorkspaces[wsID] = struct{}{}
 	}
 	if restoreCount > 0 && focusPersistedIdx == -1 {
 		// Only scripts were restored — focus the Info tab instead.

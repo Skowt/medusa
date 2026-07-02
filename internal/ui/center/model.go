@@ -134,6 +134,11 @@ type Model struct {
 	workspace            *data.Workspace
 	tabsByWorkspace      map[string][]*Tab // tabs per workspace ID
 	activeTabByWorkspace map[string]int    // active tab index per workspace
+	// Workspaces whose persisted tabs were already restored. Running tabs are
+	// recreated asynchronously, so tabsByWorkspace alone can't guard against a
+	// second restore arriving before creation lands (e.g. WorkspacesLoaded
+	// racing WorkspaceActivated after an unarchive).
+	restoredWorkspaces   map[string]struct{}
 	wsIDRedirects        map[string]string // old workspace ID → new workspace ID (after rename)
 	focused              bool
 	canFocusRight        bool
@@ -314,6 +319,7 @@ func New(cfg *config.Config) *Model {
 	return &Model{
 		tabsByWorkspace:      make(map[string][]*Tab),
 		activeTabByWorkspace: make(map[string]int),
+		restoredWorkspaces:   make(map[string]struct{}),
 		wsIDRedirects:        make(map[string]string),
 		config:               cfg,
 		agentManager:         appPty.NewAgentManager(cfg),
