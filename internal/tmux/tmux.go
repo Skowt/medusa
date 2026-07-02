@@ -155,6 +155,8 @@ func clientCommand(sessionName, workDir, command string, opts Options, tags Sess
 	}
 	// Ensure activity timestamps update for window_activity-based tracking.
 	fmt.Fprintf(&settings, "%s set-option -t %s -w monitor-activity on 2>/dev/null; ", base, session)
+	// Server option: forward terminal focus events so agents (e.g. Claude Code) can track focus.
+	fmt.Fprintf(&settings, "%s set-option -s focus-events on 2>/dev/null; ", base)
 	appendSessionTags(&settings, base, session, tags)
 
 	// Use attach -d to detach other clients (handles multi-instance gracefully)
