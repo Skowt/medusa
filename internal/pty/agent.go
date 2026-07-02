@@ -143,12 +143,8 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	}
 
 	// Append Claude session flags for conversation resumption.
-	if agentType == AgentClaude && opts.ClaudeSessionID != "" {
-		if opts.Resume {
-			agentCommand += " --resume " + shellutil.Quote(opts.ClaudeSessionID)
-		} else {
-			agentCommand += " --session-id " + shellutil.Quote(opts.ClaudeSessionID)
-		}
+	if agentType == AgentClaude {
+		agentCommand += claudeSessionArgs(profileDir, opts)
 	}
 
 	// Starting permission mode: pass --permission-mode so the agent boots

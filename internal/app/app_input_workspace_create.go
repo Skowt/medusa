@@ -221,6 +221,13 @@ func (a *App) syncWorkspaceTabsFromTmux(ws *data.Workspace) tea.Cmd {
 	if ws == nil || len(ws.OpenTabs) == 0 {
 		return nil
 	}
+	// Archived workspaces keep the tab snapshot taken just before archive
+	// killed their tmux sessions; syncing would rewrite it to "stopped" and
+	// break the agent relaunch on unarchive. (Previewing an archived
+	// workspace makes it the active one, so the sync tick reaches it here.)
+	if ws.Archived() {
+		return nil
+	}
 	if !a.tmuxAvailable {
 		return nil
 	}

@@ -41,6 +41,11 @@ func (a *App) handleTmuxTabsSyncResult(msg tmuxTabsSyncResult) []tea.Cmd {
 	if ws == nil {
 		return nil
 	}
+	// A sync started before the workspace was archived may deliver its result
+	// after; the archived tab snapshot must stay frozen for unarchive.
+	if ws.Archived() {
+		return nil
+	}
 	changed := false
 	var cmds []tea.Cmd
 	for _, update := range msg.Updates {

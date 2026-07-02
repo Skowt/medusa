@@ -86,6 +86,11 @@ func (a *App) handlePersistDebounce(msg persistDebounceMsg) tea.Cmd {
 		if ws == nil {
 			continue
 		}
+		// A persist scheduled before an archive fires after CleanupWorkspace
+		// removed the tabs — saving now would wipe the archived snapshot.
+		if ws.Archived() {
+			continue
+		}
 		// Update in-memory state from center tabs
 		tabs, activeIdx := a.center.GetTabsInfoForWorkspace(wsID)
 		ws.OpenTabs = tabs
