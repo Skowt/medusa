@@ -182,6 +182,7 @@ type App struct {
 
 	// Hooks watcher (Claude Code lifecycle events)
 	hooksWatcher        *hooks.Watcher
+	hooksServer         *hooks.Server
 	hookWorkspaceStates map[string]hooks.EventType
 
 	// Auto-start agent
@@ -458,6 +459,9 @@ func (a *App) Shutdown() {
 		}
 		if a.hooksWatcher != nil {
 			_ = a.hooksWatcher.Close()
+		}
+		if a.hooksServer != nil {
+			_ = a.hooksServer.Close()
 		}
 	})
 }

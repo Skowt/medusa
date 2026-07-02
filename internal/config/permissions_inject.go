@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	hookspkg "github.com/Skowt/medusa/internal/hooks"
 )
 
 // atomicWriteFile writes data to a temporary file then renames it to path,
@@ -240,26 +242,43 @@ func getOrCreateMap(settings map[string]any, key string) map[string]any {
 }
 
 // InjectHooks merges Claude Code hook definitions into a profile's settings.json.
-// Each hook writes its own uniquely-named JSON event file to hooksDir (written to
-// a .tmp path, then renamed so the watcher only ever sees complete content) with
-// the session name carried in the payload. One file per event means concurrent
-// hooks (parallel tool calls, subagents) and rapid successive events can never
-// overwrite each other. The shell guard ensures non-Medusa sessions are no-ops.
-// All previously injected Medusa rules (including old-format ones) are replaced;
-// foreign hook entries (e.g. compound approve) are preserved.
+// Each hook sends one JSON event line to the Medusa hooks socket via nc. The
+// socket-exists guard makes hooks a silent no-op while Medusa is stopped, so
+// detached tmux sessions never accumulate event litter. Systems without nc
+// fall back to writing a uniquely-named event file (written to a .tmp path,
+// then renamed so the watcher only sees complete content). The session name
+// travels in the payload either way, so concurrent hooks (parallel tool calls,
+// subagents) can never overwrite each other. The shell guard ensures
+// non-Medusa sessions are no-ops. All previously injected Medusa rules
+// (including old-format ones) are replaced; foreign hook entries (e.g.
+// compound approve) are preserved.
+//
+// Known limitation: nc variants without -U support (GNU netcat; rare as a
+// system default) fail silently instead of falling back to files.
 func InjectHooks(profileDir, hooksDir string) error {
+	// Resolved before the closure: the local `hooks` map below shadows the
+	// hooks package name.
+	sock := hookspkg.SocketPath(hooksDir)
 	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
 		hooks := getOrCreateMap(settings, "hooks")
 		stripMedusaHookRules(hooks)
+		// deliver emits the payload built by printf(1) from format + args:
+		// socket first, file fallback without nc, silent drop without socket.
+		deliver := func(format, args string) string {
+			payload := `printf '` + format + `\n' ` + args
+			return `if command -v nc >/dev/null 2>&1; then if [ -S "` + sock + `" ]; then ` + payload + ` | nc -U -w 2 "` + sock + `" >/dev/null 2>&1 || true; fi; else F="` + hooksDir + `/evt-$$-$TS.json"; ` + payload + ` > "$F.tmp" && mv "$F.tmp" "$F"; fi`
+		}
 
 		makeCommand := func(eventName string) string {
-			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then TS=$(date +%s); F="` + hooksDir + `/evt-$$-$TS.json"; printf '{"event":"` + eventName + `","ts":%s,"session":"%s"}\n' "$TS" "$MEDUSA_SESSION_NAME" > "$F.tmp" && mv "$F.tmp" "$F"; fi`
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then TS=$(date +%s); ` +
+				deliver(`{"event":"`+eventName+`","ts":%s,"session":"%s"}`, `"$TS" "$MEDUSA_SESSION_NAME"`) + `; fi`
 		}
 
 		// makeNotificationCommand reads stdin (JSON from Claude Code) to extract
-		// the "message" field and include it in the event file.
+		// the "message" field and include it in the event payload.
 		makeNotificationCommand := func(eventName string) string {
-			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); MSG=$(echo "$INPUT" | grep -o '"message":"[^"]*"' | head -1 | sed 's/"message":"//;s/"$//'); TS=$(date +%s); F="` + hooksDir + `/evt-$$-$TS.json"; printf '{"event":"` + eventName + `","ts":%s,"session":"%s","message":"%s"}\n' "$TS" "$MEDUSA_SESSION_NAME" "$MSG" > "$F.tmp" && mv "$F.tmp" "$F"; fi`
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); MSG=$(echo "$INPUT" | grep -o '"message":"[^"]*"' | head -1 | sed 's/"message":"//;s/"$//'); TS=$(date +%s); ` +
+				deliver(`{"event":"`+eventName+`","ts":%s,"session":"%s","message":"%s"}`, `"$TS" "$MEDUSA_SESSION_NAME" "$MSG"`) + `; fi`
 		}
 
 		type hookDef struct {

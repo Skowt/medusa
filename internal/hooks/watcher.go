@@ -175,7 +175,12 @@ func (w *Watcher) Close() error {
 	return err
 }
 
-// CleanStaleFiles removes hook event files older than maxAge.
+// CleanStaleFiles removes hook event files at startup. Per-event files are
+// removed regardless of age: fsnotify never fires for pre-existing files and
+// their point-in-time transitions cannot be replayed, so anything written
+// while Medusa was stopped is unprocessable litter. Legacy per-session files
+// are rewritten in place by pre-upgrade sessions and only removed once older
+// than maxAge.
 func CleanStaleFiles(hooksDir string, maxAge time.Duration) {
 	entries, err := os.ReadDir(hooksDir)
 	if err != nil {
@@ -184,6 +189,10 @@ func CleanStaleFiles(hooksDir string, maxAge time.Duration) {
 	cutoff := time.Now().Add(-maxAge)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), perEventFilePrefix) {
+			_ = os.Remove(filepath.Join(hooksDir, entry.Name()))
 			continue
 		}
 		info, err := entry.Info()

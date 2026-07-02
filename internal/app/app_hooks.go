@@ -19,7 +19,10 @@ type hookActivityEvent struct {
 	Message     string
 }
 
-// initHooksWatcher creates and registers the hooks directory watcher.
+// initHooksWatcher creates and registers the hook event receivers: the Unix
+// socket server (primary transport) and the directory watcher (legacy
+// sessions started before the socket upgrade, plus the nc-less file
+// fallback). Both feed the same event queue.
 func (a *App) initHooksWatcher() {
 	hooksDir := a.config.Paths.HooksDir
 	if hooksDir == "" {
@@ -29,14 +32,24 @@ func (a *App) initHooksWatcher() {
 	// Clean up stale files from previous sessions
 	hooks.CleanStaleFiles(hooksDir, 24*time.Hour)
 
-	w, err := hooks.NewWatcher(hooksDir, func(he hooks.HookEvent) {
+	onEvent := func(he hooks.HookEvent) {
 		a.enqueueExternalMsg(hookActivityEvent{
 			SessionName: he.SessionName,
 			Event:       he.Event,
 			Timestamp:   he.Timestamp,
 			Message:     he.Message,
 		})
-	})
+	}
+
+	srv, err := hooks.NewServer(hooks.SocketPath(hooksDir), onEvent)
+	if err != nil {
+		logging.Warn("Hooks socket server disabled: %v", err)
+	} else {
+		a.hooksServer = srv
+		a.supervisor.Start("hooks.server", srv.Run, supervisor.WithBackoff(500*time.Millisecond))
+	}
+
+	w, err := hooks.NewWatcher(hooksDir, onEvent)
 	if err != nil {
 		logging.Warn("Hooks watcher disabled: %v", err)
 		return

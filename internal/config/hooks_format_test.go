@@ -1,12 +1,15 @@
 package config
 
 import (
+	"bufio"
 	"encoding/json"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // collectMedusaCommands returns every hook command guarded by the Medusa
@@ -65,11 +68,18 @@ func TestInjectHooksPerEventAtomicCommands(t *testing.T) {
 			if strings.Contains(cmd, `"$MEDUSA_SESSION_NAME".json`) {
 				t.Errorf("%s: command still writes shared per-session file: %s", event, cmd)
 			}
+			if !strings.Contains(cmd, "nc -U") || !strings.Contains(cmd, "medusa.sock") {
+				t.Errorf("%s: command does not send to the hooks socket: %s", event, cmd)
+			}
+			if !strings.Contains(cmd, `[ -S `) {
+				t.Errorf("%s: command lacks the socket-exists guard (must be a no-op while Medusa is stopped): %s", event, cmd)
+			}
+			// File fallback for nc-less systems must stay atomic and unique.
 			if !strings.Contains(cmd, "evt-$$") {
-				t.Errorf("%s: command does not write a unique per-event file: %s", event, cmd)
+				t.Errorf("%s: fallback does not write a unique per-event file: %s", event, cmd)
 			}
 			if !strings.Contains(cmd, "mv ") {
-				t.Errorf("%s: command does not rename atomically: %s", event, cmd)
+				t.Errorf("%s: fallback does not rename atomically: %s", event, cmd)
 			}
 			if !strings.Contains(cmd, `"session":"%s"`) {
 				t.Errorf("%s: payload does not carry the session name: %s", event, cmd)
@@ -78,65 +88,98 @@ func TestInjectHooksPerEventAtomicCommands(t *testing.T) {
 	}
 }
 
-// TestInjectedHookCommandProducesValidEventFile executes the injected shell
-// commands the way Claude Code would and verifies the event file they produce:
-// unique per-event name, valid JSON, session carried in the payload, no .tmp
-// leftovers.
-func TestInjectedHookCommandProducesValidEventFile(t *testing.T) {
-	dir := t.TempDir()
+// hookTestEnv injects hooks into a temp profile and returns the collected
+// commands plus the hooks dir. The hooks dir is created under /tmp because
+// macOS caps Unix socket paths at 104 bytes and t.TempDir() can exceed that.
+func hookTestEnv(t *testing.T) (map[string][]string, string) {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "medusa-hookfmt-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	profileDir := filepath.Join(dir, "profile")
 	_ = os.MkdirAll(profileDir, 0755)
 	hooksDir := filepath.Join(dir, "hooks")
 	_ = os.MkdirAll(hooksDir, 0755)
-
 	if err := InjectHooks(profileDir, hooksDir); err != nil {
 		t.Fatal(err)
 	}
-	cmds := collectMedusaCommands(t, profileDir)
+	return collectMedusaCommands(t, profileDir), hooksDir
+}
 
-	runHook := func(cmd, stdin string) {
-		t.Helper()
-		c := exec.Command("sh", "-c", cmd)
-		c.Env = append(os.Environ(), "MEDUSA_SESSION_NAME=medusa-ws1-tab1")
-		c.Stdin = strings.NewReader(stdin)
-		if out, err := c.CombinedOutput(); err != nil {
-			t.Fatalf("hook command failed: %v\n%s\ncmd: %s", err, out, cmd)
+func runHookCommand(t *testing.T, cmd, stdin string, env ...string) {
+	t.Helper()
+	c := exec.Command("sh", "-c", cmd)
+	c.Env = append(os.Environ(), append([]string{"MEDUSA_SESSION_NAME=medusa-ws1-tab1"}, env...)...)
+	c.Stdin = strings.NewReader(stdin)
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("hook command failed: %v\n%s\ncmd: %s", err, out, cmd)
+	}
+}
+
+func hookFilesIn(t *testing.T, hooksDir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(hooksDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".tmp") {
+			names = append(names, e.Name())
 		}
 	}
+	return names
+}
 
-	readSingleEvent := func() map[string]any {
+// TestInjectedHookCommandSendsToSocket executes the injected commands the way
+// Claude Code would, with a live listener on the hooks socket, and verifies
+// the event arrives over the socket with no files written.
+func TestInjectedHookCommandSendsToSocket(t *testing.T) {
+	if _, err := exec.LookPath("nc"); err != nil {
+		t.Skip("nc not available")
+	}
+	cmds, hooksDir := hookTestEnv(t)
+
+	ln, err := net.Listen("unix", filepath.Join(hooksDir, "medusa.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	lines := make(chan string, 4)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			line, _ := bufio.NewReader(conn).ReadString('\n')
+			_ = conn.Close()
+			lines <- line
+		}
+	}()
+
+	recv := func() map[string]any {
 		t.Helper()
-		entries, err := os.ReadDir(hooksDir)
-		if err != nil {
-			t.Fatal(err)
+		select {
+		case line := <-lines:
+			var evt map[string]any
+			if err := json.Unmarshal([]byte(line), &evt); err != nil {
+				t.Fatalf("socket payload is not valid JSON: %v\n%s", err, line)
+			}
+			return evt
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for socket payload")
+			return nil
 		}
-		if len(entries) != 1 {
-			t.Fatalf("expected exactly 1 event file, found %d", len(entries))
-		}
-		name := entries[0].Name()
-		if !strings.HasPrefix(name, "evt-") || !strings.HasSuffix(name, ".json") {
-			t.Fatalf("unexpected event file name %q", name)
-		}
-		raw, err := os.ReadFile(filepath.Join(hooksDir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var evt map[string]any
-		if err := json.Unmarshal(raw, &evt); err != nil {
-			t.Fatalf("event file is not valid JSON: %v\n%s", err, raw)
-		}
-		_ = os.Remove(filepath.Join(hooksDir, name))
-		return evt
 	}
 
 	// Plain lifecycle event (Stop).
-	runHook(cmds["Stop"][0], "")
-	evt := readSingleEvent()
-	if evt["event"] != "Stop" {
-		t.Errorf("event = %v, want Stop", evt["event"])
-	}
-	if evt["session"] != "medusa-ws1-tab1" {
-		t.Errorf("session = %v, want medusa-ws1-tab1", evt["session"])
+	runHookCommand(t, cmds["Stop"][0], "")
+	evt := recv()
+	if evt["event"] != "Stop" || evt["session"] != "medusa-ws1-tab1" {
+		t.Errorf("unexpected payload: %v", evt)
 	}
 
 	// Notification event with message extraction from stdin.
@@ -149,16 +192,67 @@ func TestInjectedHookCommandProducesValidEventFile(t *testing.T) {
 	if permCmd == "" {
 		t.Fatal("no NotificationPermission command injected")
 	}
-	runHook(permCmd, `{"hook_event_name":"Notification","message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}`)
-	evt = readSingleEvent()
-	if evt["event"] != "NotificationPermission" {
-		t.Errorf("event = %v, want NotificationPermission", evt["event"])
+	runHookCommand(t, permCmd, `{"hook_event_name":"Notification","message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}`)
+	evt = recv()
+	if evt["event"] != "NotificationPermission" || evt["message"] != "Claude needs your permission to use Bash" {
+		t.Errorf("unexpected payload: %v", evt)
 	}
-	if evt["message"] != "Claude needs your permission to use Bash" {
-		t.Errorf("message = %v", evt["message"])
+
+	if files := hookFilesIn(t, hooksDir); len(files) != 0 {
+		t.Errorf("socket path must not write files, found %v", files)
 	}
-	if evt["session"] != "medusa-ws1-tab1" {
-		t.Errorf("session = %v, want medusa-ws1-tab1", evt["session"])
+}
+
+// TestInjectedHookCommandDropsWhenSocketAbsent verifies the core property of
+// the socket design: with Medusa stopped (no socket), hooks are a silent
+// no-op — no files accumulate and the command still exits 0.
+func TestInjectedHookCommandDropsWhenSocketAbsent(t *testing.T) {
+	if _, err := exec.LookPath("nc"); err != nil {
+		t.Skip("nc not available")
+	}
+	cmds, hooksDir := hookTestEnv(t)
+
+	runHookCommand(t, cmds["Stop"][0], "")
+
+	if files := hookFilesIn(t, hooksDir); len(files) != 0 {
+		t.Errorf("expected no files while Medusa is stopped, found %v", files)
+	}
+}
+
+// TestInjectedHookCommandFallsBackToFileWithoutNC verifies systems without nc
+// still deliver events via atomic per-event files (consumed by the watcher).
+func TestInjectedHookCommandFallsBackToFileWithoutNC(t *testing.T) {
+	cmds, hooksDir := hookTestEnv(t)
+
+	// PATH with the tools the command needs, but no nc.
+	fakebin := filepath.Join(t.TempDir(), "bin")
+	_ = os.MkdirAll(fakebin, 0755)
+	for _, tool := range []string{"date", "mv", "cat", "grep", "sed", "head", "echo"} {
+		src, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatalf("tool %s not found on host: %v", tool, err)
+		}
+		if err := os.Symlink(src, filepath.Join(fakebin, tool)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runHookCommand(t, cmds["Stop"][0], "", "PATH="+fakebin)
+
+	files := hookFilesIn(t, hooksDir)
+	if len(files) != 1 || !strings.HasPrefix(files[0], "evt-") || !strings.HasSuffix(files[0], ".json") {
+		t.Fatalf("expected exactly one evt-*.json fallback file, found %v", files)
+	}
+	raw, err := os.ReadFile(filepath.Join(hooksDir, files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evt map[string]any
+	if err := json.Unmarshal(raw, &evt); err != nil {
+		t.Fatalf("fallback file is not valid JSON: %v\n%s", err, raw)
+	}
+	if evt["event"] != "Stop" || evt["session"] != "medusa-ws1-tab1" {
+		t.Errorf("unexpected fallback payload: %v", evt)
 	}
 }
 

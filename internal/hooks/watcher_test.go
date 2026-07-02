@@ -104,6 +104,32 @@ func TestWatcherOldFormatFallback(t *testing.T) {
 	}
 }
 
+// TestCleanStaleFilesSweepsPerEventFiles verifies startup cleanup: per-event
+// files are unprocessable litter regardless of age (fsnotify never fires for
+// pre-existing files, and their point-in-time transitions cannot be replayed),
+// so they are removed unconditionally. Legacy per-session files are rewritten
+// in place by sessions started before an upgrade and only removed once stale.
+func TestCleanStaleFilesSweepsPerEventFiles(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{"event":"Stop","ts":1}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("evt-123-1700000000.json") // fresh mtime, but per-event → swept
+	write("medusa-ws1-tab1.json")    // fresh mtime, legacy → kept
+
+	CleanStaleFiles(dir, 24*time.Hour)
+
+	if _, err := os.Stat(filepath.Join(dir, "evt-123-1700000000.json")); !os.IsNotExist(err) {
+		t.Error("fresh per-event file should be swept at startup")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "medusa-ws1-tab1.json")); err != nil {
+		t.Errorf("fresh legacy file should be kept: %v", err)
+	}
+}
+
 // TestWatcherRapidEventsAllDelivered verifies the loss property that motivated
 // per-event files: two events for the same session arriving within the
 // debounce window must BOTH be delivered (the old single-file design kept
