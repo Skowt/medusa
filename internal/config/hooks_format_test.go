@@ -57,7 +57,7 @@ func TestInjectHooksSocketCommands(t *testing.T) {
 	}
 
 	cmds := collectMedusaCommands(t, profileDir)
-	for _, event := range []string{"Stop", "StopFailure", "SubagentStart", "SubagentStop", "PreToolUse", "PostToolUse", "PermissionRequest", "UserPromptSubmit", "Notification"} {
+	for _, event := range []string{"Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionStart", "PreToolUse", "PostToolUse", "PermissionRequest", "UserPromptSubmit", "Notification"} {
 		if len(cmds[event]) == 0 {
 			t.Errorf("no medusa hook command for event %s", event)
 		}
@@ -207,6 +207,22 @@ func TestInjectedHookCommandSendsToSocket(t *testing.T) {
 	evt = recv()
 	if evt["event"] != "SubagentStop" || evt["pending"] != float64(-1) {
 		t.Errorf("SubagentStop without pending_subagent_count must emit -1: %v", evt)
+	}
+
+	// SessionStart forwards the live session_id (and agent_type when present)
+	// so the app can refresh a tab's persisted id after /clear.
+	runHookCommand(t, cmds["SessionStart"][0], `{"hook_event_name":"SessionStart","source":"clear","session_id":"new-sid-123"}`)
+	evt = recv()
+	if evt["event"] != "SessionStart" || evt["claude_session_id"] != "new-sid-123" || evt["agent_type"] != "" {
+		t.Errorf("SessionStart must carry claude_session_id and empty agent_type: %v", evt)
+	}
+
+	// An agent session (claude --agent) carries agent_type; the app uses it to
+	// skip adopting the id.
+	runHookCommand(t, cmds["SessionStart"][0], `{"hook_event_name":"SessionStart","source":"startup","session_id":"agent-sid","agent_type":"Explore"}`)
+	evt = recv()
+	if evt["event"] != "SessionStart" || evt["claude_session_id"] != "agent-sid" || evt["agent_type"] != "Explore" {
+		t.Errorf("SessionStart must carry agent_type when present: %v", evt)
 	}
 
 	if files := hookFilesIn(t, hooksDir); len(files) != 0 {

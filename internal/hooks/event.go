@@ -17,6 +17,10 @@ const (
 	EventPreToolUse              EventType = "PreToolUse"
 	EventPostToolUse             EventType = "PostToolUse"
 	EventUserPromptSubmit        EventType = "UserPromptSubmit"
+	// EventSessionStart carries the live Claude session id so the tab's
+	// persisted id can be refreshed when it changes mid-session (e.g. /clear
+	// mints a new session). It does not affect busy/idle activity state.
+	EventSessionStart EventType = "SessionStart"
 
 	// EventSubagentWait is synthetic — never emitted by a Claude Code hook.
 	// The app derives it when a Stop arrives while background subagents are
@@ -40,6 +44,13 @@ type HookEvent struct {
 	// SubagentStop fired (Claude Code's pending_subagent_count), or
 	// PendingUnknown when the payload did not carry the field.
 	Pending int
+	// ClaudeSessionID is Claude Code's live session_id, carried on
+	// SessionStart so the app can refresh a tab's persisted id.
+	ClaudeSessionID string
+	// AgentType is Claude Code's agent_type on SessionStart, set only for
+	// agent sessions (claude --agent <name>). Non-empty means the event is
+	// not the tab's main conversation and its id must not be adopted.
+	AgentType string
 }
 
 // IsActiveEvent reports whether an event means the agent is still busy — the

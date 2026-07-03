@@ -92,11 +92,13 @@ func (s *Server) handleConn(conn net.Conn) {
 		return
 	}
 	var raw struct {
-		Event   string `json:"event"`
-		TS      int64  `json:"ts"`
-		Session string `json:"session"`
-		Message string `json:"message"`
-		Pending *int   `json:"pending"`
+		Event           string `json:"event"`
+		TS              int64  `json:"ts"`
+		Session         string `json:"session"`
+		Message         string `json:"message"`
+		Pending         *int   `json:"pending"`
+		ClaudeSessionID string `json:"claude_session_id"`
+		AgentType       string `json:"agent_type"`
 	}
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		return
@@ -110,11 +112,13 @@ func (s *Server) handleConn(conn net.Conn) {
 	}
 	if s.onEvent != nil {
 		s.onEvent(HookEvent{
-			SessionName: raw.Session,
-			Event:       EventType(raw.Event),
-			Timestamp:   parseHookTS(raw.TS),
-			Message:     raw.Message,
-			Pending:     pending,
+			SessionName:     raw.Session,
+			Event:           EventType(raw.Event),
+			Timestamp:       parseHookTS(raw.TS),
+			Message:         raw.Message,
+			Pending:         pending,
+			ClaudeSessionID: raw.ClaudeSessionID,
+			AgentType:       raw.AgentType,
 		})
 	}
 }

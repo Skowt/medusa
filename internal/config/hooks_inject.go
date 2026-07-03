@@ -131,6 +131,16 @@ func InjectHooks(profileDir, hooksDir string) error {
 				deliver(`{"event":"SubagentStop","ts":%s,"session":"%s","pending":%s}`, `"$TS" "$MEDUSA_SESSION_NAME" "${PENDING:--1}"`) + `; fi`
 		}
 
+		// makeSessionStartCommand reads stdin to extract Claude Code's live
+		// session_id (and agent_type, which is set only for `claude --agent`
+		// sessions). The app refreshes the tab's persisted id from this so a
+		// later restart resumes the current conversation after a /clear or
+		// in-session /resume mints a new id, rather than the original one.
+		makeSessionStartCommand := func() string {
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); SID=$(echo "$INPUT" | grep -o '"session_id":"[^"]*"' | head -1 | sed 's/"session_id":"//;s/"$//'); AT=$(echo "$INPUT" | grep -o '"agent_type":"[^"]*"' | head -1 | sed 's/"agent_type":"//;s/"$//'); ` + stamp +
+				deliver(`{"event":"SessionStart","ts":%s,"session":"%s","claude_session_id":"%s","agent_type":"%s"}`, `"$TS" "$MEDUSA_SESSION_NAME" "$SID" "$AT"`) + `; fi`
+		}
+
 		type hookDef struct {
 			event   string
 			matcher string
@@ -140,6 +150,7 @@ func InjectHooks(profileDir, hooksDir string) error {
 			{event: "StopFailure"},
 			{event: "SubagentStart"},
 			{event: "SubagentStop"},
+			{event: "SessionStart"},
 			{event: "PreToolUse"},
 			{event: "PostToolUse"},
 			{event: "PermissionRequest"},
@@ -148,8 +159,11 @@ func InjectHooks(profileDir, hooksDir string) error {
 
 		for _, def := range defs {
 			cmd := makeCommand(def.event)
-			if def.event == "SubagentStop" {
+			switch def.event {
+			case "SubagentStop":
 				cmd = makeSubagentStopCommand()
+			case "SessionStart":
+				cmd = makeSessionStartCommand()
 			}
 			rule := map[string]any{
 				"hooks": []any{

@@ -20,6 +20,9 @@ type hookActivityEvent struct {
 	// Pending is Claude Code's pending_subagent_count on SubagentStop
 	// (other subagents still running), or hooks.PendingUnknown.
 	Pending int
+	// ClaudeSessionID and AgentType are carried on SessionStart.
+	ClaudeSessionID string
+	AgentType       string
 }
 
 // initHooksServer registers the hook event receiver: a Unix socket server,
@@ -32,11 +35,13 @@ func (a *App) initHooksServer() {
 
 	onEvent := func(he hooks.HookEvent) {
 		a.enqueueExternalMsg(hookActivityEvent{
-			SessionName: he.SessionName,
-			Event:       he.Event,
-			Timestamp:   he.Timestamp,
-			Message:     he.Message,
-			Pending:     he.Pending,
+			SessionName:     he.SessionName,
+			Event:           he.Event,
+			Timestamp:       he.Timestamp,
+			Message:         he.Message,
+			Pending:         he.Pending,
+			ClaudeSessionID: he.ClaudeSessionID,
+			AgentType:       he.AgentType,
 		})
 	}
 
@@ -59,6 +64,13 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	}
 	if wsID == "" {
 		return nil
+	}
+
+	// SessionStart is not an activity signal — it refreshes the tab's stored
+	// Claude session id so a restart resumes the current conversation after a
+	// /clear (or in-session /resume) mints a new id.
+	if msg.Event == hooks.EventSessionStart {
+		return a.handleSessionStart(wsID, msg)
 	}
 
 	// Keep the outstanding-subagent counter current even for events the
@@ -97,6 +109,27 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	return cmds
+}
+
+// handleSessionStart refreshes a tab's persisted Claude session id from a
+// SessionStart hook. Medusa mints the id at tab creation and only ever resumes
+// that one, so a /clear (or in-session /resume) — which starts a new Claude
+// session with a new id — would otherwise leave the tab resuming the stale
+// pre-clear conversation. Sessions started with `claude --agent <name>` carry
+// an agent_type and are skipped: they fire under the same session name but are
+// not the tab's main conversation, so adopting their id would be wrong.
+func (a *App) handleSessionStart(wsID string, msg hookActivityEvent) []tea.Cmd {
+	if msg.AgentType != "" || msg.ClaudeSessionID == "" {
+		return nil
+	}
+	if !a.center.UpdateTabClaudeSessionID(wsID, msg.SessionName, msg.ClaudeSessionID) {
+		return nil
+	}
+	logging.Info("Refreshed Claude session id for %s → %s", msg.SessionName, msg.ClaudeSessionID)
+	if cmd := a.persistWorkspaceTabs(wsID); cmd != nil {
+		return []tea.Cmd{cmd}
+	}
+	return nil
 }
 
 // applyHookStateTransition updates hookWorkspaceStates for an applied event

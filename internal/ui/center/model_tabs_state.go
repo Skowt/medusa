@@ -58,6 +58,29 @@ func (m *Model) getTabBySession(wsID, sessionName string) *Tab {
 	return nil
 }
 
+// UpdateTabClaudeSessionID refreshes a tab's persisted Claude session id when a
+// SessionStart hook reports a different live id (e.g. after /clear or an
+// in-session /resume mints a new session). The tab is located by tmux session
+// name; wsID follows the rename redirect map. Returns true if the id actually
+// changed, so the caller can persist. Runs in the Update loop; the mutex write
+// mirrors the tab's other ClaudeSessionID setter.
+func (m *Model) UpdateTabClaudeSessionID(wsID, sessionName, claudeSessionID string) bool {
+	if claudeSessionID == "" {
+		return false
+	}
+	tab := m.getTabBySession(wsID, sessionName)
+	if tab == nil {
+		return false
+	}
+	tab.mu.Lock()
+	defer tab.mu.Unlock()
+	if tab.ClaudeSessionID == claudeSessionID {
+		return false
+	}
+	tab.ClaudeSessionID = claudeSessionID
+	return true
+}
+
 // getActiveTabIdx returns the active tab index for the current workspace
 func (m *Model) getActiveTabIdx() int {
 	return m.activeTabByWorkspace[m.workspaceID()]

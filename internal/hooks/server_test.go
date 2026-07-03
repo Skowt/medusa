@@ -105,6 +105,29 @@ func TestServerParsesPendingCount(t *testing.T) {
 	}
 }
 
+// TestServerParsesSessionStart verifies the SessionStart fields (the live
+// Claude session id and the agent_type discriminator) land on the event.
+func TestServerParsesSessionStart(t *testing.T) {
+	sock := filepath.Join(shortTempDir(t), SocketName)
+	events := startTestServer(t, sock)
+
+	sendLine(t, sock, `{"event":"SessionStart","ts":1700000000,"session":"medusa-ws1-tab1","claude_session_id":"sid-9","agent_type":""}`)
+	select {
+	case he := <-events:
+		if he.Event != EventSessionStart {
+			t.Errorf("Event = %q", he.Event)
+		}
+		if he.ClaudeSessionID != "sid-9" {
+			t.Errorf("ClaudeSessionID = %q, want sid-9", he.ClaudeSessionID)
+		}
+		if he.AgentType != "" {
+			t.Errorf("AgentType = %q, want empty", he.AgentType)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for event")
+	}
+}
+
 // TestServerMalformedInputIgnored verifies garbage input neither crashes the
 // server nor blocks subsequent events.
 func TestServerMalformedInputIgnored(t *testing.T) {
