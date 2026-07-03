@@ -57,7 +57,7 @@ func TestInjectHooksSocketCommands(t *testing.T) {
 	}
 
 	cmds := collectMedusaCommands(t, profileDir)
-	for _, event := range []string{"Stop", "StopFailure", "SubagentStop", "PreToolUse", "PostToolUse", "PermissionRequest", "UserPromptSubmit", "Notification"} {
+	for _, event := range []string{"Stop", "StopFailure", "SubagentStart", "SubagentStop", "PreToolUse", "PostToolUse", "PermissionRequest", "UserPromptSubmit", "Notification"} {
 		if len(cmds[event]) == 0 {
 			t.Errorf("no medusa hook command for event %s", event)
 		}
@@ -192,6 +192,21 @@ func TestInjectedHookCommandSendsToSocket(t *testing.T) {
 	evt = recv()
 	if evt["event"] != "NotificationPermission" || evt["message"] != "Claude needs your permission to use Bash" {
 		t.Errorf("unexpected payload: %v", evt)
+	}
+
+	// SubagentStop forwards pending_subagent_count so the app can tell a
+	// mid-run subagent stop from the last one.
+	runHookCommand(t, cmds["SubagentStop"][0], `{"hook_event_name":"SubagentStop","agent_id":"a1","background":true,"pending_subagent_count":2}`)
+	evt = recv()
+	if evt["event"] != "SubagentStop" || evt["pending"] != float64(2) {
+		t.Errorf("SubagentStop payload must carry pending count: %v", evt)
+	}
+
+	// Absent field (older Claude Code) degrades to -1 = unknown.
+	runHookCommand(t, cmds["SubagentStop"][0], `{"hook_event_name":"SubagentStop","agent_id":"a1"}`)
+	evt = recv()
+	if evt["event"] != "SubagentStop" || evt["pending"] != float64(-1) {
+		t.Errorf("SubagentStop without pending_subagent_count must emit -1: %v", evt)
 	}
 
 	if files := hookFilesIn(t, hooksDir); len(files) != 0 {

@@ -17,6 +17,9 @@ type hookActivityEvent struct {
 	Event       hooks.EventType
 	Timestamp   time.Time
 	Message     string
+	// Pending is Claude Code's pending_subagent_count on SubagentStop
+	// (other subagents still running), or hooks.PendingUnknown.
+	Pending int
 }
 
 // initHooksServer registers the hook event receiver: a Unix socket server,
@@ -33,6 +36,7 @@ func (a *App) initHooksServer() {
 			Event:       he.Event,
 			Timestamp:   he.Timestamp,
 			Message:     he.Message,
+			Pending:     he.Pending,
 		})
 	}
 
@@ -57,6 +61,12 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 		return nil
 	}
 
+	// Keep the outstanding-subagent counter current even for events the
+	// state machine below rejects as reordered: the counter has its own
+	// ordering stamp, and a dropped SubagentStop would otherwise leave the
+	// count inflated so the final Stop never clears.
+	a.updateSubagentsPending(wsID, msg)
+
 	// Reject out-of-order delivery. Events reach us over per-connection socket
 	// goroutines (internal/hooks/server.go), so a turn's terminal Stop can be
 	// enqueued before a trailing tool event from the same turn; applying that
@@ -64,17 +74,8 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	if !a.shouldApplyHookEvent(wsID, msg.Event, msg.Timestamp) {
 		return nil
 	}
-	a.recordHookEvent(wsID, msg.Event, msg.Timestamp)
 
-	// NotificationIdle and Stop are "clear" signals: the agent finished
-	// responding and went idle, so any prior notification (permission/question)
-	// has been resolved. Delete the state so the '!' indicator disappears.
-	switch msg.Event {
-	case hooks.EventStop, hooks.EventStopFailure, hooks.EventNotificationIdle:
-		delete(a.hookWorkspaceStates, wsID)
-	default:
-		a.hookWorkspaceStates[wsID] = msg.Event
-	}
+	a.recordHookEvent(wsID, msg.Timestamp, a.applyHookStateTransition(wsID, msg.Event))
 
 	var cmds []tea.Cmd
 	// Show a toast for notification events that carry a message.
@@ -98,6 +99,37 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	return cmds
 }
 
+// applyHookStateTransition updates hookWorkspaceStates for an applied event
+// and reports whether the event cleared the busy state.
+//
+// NotificationIdle and Stop are "clear" signals: the agent finished responding
+// and went idle, so any prior notification (permission/question) has been
+// resolved. Delete the state so the '!' indicator disappears. Exception: a
+// Stop that arrives while background subagents are still outstanding only
+// ends the turn, not the session's work — Claude Code resumes when the
+// subagents report back. Mark the workspace as waiting instead of clearing,
+// so it neither pings "ready for review" nor drops its spinner.
+func (a *App) applyHookStateTransition(wsID string, evt hooks.EventType) (cleared bool) {
+	switch evt {
+	case hooks.EventStop, hooks.EventStopFailure:
+		if a.subagentsPending[wsID] > 0 {
+			a.hookWorkspaceStates[wsID] = hooks.EventSubagentWait
+			return false
+		}
+		delete(a.hookWorkspaceStates, wsID)
+		return true
+	case hooks.EventNotificationIdle:
+		// Claude only reports idle when it is truly waiting for input, so a
+		// leftover counter here means we missed a SubagentStop — resync.
+		delete(a.subagentsPending, wsID)
+		delete(a.hookWorkspaceStates, wsID)
+		return true
+	default:
+		a.hookWorkspaceStates[wsID] = evt
+		return false
+	}
+}
+
 // hookEventStamp records when the last hook event was applied for a workspace
 // and whether it was a "clear" (Stop/StopFailure/NotificationIdle) rather than
 // an active event. Used to reject stale, out-of-order deliveries.
@@ -106,13 +138,45 @@ type hookEventStamp struct {
 	clear bool
 }
 
-// isClearHookEvent reports whether an event clears the busy/active state.
+// isClearHookEvent reports whether an event is of the clearing kind (turn
+// ended / went idle). Whether it actually clears also depends on the
+// outstanding-subagent counter — see handleHookActivityEvent.
 func isClearHookEvent(evt hooks.EventType) bool {
 	switch evt {
 	case hooks.EventStop, hooks.EventStopFailure, hooks.EventNotificationIdle:
 		return true
 	}
 	return false
+}
+
+// updateSubagentsPending maintains the per-workspace outstanding-subagent
+// counter: SubagentStart increments; SubagentStop resyncs from Claude Code's
+// authoritative pending_subagent_count, falling back to a clamped decrement
+// when the payload predates the field. Updates are ordered by their own
+// stamp so a stale SubagentStart delivered after a newer SubagentStop cannot
+// re-inflate a count the stop already settled.
+func (a *App) updateSubagentsPending(wsID string, msg hookActivityEvent) {
+	switch msg.Event {
+	case hooks.EventSubagentStart, hooks.EventSubagentStop:
+	default:
+		return
+	}
+	if msg.Timestamp.Before(a.subagentsPendingStamp[wsID]) {
+		return
+	}
+	a.subagentsPendingStamp[wsID] = msg.Timestamp
+	if msg.Event == hooks.EventSubagentStart {
+		a.subagentsPending[wsID]++
+		return
+	}
+	if msg.Pending >= 0 {
+		a.subagentsPending[wsID] = msg.Pending
+	} else if a.subagentsPending[wsID] > 0 {
+		a.subagentsPending[wsID]--
+	}
+	if a.subagentsPending[wsID] == 0 {
+		delete(a.subagentsPending, wsID)
+	}
 }
 
 // shouldApplyHookEvent guards against out-of-order hook delivery. It drops any
@@ -137,9 +201,11 @@ func (a *App) shouldApplyHookEvent(wsID string, evt hooks.EventType, ts time.Tim
 	return true
 }
 
-// recordHookEvent stamps the last applied hook event for a workspace.
-func (a *App) recordHookEvent(wsID string, evt hooks.EventType, ts time.Time) {
-	a.hookLastStamp[wsID] = hookEventStamp{at: ts, clear: isClearHookEvent(evt)}
+// recordHookEvent stamps the last applied hook event for a workspace. cleared
+// records whether the event actually cleared the busy state (a Stop with
+// outstanding subagents is clear-kind but leaves the workspace busy).
+func (a *App) recordHookEvent(wsID string, ts time.Time, cleared bool) {
+	a.hookLastStamp[wsID] = hookEventStamp{at: ts, clear: cleared}
 }
 
 // persistHookState updates the workspace's HookState field and triggers a debounced save.
@@ -171,6 +237,8 @@ func (a *App) restoreHookStatesFromWorkspaces() {
 // interrupted via Ctrl+C. Claude Code's Stop hook does not fire on user
 // interrupts, so the spinner would otherwise keep running indefinitely.
 func (a *App) handleAgentInterrupted(wsID string) []tea.Cmd {
+	delete(a.subagentsPending, wsID)
+	delete(a.subagentsPendingStamp, wsID)
 	if _, ok := a.hookWorkspaceStates[wsID]; !ok {
 		return nil
 	}
@@ -186,15 +254,11 @@ func (a *App) handleAgentInterrupted(wsID string) []tea.Cmd {
 }
 
 // hookActiveIDs returns the set of workspace IDs that are currently active
-// based on hook state (PreToolUse or UserPromptSubmit = agent actively working).
-// SubagentStop counts as active: it fires mid-turn when a subagent finishes
-// while the main agent keeps working; treating it as inactive caused false
-// "ready for review" pings and a prematurely stopped spinner.
+// based on hook state. See hooks.IsActiveEvent for what counts as active.
 func (a *App) hookActiveIDs() map[string]bool {
 	active := make(map[string]bool)
 	for wsID, evt := range a.hookWorkspaceStates {
-		switch evt {
-		case hooks.EventPreToolUse, hooks.EventPostToolUse, hooks.EventUserPromptSubmit, hooks.EventSubagentStop:
+		if hooks.IsActiveEvent(evt) {
 			active[wsID] = true
 		}
 	}

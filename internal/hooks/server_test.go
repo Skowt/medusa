@@ -68,8 +68,40 @@ func TestServerDeliversEvent(t *testing.T) {
 		if he.Message != "needs approval" {
 			t.Errorf("Message = %q", he.Message)
 		}
+		if he.Pending != PendingUnknown {
+			t.Errorf("Pending without field = %d, want PendingUnknown", he.Pending)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for event")
+	}
+}
+
+// TestServerParsesPendingCount verifies the pending field lands on the event
+// (SubagentStop carries Claude Code's pending_subagent_count) and that a
+// negative sentinel normalizes to PendingUnknown.
+func TestServerParsesPendingCount(t *testing.T) {
+	sock := filepath.Join(shortTempDir(t), SocketName)
+	events := startTestServer(t, sock)
+
+	recv := func() HookEvent {
+		t.Helper()
+		select {
+		case he := <-events:
+			return he
+		case <-time.After(3 * time.Second):
+			t.Fatal("timed out waiting for event")
+			return HookEvent{}
+		}
+	}
+
+	sendLine(t, sock, `{"event":"SubagentStop","ts":1700000000,"session":"medusa-ws1-tab1","pending":2}`)
+	if he := recv(); he.Pending != 2 {
+		t.Errorf("Pending = %d, want 2", he.Pending)
+	}
+
+	sendLine(t, sock, `{"event":"SubagentStop","ts":1700000001,"session":"medusa-ws1-tab1","pending":-1}`)
+	if he := recv(); he.Pending != PendingUnknown {
+		t.Errorf("Pending = %d, want PendingUnknown", he.Pending)
 	}
 }
 

@@ -96,6 +96,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		TS      int64  `json:"ts"`
 		Session string `json:"session"`
 		Message string `json:"message"`
+		Pending *int   `json:"pending"`
 	}
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		return
@@ -103,12 +104,17 @@ func (s *Server) handleConn(conn net.Conn) {
 	if raw.Event == "" || raw.Session == "" {
 		return
 	}
+	pending := PendingUnknown
+	if raw.Pending != nil && *raw.Pending >= 0 {
+		pending = *raw.Pending
+	}
 	if s.onEvent != nil {
 		s.onEvent(HookEvent{
 			SessionName: raw.Session,
 			Event:       EventType(raw.Event),
 			Timestamp:   parseHookTS(raw.TS),
 			Message:     raw.Message,
+			Pending:     pending,
 		})
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -59,13 +60,13 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 		indicatorFg = common.ColorPrimary
 	}
 
-	// Hook-based activity overrides: spinner on PreToolUse, warning symbols for notifications
+	// Hook-based activity overrides: spinner while the agent works, warning symbols for notifications
 	if hookState, ok := m.hookStates[wsID]; ok {
-		switch hookState {
-		case "PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStop":
+		switch {
+		case hooks.IsActiveEvent(hooks.EventType(hookState)):
 			indicator = common.SpinnerFrame(m.spinnerFrame)
 			indicatorFg = common.ColorSuccess
-		case "NotificationPermission", "NotificationElicitation", "PermissionRequest":
+		case hookState == "NotificationPermission" || hookState == "NotificationElicitation" || hookState == "PermissionRequest":
 			indicator = "!"
 			indicatorFg = common.ColorWarning
 		}

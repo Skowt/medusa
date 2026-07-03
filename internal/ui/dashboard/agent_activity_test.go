@@ -13,7 +13,9 @@ func TestHasActiveAgentsHookStates(t *testing.T) {
 		{"PreToolUse", true},
 		{"PostToolUse", true},
 		{"UserPromptSubmit", true},
+		{"SubagentStart", true},
 		{"SubagentStop", true},
+		{"SubagentWait", true},
 		{"NotificationPermission", false},
 		{"PermissionRequest", false},
 	}

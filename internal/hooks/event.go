@@ -8,6 +8,7 @@ type EventType string
 const (
 	EventStop                    EventType = "Stop"
 	EventStopFailure             EventType = "StopFailure"
+	EventSubagentStart           EventType = "SubagentStart"
 	EventSubagentStop            EventType = "SubagentStop"
 	EventNotificationIdle        EventType = "NotificationIdle"
 	EventNotificationPermission  EventType = "NotificationPermission"
@@ -16,7 +17,18 @@ const (
 	EventPreToolUse              EventType = "PreToolUse"
 	EventPostToolUse             EventType = "PostToolUse"
 	EventUserPromptSubmit        EventType = "UserPromptSubmit"
+
+	// EventSubagentWait is synthetic — never emitted by a Claude Code hook.
+	// The app derives it when a Stop arrives while background subagents are
+	// still outstanding: the turn ended but the session is not ready for
+	// input, so the workspace must keep reading as busy.
+	EventSubagentWait EventType = "SubagentWait"
 )
+
+// PendingUnknown marks a SubagentStop event whose payload carried no
+// pending_subagent_count (hooks injected by older Medusa versions, or a
+// Claude Code version that predates the field).
+const PendingUnknown = -1
 
 // HookEvent is the parsed event delivered to the server callback.
 type HookEvent struct {
@@ -24,6 +36,25 @@ type HookEvent struct {
 	Event       EventType
 	Timestamp   time.Time
 	Message     string // Optional message (e.g. from Notification hooks)
+	// Pending is the number of other subagents still running when a
+	// SubagentStop fired (Claude Code's pending_subagent_count), or
+	// PendingUnknown when the payload did not carry the field.
+	Pending int
+}
+
+// IsActiveEvent reports whether an event means the agent is still busy — the
+// workspace should show a spinner rather than ping "ready for review".
+// SubagentStop counts as active: it fires when a subagent finishes while the
+// main agent keeps working (or is about to resume); treating it as inactive
+// caused false pings. SubagentWait is the derived turn-ended-but-background-
+// agents-outstanding state.
+func IsActiveEvent(evt EventType) bool {
+	switch evt {
+	case EventPreToolUse, EventPostToolUse, EventUserPromptSubmit,
+		EventSubagentStart, EventSubagentStop, EventSubagentWait:
+		return true
+	}
+	return false
 }
 
 // parseHookTS normalizes a hook timestamp to a time.Time regardless of the unit

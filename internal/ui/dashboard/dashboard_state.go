@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -48,8 +49,7 @@ func (m *Model) startSpinnerIfNeeded() tea.Cmd {
 // (detected via hook lifecycle events).
 func (m *Model) hasActiveAgents() bool {
 	for _, state := range m.hookStates {
-		switch state {
-		case "PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStop":
+		if hooks.IsActiveEvent(hooks.EventType(state)) {
 			return true
 		}
 	}
