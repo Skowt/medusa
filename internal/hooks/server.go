@@ -107,7 +107,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		s.onEvent(HookEvent{
 			SessionName: raw.Session,
 			Event:       EventType(raw.Event),
-			Timestamp:   time.Unix(raw.TS, 0),
+			Timestamp:   parseHookTS(raw.TS),
 			Message:     raw.Message,
 		})
 	}

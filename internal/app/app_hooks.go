@@ -19,18 +19,13 @@ type hookActivityEvent struct {
 	Message     string
 }
 
-// initHooksWatcher creates and registers the hook event receivers: the Unix
-// socket server (primary transport) and the directory watcher (legacy
-// sessions started before the socket upgrade, plus the nc-less file
-// fallback). Both feed the same event queue.
-func (a *App) initHooksWatcher() {
+// initHooksServer registers the hook event receiver: a Unix socket server,
+// which is the sole transport for Claude Code lifecycle events.
+func (a *App) initHooksServer() {
 	hooksDir := a.config.Paths.HooksDir
 	if hooksDir == "" {
 		return
 	}
-
-	// Clean up stale files from previous sessions
-	hooks.CleanStaleFiles(hooksDir, 24*time.Hour)
 
 	onEvent := func(he hooks.HookEvent) {
 		a.enqueueExternalMsg(hookActivityEvent{
@@ -44,18 +39,10 @@ func (a *App) initHooksWatcher() {
 	srv, err := hooks.NewServer(hooks.SocketPath(hooksDir), onEvent)
 	if err != nil {
 		logging.Warn("Hooks socket server disabled: %v", err)
-	} else {
-		a.hooksServer = srv
-		a.supervisor.Start("hooks.server", srv.Run, supervisor.WithBackoff(500*time.Millisecond))
-	}
-
-	w, err := hooks.NewWatcher(hooksDir, onEvent)
-	if err != nil {
-		logging.Warn("Hooks watcher disabled: %v", err)
 		return
 	}
-	a.hooksWatcher = w
-	a.supervisor.Start("hooks.watcher", w.Run, supervisor.WithBackoff(500*time.Millisecond))
+	a.hooksServer = srv
+	a.supervisor.Start("hooks.server", srv.Run, supervisor.WithBackoff(500*time.Millisecond))
 }
 
 // handleHookActivityEvent processes a hook activity event, resolves the session
@@ -69,6 +56,15 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	if wsID == "" {
 		return nil
 	}
+
+	// Reject out-of-order delivery. Events reach us over per-connection socket
+	// goroutines (internal/hooks/server.go), so a turn's terminal Stop can be
+	// enqueued before a trailing tool event from the same turn; applying that
+	// stale active event revives the spinner with nothing left to clear it.
+	if !a.shouldApplyHookEvent(wsID, msg.Event, msg.Timestamp) {
+		return nil
+	}
+	a.recordHookEvent(wsID, msg.Event, msg.Timestamp)
 
 	// NotificationIdle and Stop are "clear" signals: the agent finished
 	// responding and went idle, so any prior notification (permission/question)
@@ -100,6 +96,50 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	return cmds
+}
+
+// hookEventStamp records when the last hook event was applied for a workspace
+// and whether it was a "clear" (Stop/StopFailure/NotificationIdle) rather than
+// an active event. Used to reject stale, out-of-order deliveries.
+type hookEventStamp struct {
+	at    time.Time
+	clear bool
+}
+
+// isClearHookEvent reports whether an event clears the busy/active state.
+func isClearHookEvent(evt hooks.EventType) bool {
+	switch evt {
+	case hooks.EventStop, hooks.EventStopFailure, hooks.EventNotificationIdle:
+		return true
+	}
+	return false
+}
+
+// shouldApplyHookEvent guards against out-of-order hook delivery. It drops any
+// event older than the last one applied for the workspace. Because hook
+// timestamps are second-resolution (the hook emits `date +%s`), a trailing
+// tool event and the turn's Stop frequently share the same second; in that tie
+// a clear wins, so a reordered PreToolUse/PostToolUse can never override a Stop
+// applied in the same second. The only cost is that a brand-new turn started in
+// the very same wall-clock second an agent stopped may drop its first active
+// event — the next tool event a second later restarts the spinner.
+func (a *App) shouldApplyHookEvent(wsID string, evt hooks.EventType, ts time.Time) bool {
+	prev, seen := a.hookLastStamp[wsID]
+	if !seen {
+		return true
+	}
+	if ts.Before(prev.at) {
+		return false
+	}
+	if ts.Equal(prev.at) && prev.clear && !isClearHookEvent(evt) {
+		return false
+	}
+	return true
+}
+
+// recordHookEvent stamps the last applied hook event for a workspace.
+func (a *App) recordHookEvent(wsID string, evt hooks.EventType, ts time.Time) {
+	a.hookLastStamp[wsID] = hookEventStamp{at: ts, clear: isClearHookEvent(evt)}
 }
 
 // persistHookState updates the workspace's HookState field and triggers a debounced save.

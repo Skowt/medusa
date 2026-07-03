@@ -180,10 +180,13 @@ type App struct {
 	tmuxCheckDone   bool
 	tmuxInstallHint string
 
-	// Hooks watcher (Claude Code lifecycle events)
-	hooksWatcher        *hooks.Watcher
+	// Hooks socket server (Claude Code lifecycle events)
 	hooksServer         *hooks.Server
 	hookWorkspaceStates map[string]hooks.EventType
+	// hookLastStamp records the timestamp (and clear/active kind) of the last
+	// hook event applied per workspace, so out-of-order socket delivery can be
+	// rejected. See shouldApplyHookEvent.
+	hookLastStamp map[string]hookEventStamp
 
 	// Auto-start agent
 	pendingAutoLaunch  string // workspace root for post-creation auto-launch
@@ -364,6 +367,7 @@ func New(version, commit, date string) (*App, error) {
 		ctx:                 ctx,
 		tmuxOptions:         tmuxOpts,
 		hookWorkspaceStates: make(map[string]hooks.EventType),
+		hookLastStamp:       make(map[string]hookEventStamp),
 		dirtyWorkspaces:     make(map[string]bool),
 	}
 	app.supervisor = supervisor.New(ctx)
@@ -400,9 +404,9 @@ func New(version, commit, date string) (*App, error) {
 		app.initPermissionWatcher()
 	}
 
-	// Inject hooks into all profiles and start watcher
+	// Inject hooks into all profiles and start the hooks socket server
 	_ = config.InjectHooksIntoAllProfiles(cfg.Paths.ProfilesRoot, cfg.Paths.HooksDir)
-	app.initHooksWatcher()
+	app.initHooksServer()
 
 	// Initialize focus state on all components (dashboard is the default focus)
 	app.focusPane(messages.PaneDashboard)
@@ -456,9 +460,6 @@ func (a *App) Shutdown() {
 		}
 		if a.permissionWatcher != nil {
 			_ = a.permissionWatcher.Close()
-		}
-		if a.hooksWatcher != nil {
-			_ = a.hooksWatcher.Close()
 		}
 		if a.hooksServer != nil {
 			_ = a.hooksServer.Close()

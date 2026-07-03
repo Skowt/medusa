@@ -42,12 +42,11 @@ func collectMedusaCommands(t *testing.T, profileDir string) map[string][]string 
 	return out
 }
 
-// TestInjectHooksPerEventAtomicCommands verifies the injected commands write
-// one unique file per event via an atomic tmp+rename, carrying the session
-// name in the payload. The old design (shared per-session file, truncating
-// overwrite) lost events that arrived within the debounce window and could
-// interleave concurrent writes into corrupt JSON.
-func TestInjectHooksPerEventAtomicCommands(t *testing.T) {
+// TestInjectHooksSocketCommands verifies the injected commands send one event
+// per connection to the hooks socket, guarded by the socket-exists check, and
+// carry the session name in the payload. The socket is the only transport;
+// there is no file fallback.
+func TestInjectHooksSocketCommands(t *testing.T) {
 	dir := t.TempDir()
 	profileDir := filepath.Join(dir, "profile")
 	_ = os.MkdirAll(profileDir, 0755)
@@ -74,12 +73,9 @@ func TestInjectHooksPerEventAtomicCommands(t *testing.T) {
 			if !strings.Contains(cmd, `[ -S `) {
 				t.Errorf("%s: command lacks the socket-exists guard (must be a no-op while Medusa is stopped): %s", event, cmd)
 			}
-			// File fallback for nc-less systems must stay atomic and unique.
-			if !strings.Contains(cmd, "evt-$$") {
-				t.Errorf("%s: fallback does not write a unique per-event file: %s", event, cmd)
-			}
-			if !strings.Contains(cmd, "mv ") {
-				t.Errorf("%s: fallback does not rename atomically: %s", event, cmd)
+			// The socket is the only transport: no file fallback must remain.
+			if strings.Contains(cmd, "evt-$$") || strings.Contains(cmd, ".tmp") {
+				t.Errorf("%s: command still contains a file fallback: %s", event, cmd)
 			}
 			if !strings.Contains(cmd, `"session":"%s"`) {
 				t.Errorf("%s: payload does not carry the session name: %s", event, cmd)
@@ -216,43 +212,6 @@ func TestInjectedHookCommandDropsWhenSocketAbsent(t *testing.T) {
 
 	if files := hookFilesIn(t, hooksDir); len(files) != 0 {
 		t.Errorf("expected no files while Medusa is stopped, found %v", files)
-	}
-}
-
-// TestInjectedHookCommandFallsBackToFileWithoutNC verifies systems without nc
-// still deliver events via atomic per-event files (consumed by the watcher).
-func TestInjectedHookCommandFallsBackToFileWithoutNC(t *testing.T) {
-	cmds, hooksDir := hookTestEnv(t)
-
-	// PATH with the tools the command needs, but no nc.
-	fakebin := filepath.Join(t.TempDir(), "bin")
-	_ = os.MkdirAll(fakebin, 0755)
-	for _, tool := range []string{"date", "mv", "cat", "grep", "sed", "head", "echo"} {
-		src, err := exec.LookPath(tool)
-		if err != nil {
-			t.Fatalf("tool %s not found on host: %v", tool, err)
-		}
-		if err := os.Symlink(src, filepath.Join(fakebin, tool)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	runHookCommand(t, cmds["Stop"][0], "", "PATH="+fakebin)
-
-	files := hookFilesIn(t, hooksDir)
-	if len(files) != 1 || !strings.HasPrefix(files[0], "evt-") || !strings.HasSuffix(files[0], ".json") {
-		t.Fatalf("expected exactly one evt-*.json fallback file, found %v", files)
-	}
-	raw, err := os.ReadFile(filepath.Join(hooksDir, files[0]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var evt map[string]any
-	if err := json.Unmarshal(raw, &evt); err != nil {
-		t.Fatalf("fallback file is not valid JSON: %v\n%s", err, raw)
-	}
-	if evt["event"] != "Stop" || evt["session"] != "medusa-ws1-tab1" {
-		t.Errorf("unexpected fallback payload: %v", evt)
 	}
 }
 

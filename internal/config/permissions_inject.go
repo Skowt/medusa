@@ -244,17 +244,20 @@ func getOrCreateMap(settings map[string]any, key string) map[string]any {
 // InjectHooks merges Claude Code hook definitions into a profile's settings.json.
 // Each hook sends one JSON event line to the Medusa hooks socket via nc. The
 // socket-exists guard makes hooks a silent no-op while Medusa is stopped, so
-// detached tmux sessions never accumulate event litter. Systems without nc
-// fall back to writing a uniquely-named event file (written to a .tmp path,
-// then renamed so the watcher only sees complete content). The session name
-// travels in the payload either way, so concurrent hooks (parallel tool calls,
-// subagents) can never overwrite each other. The shell guard ensures
-// non-Medusa sessions are no-ops. All previously injected Medusa rules
-// (including old-format ones) are replaced; foreign hook entries (e.g.
-// compound approve) are preserved.
+// detached tmux sessions never accumulate event litter, and the socket is the
+// only transport — there is no file fallback. The session name travels in the
+// payload, so concurrent hooks (parallel tool calls, subagents) can never
+// overwrite each other. The shell guard ensures non-Medusa sessions are no-ops.
+// All previously injected Medusa rules (including old-format ones) are replaced;
+// foreign hook entries (e.g. compound approve) are preserved.
+//
+// The timestamp is emitted as `date +%s%N` and trimmed to digits: nanoseconds
+// where date supports %N, seconds where it does not (the literal N is stripped).
+// The receiver normalizes either magnitude, so the resolution degrades
+// gracefully without breaking ordering.
 //
 // Known limitation: nc variants without -U support (GNU netcat; rare as a
-// system default) fail silently instead of falling back to files.
+// system default) drop events silently, as does any system without nc.
 func InjectHooks(profileDir, hooksDir string) error {
 	// Resolved before the closure: the local `hooks` map below shadows the
 	// hooks package name.
@@ -262,22 +265,26 @@ func InjectHooks(profileDir, hooksDir string) error {
 	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
 		hooks := getOrCreateMap(settings, "hooks")
 		stripMedusaHookRules(hooks)
-		// deliver emits the payload built by printf(1) from format + args:
-		// socket first, file fallback without nc, silent drop without socket.
+		// deliver emits the printf(1) payload to the socket; the socket-exists
+		// guard makes it a silent no-op while Medusa is stopped.
 		deliver := func(format, args string) string {
 			payload := `printf '` + format + `\n' ` + args
-			return `if command -v nc >/dev/null 2>&1; then if [ -S "` + sock + `" ]; then ` + payload + ` | nc -U -w 2 "` + sock + `" >/dev/null 2>&1 || true; fi; else F="` + hooksDir + `/evt-$$-$TS.json"; ` + payload + ` > "$F.tmp" && mv "$F.tmp" "$F"; fi`
+			return `if [ -S "` + sock + `" ]; then ` + payload + ` | nc -U -w 2 "` + sock + `" >/dev/null 2>&1 || true; fi`
 		}
 
+		// stamp computes a sub-second timestamp where date supports %N and
+		// trims to digits so an unsupported %N degrades to plain seconds.
+		const stamp = `TS=$(date +%s%N); TS=${TS%%[!0-9]*}; `
+
 		makeCommand := func(eventName string) string {
-			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then TS=$(date +%s); ` +
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then ` + stamp +
 				deliver(`{"event":"`+eventName+`","ts":%s,"session":"%s"}`, `"$TS" "$MEDUSA_SESSION_NAME"`) + `; fi`
 		}
 
 		// makeNotificationCommand reads stdin (JSON from Claude Code) to extract
 		// the "message" field and include it in the event payload.
 		makeNotificationCommand := func(eventName string) string {
-			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); MSG=$(echo "$INPUT" | grep -o '"message":"[^"]*"' | head -1 | sed 's/"message":"//;s/"$//'); TS=$(date +%s); ` +
+			return `if [ -n "$MEDUSA_SESSION_NAME" ]; then INPUT=$(cat); MSG=$(echo "$INPUT" | grep -o '"message":"[^"]*"' | head -1 | sed 's/"message":"//;s/"$//'); ` + stamp +
 				deliver(`{"event":"`+eventName+`","ts":%s,"session":"%s","message":"%s"}`, `"$TS" "$MEDUSA_SESSION_NAME" "$MSG"`) + `; fi`
 		}
 
