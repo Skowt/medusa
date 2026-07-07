@@ -67,6 +67,7 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 	}
 	tab.Detached = false
 	tab.Running = true
+	tab.Fullscreen = msg.Fullscreen
 	tab.monitorDirty = true
 	tab.autoRestartAttempt = 0
 	tab.WorkspaceRenamed = false
@@ -229,6 +230,7 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 	termHeight := tm.Height
 	assistant := tab.Assistant
 	attempt := msg.Attempt
+	fullscreen := appPty.AgentType(assistant) == appPty.AgentClaude
 
 	logging.Info("Auto-restart attempt %d/%d for tab %s", attempt, tabAutoRestartMax, tabID)
 
@@ -239,6 +241,7 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 			Isolated:                 tabIsolated,
 			AllowUnsandboxedCommands: tabAllowUnsandboxed,
 			PermissionMode:           tabPermissionMode,
+			Fullscreen:               fullscreen,
 		}
 		if claudeSessionID != "" {
 			agentOpts.ClaudeSessionID = claudeSessionID
@@ -272,6 +275,7 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 			Cols:              termWidth,
 			ScrollbackCapture: scrollback,
 			ClaudeSessionID:   claudeSessionID,
+			Fullscreen:        fullscreen,
 		}
 	}
 }

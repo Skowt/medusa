@@ -24,6 +24,37 @@ type AgentOptions struct {
 	Isolated                 bool   // Enable Claude's built-in sandbox via --settings
 	AllowUnsandboxedCommands bool   // sandbox.allowUnsandboxedCommands; only used when Isolated is true
 	PermissionMode           string // claude --permission-mode value (acceptEdits, plan, auto, bypassPermissions)
+	// Fullscreen launches Claude in its fullscreen TUI renderer via
+	// CLAUDE_CODE_NO_FLICKER=1 and marks the tmux session accordingly.
+	Fullscreen bool
+}
+
+// buildAgentCommand assembles the env-prefixed shell command for an agent.
+// It is pure: all filesystem side effects (profile dir setup, settings/hook
+// injection) are performed by the caller, which passes the resolved profileDir.
+func buildAgentCommand(agentType AgentType, command, sessionName, profileDir string, opts AgentOptions) string {
+	cmd := fmt.Sprintf("MEDUSA_SESSION_NAME=%s %s", shellutil.Quote(sessionName), command)
+	if agentType == AgentClaude && profileDir != "" {
+		cmd = fmt.Sprintf("CLAUDE_CONFIG_DIR=%s %s", shellutil.Quote(profileDir), cmd)
+	}
+	// claudeSessionArgs handles --session-id vs --resume, falling back to a
+	// fresh --session-id when a resume has no conversation file yet.
+	if agentType == AgentClaude {
+		cmd += claudeSessionArgs(profileDir, opts)
+	}
+	if agentType == AgentClaude && opts.PermissionMode != "" {
+		cmd += " --permission-mode " + shellutil.Quote(opts.PermissionMode)
+	}
+	if agentType == AgentClaude {
+		cmd += " --enable-auto-mode"
+	}
+	if opts.Isolated && agentType == AgentClaude {
+		cmd += " --settings " + shellutil.Quote(config.ClaudeSandboxSettingsJSON(opts.AllowUnsandboxedCommands))
+	}
+	if agentType == AgentClaude && opts.Fullscreen {
+		cmd = "CLAUDE_CODE_NO_FLICKER=1 " + cmd
+	}
+	return cmd
 }
 
 // GenerateSessionID returns a new random UUID v4 string.
@@ -101,11 +132,6 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		"COLORTERM=truecolor",
 	}
 
-	// Prefix MEDUSA_SESSION_NAME so it propagates into the tmux session
-	// (env vars on the outer process don't reach inside tmux new-session).
-	// Hooks use the session name as the event file key; the app resolves
-	// session → workspace via tabSessionInfoByName().
-	agentCommand := fmt.Sprintf("MEDUSA_SESSION_NAME=%s %s", shellutil.Quote(sessionName), assistantCfg.Command)
 	var profileDir string
 	if agentType == AgentClaude && ws.Profile != "" {
 		profileDir = filepath.Join(m.config.Paths.ProfilesRoot, ws.Profile)
@@ -133,7 +159,6 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 				}
 			}
 		}
-		agentCommand = fmt.Sprintf("CLAUDE_CONFIG_DIR=%s %s", shellutil.Quote(profileDir), agentCommand)
 	}
 
 	// Pre-trust the workspace directory so Claude doesn't prompt
@@ -142,34 +167,14 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		_ = config.InjectTrustedDirectory(ws.Root(), profileDir)
 	}
 
-	// Append Claude session flags for conversation resumption.
-	if agentType == AgentClaude {
-		agentCommand += claudeSessionArgs(profileDir, opts)
+	// bypassPermissions still triggers Claude's confirmation dialog the first
+	// time it's used; suppress it for users who explicitly chose it from our
+	// launcher dropdown.
+	if agentType == AgentClaude && opts.PermissionMode == "bypassPermissions" {
+		_ = config.InjectSkipPermissionPrompt(profileDir)
 	}
 
-	// Starting permission mode: pass --permission-mode so the agent boots
-	// straight into the user's chosen mode (acceptEdits / plan / auto /
-	// bypassPermissions). Empty means "let Claude pick its default".
-	if agentType == AgentClaude && opts.PermissionMode != "" {
-		agentCommand += " --permission-mode " + shellutil.Quote(opts.PermissionMode)
-		// bypassPermissions still triggers Claude's confirmation dialog the
-		// first time it's used; suppress that for users who explicitly chose
-		// it from our launcher dropdown.
-		if opts.PermissionMode == "bypassPermissions" {
-			_ = config.InjectSkipPermissionPrompt(profileDir)
-		}
-	}
-
-	// Enable auto mode so it's available via Shift+Tab mode cycling.
-	if agentType == AgentClaude {
-		agentCommand += " --enable-auto-mode"
-	}
-
-	// When Sandboxed is toggled, hand off sandboxing to Claude Code itself
-	// via --settings instead of wrapping the command in macOS sandbox-exec.
-	if opts.Isolated && agentType == AgentClaude {
-		agentCommand += " --settings " + shellutil.Quote(config.ClaudeSandboxSettingsJSON(opts.AllowUnsandboxedCommands))
-	}
+	agentCommand := buildAgentCommand(agentType, assistantCfg.Command, sessionName, profileDir, opts)
 
 	// Create terminal with agent command, falling back to shell on exit
 	shell := os.Getenv("SHELL")
@@ -182,6 +187,9 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// Use -l flag to start login shell so .zshrc/.bashrc are loaded
 	fullCommand := fmt.Sprintf("%s; stty sane; printf '\\033[?1049l\\033[?25h\\033[0m\\033c'; echo 'Agent exited. Dropping to shell...'; export TERM=xterm-256color; exec %s -l", agentCommand, shell)
 
+	// Fullscreen mark and the CLAUDE_CODE_NO_FLICKER env var must agree: both
+	// are gated on agentType == AgentClaude, matching buildAgentCommand's gate.
+	tags.Fullscreen = agentType == AgentClaude && opts.Fullscreen
 	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root(), fullCommand, tmux.DefaultOptions(), tags)
 	term, err := NewWithSize(termCommand, ws.Root(), env, rows, cols)
 	if err != nil {

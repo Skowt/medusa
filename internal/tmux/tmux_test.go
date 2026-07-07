@@ -269,6 +269,28 @@ func TestClientCommandWithTags(t *testing.T) {
 	}
 }
 
+func TestClientCommandFullscreenSession(t *testing.T) {
+	opts := Options{ServerName: "s", ConfigPath: "/dev/null", HideStatus: true, DisableMouse: true, DefaultTerminal: "xterm-256color"}
+	fs := ClientCommandWithTags("sess", "/tmp", "claude", opts, SessionTags{WorkspaceID: "ws", TabID: "t", Type: "agent", Assistant: "claude", Fullscreen: true})
+	if !strings.Contains(fs, "mouse on") {
+		t.Errorf("fullscreen session must enable mouse: %s", fs)
+	}
+	if strings.Contains(fs, "mouse off") {
+		t.Errorf("fullscreen session must not disable mouse: %s", fs)
+	}
+	if !strings.Contains(fs, "@medusa_fullscreen 1") {
+		t.Errorf("fullscreen session must set @medusa_fullscreen tag: %s", fs)
+	}
+
+	classic := ClientCommandWithTags("sess", "/tmp", "claude", opts, SessionTags{WorkspaceID: "ws", TabID: "t", Type: "agent", Assistant: "claude", Fullscreen: false})
+	if !strings.Contains(classic, "mouse off") {
+		t.Errorf("classic session must disable mouse: %s", classic)
+	}
+	if strings.Contains(classic, "@medusa_fullscreen") {
+		t.Errorf("classic session must not set fullscreen tag: %s", classic)
+	}
+}
+
 func TestTmuxBase(t *testing.T) {
 	tests := []struct {
 		name     string

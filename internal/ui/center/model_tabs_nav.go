@@ -149,6 +149,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 		isolated := tab.Isolated
 		allowUnsandboxed := tab.AllowUnsandboxedCommands
 		permMode := tab.PermissionMode
+		fullscreen := tab.Fullscreen
 		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
@@ -166,6 +167,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			Isolated:                 isolated,
 			AllowUnsandboxedCommands: allowUnsandboxed,
 			PermissionMode:           permMode,
+			Fullscreen:               fullscreen,
 			ScriptFullCmd:            scriptFullCmd,
 		})
 	}
@@ -191,6 +193,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 		isolated := tab.Isolated
 		allowUnsandboxed := tab.AllowUnsandboxedCommands
 		permMode := tab.PermissionMode
+		fullscreen := tab.Fullscreen
 		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
@@ -208,6 +211,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			Isolated:                 isolated,
 			AllowUnsandboxedCommands: allowUnsandboxed,
 			PermissionMode:           permMode,
+			Fullscreen:               fullscreen,
 			ScriptFullCmd:            scriptFullCmd,
 		})
 	}

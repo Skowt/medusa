@@ -99,6 +99,7 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	termWidth := tm.Width
 	termHeight := tm.Height
 	assistant := tab.Assistant
+	fullscreen := appPty.AgentType(assistant) == appPty.AgentClaude
 
 	return func() tea.Msg {
 		_ = tmux.KillSession(sessionName, tmuxOpts)
@@ -123,6 +124,7 @@ func (m *Model) restartTab(index int) tea.Cmd {
 				Isolated:                 tabIsolated,
 				AllowUnsandboxedCommands: tabAllowUnsandboxed,
 				PermissionMode:           tabPermissionMode,
+				Fullscreen:               fullscreen,
 			}
 			if claudeSessionID != "" {
 				agentOpts.ClaudeSessionID = claudeSessionID
@@ -149,6 +151,7 @@ func (m *Model) restartTab(index int) tea.Cmd {
 			Cols:              termWidth,
 			ScrollbackCapture: scrollback,
 			ClaudeSessionID:   claudeSessionID,
+			Fullscreen:        fullscreen,
 		}
 	}
 }

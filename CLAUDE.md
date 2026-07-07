@@ -69,6 +69,16 @@ PTY readers run as long-lived goroutines. They capture the workspace ID at start
 
 Workspace rename: do NOT restart PTY readers — the redirect map handles routing and restarting races with the blocked read goroutine.
 
+### Fullscreen TUI default
+
+New and relaunched Claude agents run in Claude's fullscreen renderer
+(`CLAUDE_CODE_NO_FLICKER=1`), and their tmux session is set to `mouse on` so
+mouse events reach Claude. medusa forwards wheel/click/drag/release to the PTY
+for those tabs instead of scrolling its own vterm; medusa's vterm scroll/select
+remains only for pre-existing classic sessions until they are restarted.
+Requires **Claude Code v2.1.89+** — older versions ignore the env var and mouse
+behavior degrades (there is no kill switch).
+
 ### Workspace / worktree model: `internal/data`
 
 A `Workspace` can span multiple repos (each with its own worktree) but shares a single branch. `Workspace.Root()` is the primary worktree root; `AllRoots()` / `PrimaryWorktreeRoot()` account for multi-repo layouts. Registry at `~/.medusa/workspaces.json` is the source of truth; `data.Registry` and `data.WorkspaceStore` are both guarded by `sync.Mutex` (saveLocked/deleteLocked pattern). Orphan handling has two flavors: `OrphanMetadata` (registry knows about a dir that's gone) and `OrphanDirectory` (dir on disk with no registry entry).

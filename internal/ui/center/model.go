@@ -89,6 +89,7 @@ type Tab struct {
 	Isolated                 bool
 	AllowUnsandboxedCommands bool
 	PermissionMode           string
+	Fullscreen               bool // Claude fullscreen TUI mode: mouse is forwarded to Claude.
 
 	// Script tabs retain the full shell command (env-prefixed) so Restart
 	// can relaunch the same process in a fresh tmux session.

@@ -106,6 +106,7 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 	sessionName := tab.SessionName
 	claudeSessionID := tab.ClaudeSessionID
 	scriptFullCmd := tab.ScriptFullCmd
+	fullscreen := tab.Fullscreen
 	tab.mu.Unlock()
 	if !detached {
 		return nil
@@ -153,7 +154,7 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 		} else {
 			tags.Type = "agent"
 			tags.Assistant = assistant
-			agent, err = m.agentManager.CreateAgentWithTags(ws, appPty.AgentType(assistant), sessionName, uint16(termHeight), uint16(termWidth), tags, appPty.AgentOptions{})
+			agent, err = m.agentManager.CreateAgentWithTags(ws, appPty.AgentType(assistant), sessionName, uint16(termHeight), uint16(termWidth), tags, appPty.AgentOptions{Fullscreen: fullscreen})
 		}
 		if err != nil {
 			return ptyTabReattachFailed{
@@ -173,6 +174,7 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 			Cols:              termWidth,
 			ScrollbackCapture: scrollback,
 			ClaudeSessionID:   claudeSessionID,
+			Fullscreen:        fullscreen,
 		}
 	}
 }
@@ -292,7 +294,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			continue
 		}
 		restoreCount++
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode, tab.Fullscreen))
 	}
 	if restoreCount > 0 {
 		m.restoredWorkspaces[wsID] = struct{}{}
@@ -358,7 +360,7 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 			}
 			continue
 		}
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode, tab.Fullscreen))
 	}
 	return common.SafeBatch(cmds...)
 }
@@ -398,6 +400,7 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		Isolated:                 info.Isolated,
 		AllowUnsandboxedCommands: info.AllowUnsandboxedCommands,
 		PermissionMode:           info.PermissionMode,
+		Fullscreen:               info.Fullscreen,
 		ScriptFullCmd:            info.ScriptFullCmd,
 	}
 	wsID := string(ws.ID())

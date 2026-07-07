@@ -59,6 +59,7 @@ type ptyTabCreateResult struct {
 	Isolated                 bool
 	AllowUnsandboxedCommands bool
 	PermissionMode           string
+	Fullscreen               bool
 	ScriptFullCmd            string // Only set for script tabs; enables in-place Restart.
 }
 
@@ -70,6 +71,7 @@ type ptyTabReattachResult struct {
 	Cols              int
 	ScrollbackCapture []byte
 	ClaudeSessionID   string
+	Fullscreen        bool
 }
 
 type ptyTabReattachFailed struct {
@@ -89,10 +91,11 @@ func truncateDisplayName(name string) string {
 
 // createAgentTab creates a new agent tab with per-tab settings
 func (m *Model) createAgentTab(assistant string, ws *data.Workspace, isolated, allowUnsandboxed bool, permissionMode string) tea.Cmd {
-	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", isolated, allowUnsandboxed, permissionMode)
+	fullscreen := appPty.AgentType(assistant) == appPty.AgentClaude
+	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", isolated, allowUnsandboxed, permissionMode, fullscreen)
 }
 
-func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string, isolated, allowUnsandboxed bool, permissionMode string) tea.Cmd {
+func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string, isolated, allowUnsandboxed bool, permissionMode string, fullscreen bool) tea.Cmd {
 	if ws == nil {
 		return func() tea.Msg {
 			return messages.Error{Err: fmt.Errorf("no workspace selected"), Context: "creating agent"}
@@ -117,6 +120,7 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 			Isolated:                 isolated,
 			AllowUnsandboxedCommands: allowUnsandboxed,
 			PermissionMode:           permissionMode,
+			Fullscreen:               fullscreen,
 		}
 		if appPty.AgentType(assistant) == appPty.AgentClaude {
 			if claudeSessionID != "" {
@@ -163,6 +167,7 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 			Isolated:                 isolated,
 			AllowUnsandboxedCommands: allowUnsandboxed,
 			PermissionMode:           permissionMode,
+			Fullscreen:               fullscreen,
 		}
 	}
 }
@@ -215,6 +220,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		Isolated:                 msg.Isolated,
 		AllowUnsandboxedCommands: msg.AllowUnsandboxedCommands,
 		PermissionMode:           msg.PermissionMode,
+		Fullscreen:               msg.Fullscreen,
 		ScriptFullCmd:            msg.ScriptFullCmd,
 	}
 
