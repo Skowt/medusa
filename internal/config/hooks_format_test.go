@@ -52,7 +52,7 @@ func TestInjectHooksSocketCommands(t *testing.T) {
 	_ = os.MkdirAll(profileDir, 0755)
 	hooksDir := filepath.Join(dir, "hooks")
 
-	if err := InjectHooks(profileDir, hooksDir); err != nil {
+	if err := InjectHooks(profileDir, hooksDir, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +98,7 @@ func hookTestEnv(t *testing.T) (map[string][]string, string) {
 	_ = os.MkdirAll(profileDir, 0755)
 	hooksDir := filepath.Join(dir, "hooks")
 	_ = os.MkdirAll(hooksDir, 0755)
-	if err := InjectHooks(profileDir, hooksDir); err != nil {
+	if err := InjectHooks(profileDir, hooksDir, ""); err != nil {
 		t.Fatal(err)
 	}
 	return collectMedusaCommands(t, profileDir), hooksDir
@@ -194,19 +194,15 @@ func TestInjectedHookCommandSendsToSocket(t *testing.T) {
 		t.Errorf("unexpected payload: %v", evt)
 	}
 
-	// SubagentStop forwards pending_subagent_count so the app can tell a
-	// mid-run subagent stop from the last one.
-	runHookCommand(t, cmds["SubagentStop"][0], `{"hook_event_name":"SubagentStop","agent_id":"a1","background":true,"pending_subagent_count":2}`)
+	// Fallback shell hooks cannot compute an outstanding count; the event must
+	// arrive bare so the app treats it as unknown rather than zero.
+	runHookCommand(t, cmds["SubagentStop"][0], `{"hook_event_name":"SubagentStop","agent_id":"a1","background_tasks":[]}`)
 	evt = recv()
-	if evt["event"] != "SubagentStop" || evt["pending"] != float64(2) {
-		t.Errorf("SubagentStop payload must carry pending count: %v", evt)
+	if evt["event"] != "SubagentStop" {
+		t.Errorf("SubagentStop event missing: %v", evt)
 	}
-
-	// Absent field (older Claude Code) degrades to -1 = unknown.
-	runHookCommand(t, cmds["SubagentStop"][0], `{"hook_event_name":"SubagentStop","agent_id":"a1"}`)
-	evt = recv()
-	if evt["event"] != "SubagentStop" || evt["pending"] != float64(-1) {
-		t.Errorf("SubagentStop without pending_subagent_count must emit -1: %v", evt)
+	if _, ok := evt["outstanding"]; ok {
+		t.Errorf("fallback SubagentStop must not fabricate an outstanding count: %v", evt)
 	}
 
 	// SessionStart forwards the live session_id (and agent_type when present)
@@ -272,7 +268,7 @@ func TestInjectHooksRemovesOldFormatRules(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := InjectHooks(profileDir, hooksDir); err != nil {
+	if err := InjectHooks(profileDir, hooksDir, ""); err != nil {
 		t.Fatal(err)
 	}
 

@@ -140,10 +140,10 @@ func (u *Updater) Upgrade(release *Release) error {
 		return fmt.Errorf("checksum verification failed: %w", err)
 	}
 
-	// Extract binaries. The secondary "medusa-approve-compound" binary is
-	// optional — older releases or custom builds may omit it.
+	// Extract binaries. Secondary helper binaries are optional — older
+	// releases or custom builds may omit them.
 	logging.Info("Extracting binaries")
-	extracted, err := ExtractBinaries(archivePath, tmpDir, []string{"medusa", "medusa-approve-compound"})
+	extracted, err := ExtractBinaries(archivePath, tmpDir, append([]string{"medusa"}, secondaryBinaries...))
 	if err != nil {
 		return fmt.Errorf("extracting binaries: %w", err)
 	}
@@ -159,21 +159,35 @@ func (u *Updater) Upgrade(release *Release) error {
 		return fmt.Errorf("installing medusa: %w", err)
 	}
 
-	// Install the approve-compound hook alongside medusa (best-effort).
-	// A failure here doesn't roll back the primary update; we log and
-	// continue so the user isn't stuck between versions.
-	if newApprove, ok := extracted["medusa-approve-compound"]; ok {
-		approveTarget := filepath.Join(filepath.Dir(currentBinary), "medusa-approve-compound")
-		logging.Info("Installing medusa-approve-compound to %s", approveTarget)
-		if err := InstallBinary(newApprove, approveTarget); err != nil {
-			logging.Warn("Failed to install medusa-approve-compound: %v (medusa itself was updated successfully)", err)
-		}
-	} else {
-		logging.Info("medusa-approve-compound not in archive; skipping")
-	}
+	installSecondaryBinaries(extracted, currentBinary)
 
 	logging.Info("Upgrade complete: %s", release.TagName)
 	return nil
+}
+
+// secondaryBinaries are the helper binaries shipped alongside medusa in
+// release archives: the compound-approve permission hook and the hook-emit
+// activity forwarder. Both are upgraded with the primary binary so the hooks
+// injected into Claude profiles always match the running medusa.
+var secondaryBinaries = []string{"medusa-approve-compound", "medusa-hook-emit"}
+
+// installSecondaryBinaries installs each extracted helper next to medusa
+// (best-effort). A failure doesn't roll back the primary update; we log and
+// continue so the user isn't stuck between versions. Helpers absent from the
+// archive are skipped.
+func installSecondaryBinaries(extracted map[string]string, currentBinary string) {
+	for _, name := range secondaryBinaries {
+		staged, ok := extracted[name]
+		if !ok {
+			logging.Info("%s not in archive; skipping", name)
+			continue
+		}
+		target := filepath.Join(filepath.Dir(currentBinary), name)
+		logging.Info("Installing %s to %s", name, target)
+		if err := InstallBinary(staged, target); err != nil {
+			logging.Warn("Failed to install %s: %v (medusa itself was updated successfully)", name, err)
+		}
+	}
 }
 
 // Version returns the current version.

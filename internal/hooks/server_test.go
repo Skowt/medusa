@@ -68,18 +68,18 @@ func TestServerDeliversEvent(t *testing.T) {
 		if he.Message != "needs approval" {
 			t.Errorf("Message = %q", he.Message)
 		}
-		if he.Pending != PendingUnknown {
-			t.Errorf("Pending without field = %d, want PendingUnknown", he.Pending)
+		if he.Outstanding != OutstandingUnknown {
+			t.Errorf("Outstanding without field = %d, want OutstandingUnknown", he.Outstanding)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for event")
 	}
 }
 
-// TestServerParsesPendingCount verifies the pending field lands on the event
-// (SubagentStop carries Claude Code's pending_subagent_count) and that a
-// negative sentinel normalizes to PendingUnknown.
-func TestServerParsesPendingCount(t *testing.T) {
+// TestServerParsesOutstandingAndTool verifies the outstanding background-work
+// count (Stop/SubagentStop) and tool name (PreToolUse) land on the event, and
+// that a negative sentinel normalizes to OutstandingUnknown.
+func TestServerParsesOutstandingAndTool(t *testing.T) {
 	sock := filepath.Join(shortTempDir(t), SocketName)
 	events := startTestServer(t, sock)
 
@@ -94,14 +94,25 @@ func TestServerParsesPendingCount(t *testing.T) {
 		}
 	}
 
-	sendLine(t, sock, `{"event":"SubagentStop","ts":1700000000,"session":"medusa-ws1-tab1","pending":2}`)
-	if he := recv(); he.Pending != 2 {
-		t.Errorf("Pending = %d, want 2", he.Pending)
+	sendLine(t, sock, `{"event":"Stop","ts":1700000000,"session":"medusa-ws1-tab1","outstanding":2}`)
+	if he := recv(); he.Outstanding != 2 {
+		t.Errorf("Outstanding = %d, want 2", he.Outstanding)
 	}
 
-	sendLine(t, sock, `{"event":"SubagentStop","ts":1700000001,"session":"medusa-ws1-tab1","pending":-1}`)
-	if he := recv(); he.Pending != PendingUnknown {
-		t.Errorf("Pending = %d, want PendingUnknown", he.Pending)
+	sendLine(t, sock, `{"event":"SubagentStop","ts":1700000001,"session":"medusa-ws1-tab1","outstanding":-1}`)
+	if he := recv(); he.Outstanding != OutstandingUnknown {
+		t.Errorf("Outstanding = %d, want OutstandingUnknown", he.Outstanding)
+	}
+
+	// Legacy shell hooks (fallback mode) emit no outstanding field at all.
+	sendLine(t, sock, `{"event":"Stop","ts":1700000002,"session":"medusa-ws1-tab1"}`)
+	if he := recv(); he.Outstanding != OutstandingUnknown {
+		t.Errorf("Outstanding without field = %d, want OutstandingUnknown", he.Outstanding)
+	}
+
+	sendLine(t, sock, `{"event":"PreToolUse","ts":1700000003,"session":"medusa-ws1-tab1","tool":"AskUserQuestion"}`)
+	if he := recv(); he.Tool != "AskUserQuestion" {
+		t.Errorf("Tool = %q, want AskUserQuestion", he.Tool)
 	}
 }
 

@@ -115,6 +115,9 @@ func (a *App) handlePTYWatchdogTick() []tea.Cmd {
 			cmds = append(cmds, cmd)
 		}
 	}
+	// Degrade busy states whose hook events stopped arriving (lost Stop,
+	// killed session) so the spinner cannot run forever. Silent by design.
+	cmds = append(cmds, a.reconcileStaleHookStates()...)
 	// Keep dashboard "working" state accurate even when agents go idle.
 	if startCmd := a.syncActiveWorkspacesToDashboard(); startCmd != nil {
 		cmds = append(cmds, startCmd)

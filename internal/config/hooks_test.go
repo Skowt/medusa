@@ -21,7 +21,7 @@ func TestHookCoexistence(t *testing.T) {
 		pd := filepath.Join(profileDir, "order1")
 		_ = os.MkdirAll(pd, 0755)
 
-		if err := InjectHooks(pd, hooksDir); err != nil {
+		if err := InjectHooks(pd, hooksDir, ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := InjectCompoundApproveHook(pd, hookBin); err != nil {
@@ -38,7 +38,7 @@ func TestHookCoexistence(t *testing.T) {
 		if err := InjectCompoundApproveHook(pd, hookBin); err != nil {
 			t.Fatal(err)
 		}
-		if err := InjectHooks(pd, hooksDir); err != nil {
+		if err := InjectHooks(pd, hooksDir, ""); err != nil {
 			t.Fatal(err)
 		}
 		assertBothHooksPresent(t, pd, hookBin)
@@ -50,7 +50,7 @@ func TestHookCoexistence(t *testing.T) {
 		_ = os.MkdirAll(pd, 0755)
 
 		for i := 0; i < 3; i++ {
-			if err := InjectHooks(pd, hooksDir); err != nil {
+			if err := InjectHooks(pd, hooksDir, ""); err != nil {
 				t.Fatal(err)
 			}
 			if err := InjectCompoundApproveHook(pd, hookBin); err != nil {
@@ -77,7 +77,7 @@ func TestHookCoexistence(t *testing.T) {
 		pd := filepath.Join(profileDir, "removal")
 		_ = os.MkdirAll(pd, 0755)
 
-		_ = InjectHooks(pd, hooksDir)
+		_ = InjectHooks(pd, hooksDir, "")
 		_ = InjectCompoundApproveHook(pd, hookBin)
 		if err := RemoveCompoundApproveHook(pd, hookBin); err != nil {
 			t.Fatal(err)

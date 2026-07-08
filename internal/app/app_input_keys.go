@@ -44,17 +44,21 @@ func (a *App) safeBatch(cmds ...tea.Cmd) tea.Cmd {
 	return tea.Batch(safe...)
 }
 
-// syncActiveWorkspacesToDashboard syncs the active workspace state from center to dashboard.
-// This ensures the dashboard has current data for spinner state decisions.
-// Returns a command to start the spinner if any agent is running, and rings
-// the terminal bell if any workspace just became ready for review.
+// syncActiveWorkspacesToDashboard syncs the active workspace state from center
+// to dashboard so it has current data for spinner state decisions. Purely a
+// state mirror: notification pings are asserted by explicit hook transitions
+// in handleHookActivityEvent, never inferred from workspaces leaving the
+// active set here (that inference turned every stray hook event into a false
+// sound).
 func (a *App) syncActiveWorkspacesToDashboard() tea.Cmd {
-	hookActive := a.hookActiveIDs()
+	if a.center == nil || a.dashboard == nil {
+		return nil
+	}
 	activeWorkspaces := make(map[string]bool)
 	for _, wsID := range a.center.GetActiveWorkspaceIDs() {
 		activeWorkspaces[wsID] = true
 	}
-	for wsID := range hookActive {
+	for wsID := range a.hookActiveIDs() {
 		activeWorkspaces[wsID] = true
 	}
 	a.dashboard.SetActiveWorkspaces(activeWorkspaces)
@@ -64,13 +68,7 @@ func (a *App) syncActiveWorkspacesToDashboard() tea.Cmd {
 		hookStateStrings[wsID] = string(evt)
 	}
 	a.dashboard.SetHookStates(hookStateStrings)
-	// Detect unread transitions when a hook-active workspace becomes inactive.
-	newUnread := a.dashboard.SetConfirmedActive(hookActive)
-	spinnerCmd := a.dashboard.SetWorkspaceAgentStates(a.center.GetWorkspaceAgentStates())
-	if newUnread && a.config.UI.NotificationSound != "" {
-		return tea.Batch(spinnerCmd, playNotificationSound(a.config.UI.NotificationSound))
-	}
-	return spinnerCmd
+	return a.dashboard.SetWorkspaceAgentStates(a.center.GetWorkspaceAgentStates())
 }
 
 // playNotificationSound plays the named system sound to notify the user.

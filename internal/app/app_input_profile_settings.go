@@ -127,7 +127,7 @@ func (a *App) handleCreateProfile(msg messages.CreateProfile) tea.Cmd {
 		logging.Error("Failed to create profile directory: %v", err)
 		return a.toast.ShowError("Failed to create profile: " + err.Error())
 	}
-	if err := config.InjectHooks(profileDir, a.config.Paths.HooksDir); err != nil {
+	if err := config.InjectHooks(profileDir, a.config.Paths.HooksDir, config.ResolveHookEmitBinary()); err != nil {
 		logging.Error("Failed to inject hooks: %v", err)
 		return a.toast.ShowError("Profile config corrupt: " + err.Error())
 	}

@@ -29,10 +29,10 @@ const (
 	EventSubagentWait EventType = "SubagentWait"
 )
 
-// PendingUnknown marks a SubagentStop event whose payload carried no
-// pending_subagent_count (hooks injected by older Medusa versions, or a
-// Claude Code version that predates the field).
-const PendingUnknown = -1
+// OutstandingUnknown marks a Stop/SubagentStop event whose payload carried no
+// background_tasks list (legacy shell hooks, or a Claude Code version that
+// predates the field, < 2.1.145).
+const OutstandingUnknown = -1
 
 // HookEvent is the parsed event delivered to the server callback.
 type HookEvent struct {
@@ -40,10 +40,14 @@ type HookEvent struct {
 	Event       EventType
 	Timestamp   time.Time
 	Message     string // Optional message (e.g. from Notification hooks)
-	// Pending is the number of other subagents still running when a
-	// SubagentStop fired (Claude Code's pending_subagent_count), or
-	// PendingUnknown when the payload did not carry the field.
-	Pending int
+	// Outstanding is the number of background tasks still running when a
+	// Stop/StopFailure/SubagentStop fired (from Claude Code's
+	// background_tasks payload list, excluding the stopping agent itself),
+	// or OutstandingUnknown when the payload did not carry the field.
+	Outstanding int
+	// Tool is Claude Code's tool_name on PreToolUse/PostToolUse. Used to
+	// recognize AskUserQuestion, which needs input rather than showing busy.
+	Tool string
 	// ClaudeSessionID is Claude Code's live session_id, carried on
 	// SessionStart so the app can refresh a tab's persisted id.
 	ClaudeSessionID string
@@ -53,16 +57,16 @@ type HookEvent struct {
 	AgentType string
 }
 
-// IsActiveEvent reports whether an event means the agent is still busy — the
-// workspace should show a spinner rather than ping "ready for review".
-// SubagentStop counts as active: it fires when a subagent finishes while the
-// main agent keeps working (or is about to resume); treating it as inactive
-// caused false pings. SubagentWait is the derived turn-ended-but-background-
-// agents-outstanding state.
+// IsActiveEvent reports whether a stored state means the agent is still busy —
+// the workspace should show a spinner rather than read as ready. SubagentStop
+// is deliberately absent: the app never stores it (phantom SubagentStop events
+// after a turn's Stop are a known Claude Code bug), and a value persisted by
+// an older Medusa version must not resurrect as permanently busy. SubagentWait
+// is the derived turn-ended-but-background-work-outstanding state.
 func IsActiveEvent(evt EventType) bool {
 	switch evt {
 	case EventPreToolUse, EventPostToolUse, EventUserPromptSubmit,
-		EventSubagentStart, EventSubagentStop, EventSubagentWait:
+		EventSubagentStart, EventSubagentWait:
 		return true
 	}
 	return false

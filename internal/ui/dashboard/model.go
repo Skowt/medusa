@@ -88,7 +88,6 @@ type Model struct {
 	activeWorkspaceIDs   map[string]bool   // Workspace IDs with active agents
 	workspaceAgentStates map[string]int    // Workspace ID -> agent state (0=idle, 1=running, 2=active)
 	unreadWorkspaces     map[string]bool   // Workspace IDs with unread changes
-	confirmedActive      map[string]bool   // Workspace IDs confirmed active by hooks
 	hookStates           map[string]string // Workspace ID -> last hook event type
 
 	// Styles
@@ -106,7 +105,6 @@ func New() *Model {
 		activeWorkspaceIDs:   make(map[string]bool),
 		workspaceAgentStates: make(map[string]int),
 		unreadWorkspaces:     make(map[string]bool),
-		confirmedActive:      make(map[string]bool),
 		hookStates:           make(map[string]string),
 		collapsedGroups:      make(map[string]bool),
 		cursor:               0,
@@ -125,21 +123,17 @@ func (m *Model) SetHookStates(states map[string]string) {
 	m.hookStates = states
 }
 
-// SetConfirmedActive updates the set of workspace IDs confirmed as genuinely
-// active by hook lifecycle events. When a workspace transitions from active
-// to inactive it is marked unread (triggering notification sound).
-func (m *Model) SetConfirmedActive(active map[string]bool) bool {
-	viewedWSID := m.selectedWorkspaceID()
-
-	newUnread := false
-	for wsID := range m.confirmedActive {
-		if !active[wsID] && !m.unreadWorkspaces[wsID] && wsID != viewedWSID {
-			m.unreadWorkspaces[wsID] = true
-			newUnread = true
-		}
+// MarkUnread flags a workspace as having unread agent output (orange
+// highlight) and reports whether it was newly flagged — the caller plays the
+// notification sound only then, so one attention event produces at most one
+// ping. The workspace the user is currently looking at is skipped: they are
+// already watching it.
+func (m *Model) MarkUnread(wsID string) bool {
+	if wsID == "" || m.unreadWorkspaces[wsID] || wsID == m.selectedWorkspaceID() {
+		return false
 	}
-	m.confirmedActive = active
-	return newUnread
+	m.unreadWorkspaces[wsID] = true
+	return true
 }
 
 // SetWorkspaceAgentStates updates the agent state map for workspaces.

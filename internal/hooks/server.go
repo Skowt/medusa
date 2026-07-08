@@ -96,7 +96,8 @@ func (s *Server) handleConn(conn net.Conn) {
 		TS              int64  `json:"ts"`
 		Session         string `json:"session"`
 		Message         string `json:"message"`
-		Pending         *int   `json:"pending"`
+		Tool            string `json:"tool"`
+		Outstanding     *int   `json:"outstanding"`
 		ClaudeSessionID string `json:"claude_session_id"`
 		AgentType       string `json:"agent_type"`
 	}
@@ -106,9 +107,9 @@ func (s *Server) handleConn(conn net.Conn) {
 	if raw.Event == "" || raw.Session == "" {
 		return
 	}
-	pending := PendingUnknown
-	if raw.Pending != nil && *raw.Pending >= 0 {
-		pending = *raw.Pending
+	outstanding := OutstandingUnknown
+	if raw.Outstanding != nil && *raw.Outstanding >= 0 {
+		outstanding = *raw.Outstanding
 	}
 	if s.onEvent != nil {
 		s.onEvent(HookEvent{
@@ -116,7 +117,8 @@ func (s *Server) handleConn(conn net.Conn) {
 			Event:           EventType(raw.Event),
 			Timestamp:       parseHookTS(raw.TS),
 			Message:         raw.Message,
-			Pending:         pending,
+			Tool:            raw.Tool,
+			Outstanding:     outstanding,
 			ClaudeSessionID: raw.ClaudeSessionID,
 			AgentType:       raw.AgentType,
 		})

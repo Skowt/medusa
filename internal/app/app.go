@@ -185,18 +185,9 @@ type App struct {
 	hookWorkspaceStates map[string]hooks.EventType
 	// hookLastStamp records the timestamp (and clear/active kind) of the last
 	// hook event applied per workspace, so out-of-order socket delivery can be
-	// rejected. See shouldApplyHookEvent.
+	// rejected (shouldApplyHookEvent) and stale busy states can be reconciled
+	// (staleBusyWorkspaces).
 	hookLastStamp map[string]hookEventStamp
-	// subagentsPending counts outstanding subagents per workspace
-	// (SubagentStart increments, SubagentStop resyncs from Claude Code's
-	// pending_subagent_count). A Stop with a non-zero count means the turn
-	// ended while background subagents still run, so the workspace must not
-	// flip to "ready for review". See updateSubagentsPending.
-	subagentsPending map[string]int
-	// subagentsPendingStamp orders counter updates independently of the
-	// state-machine stamp: a stale SubagentStart delivered after a newer
-	// SubagentStop must not re-inflate the count.
-	subagentsPendingStamp map[string]time.Time
 
 	// Auto-start agent
 	pendingAutoLaunch  string // workspace root for post-creation auto-launch
@@ -346,41 +337,39 @@ func New(version, commit, date string) (*App, error) {
 
 	ctx := context.Background()
 	app := &App{
-		config:                cfg,
-		registry:              registry,
-		workspaces:            workspaces,
-		recents:               recents,
-		scripts:               scripts,
-		statusManager:         statusManager,
-		fileWatcher:           fileWatcher,
-		fileWatcherCh:         fileWatcherCh,
-		fileWatcherErr:        fileWatcherErr,
-		permWatcherCh:         permWatcherCh,
-		layout:                layout.NewManager(),
-		dashboard:             dashboard.New(),
-		center:                center.New(cfg),
-		sidebar:               sidebar.NewTabbedSidebar(),
-		sidebarTerminal:       sidebar.NewTerminalModel(),
-		helpOverlay:           common.NewHelpOverlay(),
-		toast:                 common.NewToastModel(),
-		focusedPane:           messages.PaneDashboard,
-		showWelcome:           true,
-		keymap:                DefaultKeyMap(),
-		dashboardChrome:       &compositor.ChromeCache{},
-		centerChrome:          &compositor.ChromeCache{},
-		sidebarChrome:         &compositor.ChromeCache{},
-		version:               version,
-		commit:                commit,
-		buildDate:             date,
-		externalMsgs:          make(chan tea.Msg, 4096),
-		externalCritical:      make(chan tea.Msg, 512),
-		ctx:                   ctx,
-		tmuxOptions:           tmuxOpts,
-		hookWorkspaceStates:   make(map[string]hooks.EventType),
-		hookLastStamp:         make(map[string]hookEventStamp),
-		subagentsPending:      make(map[string]int),
-		subagentsPendingStamp: make(map[string]time.Time),
-		dirtyWorkspaces:       make(map[string]bool),
+		config:              cfg,
+		registry:            registry,
+		workspaces:          workspaces,
+		recents:             recents,
+		scripts:             scripts,
+		statusManager:       statusManager,
+		fileWatcher:         fileWatcher,
+		fileWatcherCh:       fileWatcherCh,
+		fileWatcherErr:      fileWatcherErr,
+		permWatcherCh:       permWatcherCh,
+		layout:              layout.NewManager(),
+		dashboard:           dashboard.New(),
+		center:              center.New(cfg),
+		sidebar:             sidebar.NewTabbedSidebar(),
+		sidebarTerminal:     sidebar.NewTerminalModel(),
+		helpOverlay:         common.NewHelpOverlay(),
+		toast:               common.NewToastModel(),
+		focusedPane:         messages.PaneDashboard,
+		showWelcome:         true,
+		keymap:              DefaultKeyMap(),
+		dashboardChrome:     &compositor.ChromeCache{},
+		centerChrome:        &compositor.ChromeCache{},
+		sidebarChrome:       &compositor.ChromeCache{},
+		version:             version,
+		commit:              commit,
+		buildDate:           date,
+		externalMsgs:        make(chan tea.Msg, 4096),
+		externalCritical:    make(chan tea.Msg, 512),
+		ctx:                 ctx,
+		tmuxOptions:         tmuxOpts,
+		hookWorkspaceStates: make(map[string]hooks.EventType),
+		hookLastStamp:       make(map[string]hookEventStamp),
+		dirtyWorkspaces:     make(map[string]bool),
 	}
 	app.supervisor = supervisor.New(ctx)
 	app.installSupervisorErrorHandler()
@@ -416,8 +405,10 @@ func New(version, commit, date string) (*App, error) {
 		app.initPermissionWatcher()
 	}
 
-	// Inject hooks into all profiles and start the hooks socket server
-	_ = config.InjectHooksIntoAllProfiles(cfg.Paths.ProfilesRoot, cfg.Paths.HooksDir)
+	// Inject hooks into all profiles and start the hooks socket server. The
+	// emit binary is resolved once; when missing (e.g. `go run` dev builds
+	// without `make build`), legacy shell hooks are injected instead.
+	_ = config.InjectHooksIntoAllProfiles(cfg.Paths.ProfilesRoot, cfg.Paths.HooksDir, config.ResolveHookEmitBinary())
 	app.initHooksServer()
 
 	// Initialize focus state on all components (dashboard is the default focus)

@@ -17,7 +17,7 @@ Don't batch these up for a later cleanup pass — fix as you go.
 ## Common commands
 
 ```bash
-make build            # builds `medusa` and `medusa-approve-compound`
+make build            # builds `medusa`, `medusa-approve-compound`, `medusa-hook-emit`
 make run              # build + run the TUI
 make dev              # hot-reload via air
 make test             # go test -v ./...
@@ -79,6 +79,24 @@ remains only for pre-existing classic sessions until they are restarted.
 Requires **Claude Code v2.1.89+** — older versions ignore the env var and mouse
 behavior degrades (there is no kill switch).
 
+### Activity detection & notifications
+
+Per-workspace busy/ready/needs-input state comes from Claude Code hooks
+delivered over a Unix socket. `cmd/medusa-hook-emit` (injected into every
+profile's settings.json by `config.InjectHooks`; legacy printf|nc shell hooks
+are the fallback when the binary is missing) parses each hook payload and
+forwards one JSON line. The state machine (`internal/app/app_hooks.go`) is
+payload-driven, not event-counted: a `Stop` reads the payload's
+`background_tasks` count to decide ready vs. still-working (`SubagentWait`),
+and `SubagentStop` is deliberately inert — Claude Code fires phantom
+SubagentStop events after Stop (upstream #59719/#70151), so nothing may treat
+it as a busy signal. Sounds/highlights fire only on explicit ready or
+needs-input transitions (`notifyWorkspaceAttention`), never from a workspace
+"leaving the active set". A reconciler (`app_hooks_reconcile.go`) silently
+clears busy states with no hook event for 3 minutes. Background-task awareness
+needs **Claude Code v2.1.145+** (`background_tasks` in Stop payloads); older
+versions degrade to ping-on-Stop.
+
 ### Workspace / worktree model: `internal/data`
 
 A `Workspace` can span multiple repos (each with its own worktree) but shares a single branch. `Workspace.Root()` is the primary worktree root; `AllRoots()` / `PrimaryWorktreeRoot()` account for multi-repo layouts. Registry at `~/.medusa/workspaces.json` is the source of truth; `data.Registry` and `data.WorkspaceStore` are both guarded by `sync.Mutex` (saveLocked/deleteLocked pattern). Orphan handling has two flavors: `OrphanMetadata` (registry knows about a dir that's gone) and `OrphanDirectory` (dir on disk with no registry entry).
@@ -91,6 +109,7 @@ Pure type declarations; no package may import app/ui code. Split into several fi
 
 - `cmd/medusa` — the TUI binary.
 - `cmd/medusa-approve-compound` — standalone helper invoked as a Claude Code hook for permission prompts.
+- `cmd/medusa-hook-emit` — standalone helper invoked as a Claude Code hook to forward lifecycle events to the activity socket.
 - `cmd/medusa-harness` — headless render driver used by `make release-check` and benchmarks.
 
 ### Configuration

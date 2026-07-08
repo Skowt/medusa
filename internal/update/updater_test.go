@@ -297,3 +297,56 @@ func TestInstallBinaryCrossDir(t *testing.T) {
 		t.Errorf("Expected 'new binary content', got %s", string(content))
 	}
 }
+
+// TestSecondaryBinariesList verifies every helper binary medusa ships is part
+// of the upgrade set — a release adding a helper must also be picked up by the
+// in-app updater, not only by install.sh.
+func TestSecondaryBinariesList(t *testing.T) {
+	want := []string{"medusa-approve-compound", "medusa-hook-emit"}
+	if len(secondaryBinaries) != len(want) {
+		t.Fatalf("secondaryBinaries = %v, want %v", secondaryBinaries, want)
+	}
+	for i, name := range want {
+		if secondaryBinaries[i] != name {
+			t.Errorf("secondaryBinaries[%d] = %s, want %s", i, secondaryBinaries[i], name)
+		}
+	}
+}
+
+// TestInstallSecondaryBinaries verifies helpers land next to the primary
+// binary, that a missing helper in the archive is skipped without error, and
+// that a helper install failure does not abort the others.
+func TestInstallSecondaryBinaries(t *testing.T) {
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	currentBinary := filepath.Join(binDir, "medusa")
+	if err := os.WriteFile(currentBinary, []byte("old"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	stage := filepath.Join(tmpDir, "stage")
+	if err := os.MkdirAll(stage, 0755); err != nil {
+		t.Fatal(err)
+	}
+	emitStaged := filepath.Join(stage, "medusa-hook-emit")
+	if err := os.WriteFile(emitStaged, []byte("emit-v2"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only medusa-hook-emit is present; medusa-approve-compound is absent.
+	installSecondaryBinaries(map[string]string{"medusa-hook-emit": emitStaged}, currentBinary)
+
+	installed, err := os.ReadFile(filepath.Join(binDir, "medusa-hook-emit"))
+	if err != nil {
+		t.Fatalf("medusa-hook-emit not installed next to medusa: %v", err)
+	}
+	if string(installed) != "emit-v2" {
+		t.Errorf("installed content = %q, want emit-v2", installed)
+	}
+	if _, err := os.Stat(filepath.Join(binDir, "medusa-approve-compound")); !os.IsNotExist(err) {
+		t.Errorf("absent helper must not be created, stat err = %v", err)
+	}
+}

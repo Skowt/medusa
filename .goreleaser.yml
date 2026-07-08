@@ -36,6 +36,20 @@ builds:
     ldflags:
       - -s -w
 
+  - id: medusa-hook-emit
+    main: ./cmd/medusa-hook-emit
+    binary: medusa-hook-emit
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
 archives:
   - id: default
     format: tar.gz
