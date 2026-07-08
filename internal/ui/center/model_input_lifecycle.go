@@ -41,13 +41,13 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 	if tab == nil || msg.Agent == nil {
 		return m, nil
 	}
-	rows := msg.Rows
-	cols := msg.Cols
-	if rows <= 0 || cols <= 0 {
-		tm := m.terminalMetrics()
-		rows = tm.Height
-		cols = tm.Width
-	}
+	// msg.Rows/Cols were captured when this (async) reattach was initiated and
+	// are stale by the time the result arrives — the layout or active workspace
+	// may have changed. Size the vterm/PTY from the current metrics so they
+	// match the height the tab is painted at; otherwise the bottom rows clip.
+	tm := m.terminalMetrics()
+	rows := tm.Height
+	cols := tm.Width
 	tab.mu.Lock()
 	createdTerminal := false
 	if tab.Terminal == nil {

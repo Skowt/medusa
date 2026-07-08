@@ -179,13 +179,12 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		}
 	}
 
-	rows := msg.Rows
-	cols := msg.Cols
-	if rows <= 0 || cols <= 0 {
-		tm := m.terminalMetrics()
-		rows = tm.Height
-		cols = tm.Width
-	}
+	// msg.Rows/Cols were captured when this (async) create was initiated and
+	// may be stale by the time the result arrives. Size the vterm/PTY from the
+	// current metrics so they match the height the tab is painted at.
+	tm := m.terminalMetrics()
+	rows := tm.Height
+	cols := tm.Width
 
 	displayName := strings.TrimSpace(msg.DisplayName)
 	if displayName == "" {

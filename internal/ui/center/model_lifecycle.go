@@ -4,17 +4,26 @@ package center
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
+	m.reconcileTerminalSizes()
+}
 
-	// Use centralized metrics for terminal sizing
+// reconcileTerminalSizes resizes every tab's vterm, diff viewer, and PTY to the
+// current terminal metrics. terminalMetrics().Height depends on layout state
+// (pane size, active workspace / info bar, help lines), so a tab sized under
+// one state and painted under another gets its bottom rows clipped by
+// PositionedVTermLayer.DrawAt. Anything that changes that state must call this
+// so the vterm/PTY always match the height the active tab is painted at.
+func (m *Model) reconcileTerminalSizes() {
+	// Use centralized metrics for terminal sizing.
 	tm := m.terminalMetrics()
 	termWidth := tm.Width
 	termHeight := tm.Height
 
-	// CommitViewer uses the same dimensions
+	// CommitViewer uses the same dimensions.
 	viewerWidth := termWidth
 	viewerHeight := termHeight
 
-	// Update all terminals across all workspaces
+	// Update all terminals across all workspaces.
 	for _, tabs := range m.tabsByWorkspace {
 		for _, tab := range tabs {
 			tab.mu.Lock()

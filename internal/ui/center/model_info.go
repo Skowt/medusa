@@ -36,6 +36,14 @@ func (m *Model) SetWorkspace(ws *data.Workspace) {
 	m.workspace = ws
 	m.infoCursor = 0
 	m.infoTabActive = ws != nil && ws.Note != ""
+	// Activating a workspace shows the info bar, which shrinks the terminal
+	// paint height. Reconcile tab sizes so a tab sized under the previous
+	// (info-bar-absent) state isn't painted — and clipped — at the new height.
+	// Only matters when a workspace is active (tabs are painted then); monitor
+	// mode sizes tabs via its own grid path, so skip it there.
+	if ws != nil && !m.monitorMode && m.height > 0 {
+		m.reconcileTerminalSizes()
+	}
 }
 
 // InfoCursor returns the current cursor position on the Info tab.
