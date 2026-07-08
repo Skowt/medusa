@@ -386,9 +386,10 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		displayName = "Terminal"
 	}
 	term := vterm.New(termWidth, termHeight)
-	// Claude fullscreen agents own their alt-screen scrollback; medusa keeps
-	// none for them so PgUp/drag never scrolls a vterm the app can't see.
-	term.AllowAltScreenScrollback = !info.Fullscreen
+	// Alt-screen apps (fullscreen Claude, vim, less) own their scrollback;
+	// capturing their viewport scroll-offs would fill medusa's scrollback
+	// with frame fragments no real terminal keeps.
+	term.AllowAltScreenScrollback = false
 	tab := &Tab{
 		ID:                       generateTabID(),
 		Name:                     displayName,

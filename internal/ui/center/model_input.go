@@ -256,10 +256,10 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				}
 
 				// PgUp/PgDown scroll medusa's own scrollback ONLY for classic
-				// tabs. Fullscreen/alt-screen agents (Claude) own their
-				// scrollback, so these keys fall through to the key->PTY
-				// forwarder below and reach the app.
-				if !tab.Fullscreen {
+				// tabs on the main screen. Fullscreen/alt-screen apps (Claude,
+				// vim, less) own their paging, so these keys fall through to
+				// the key->PTY forwarder below and reach the app.
+				if !tabAppOwnsScrollKeys(tab) {
 					switch msg.Key().Code {
 					case tea.KeyPgUp:
 						if m.isTabActorReady() {

@@ -197,9 +197,10 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 
 	// Create virtual terminal emulator with scrollback
 	term := vterm.New(cols, rows)
-	// Claude fullscreen agents own their alt-screen scrollback; medusa keeps
-	// none for them so PgUp/drag never scrolls a vterm the app can't see.
-	term.AllowAltScreenScrollback = !msg.Fullscreen
+	// Alt-screen apps (fullscreen Claude, vim, less) own their scrollback;
+	// capturing their viewport scroll-offs would fill medusa's scrollback
+	// with frame fragments no real terminal keeps.
+	term.AllowAltScreenScrollback = false
 	term.PrependScrollback(msg.ScrollbackCapture)
 
 	// Create tab with unique ID (pre-generated if provided)

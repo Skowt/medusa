@@ -190,3 +190,68 @@ func TestClassicTabScrollsOnMonitorPgUp(t *testing.T) {
 		t.Fatalf("classic tab must scroll its vterm on monitor PgUp")
 	}
 }
+
+// A classic-launched tab whose app switched to the alt screen and enabled
+// mouse reporting at runtime (e.g. `/tui fullscreen` inside Claude Code) must
+// hand wheel input to the app instead of scrolling medusa's vterm — otherwise
+// the view scrolls into stale capture/frame-fragment scrollback the app knows
+// nothing about.
+func TestClassicTabAltScreenMouseAppForwardsWheel(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = false
+	tab.Terminal.Write([]byte("\x1b[?1049h\x1b[?1003h\x1b[?1006h"))
+	before := tab.Terminal.ViewOffset
+
+	if _, ok := m.activeTabForwardsMouse(); !ok {
+		t.Fatal("alt-screen app with mouse reporting should receive forwarded mouse input")
+	}
+	m.updateMouseWheel(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if tab.Terminal.ViewOffset != before {
+		t.Errorf("wheel must not scroll medusa vterm while the app owns the alt screen (offset %d -> %d)", before, tab.Terminal.ViewOffset)
+	}
+}
+
+// Without mouse reporting (e.g. plain vim/less), wheel keeps scrolling
+// medusa's vterm view even in the alt screen.
+func TestClassicTabAltScreenNoMouseStillScrollsVterm(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = false
+	tab.Terminal.Write([]byte("\x1b[?1049h"))
+	before := tab.Terminal.ViewOffset
+
+	if _, ok := m.activeTabForwardsMouse(); ok {
+		t.Fatal("alt-screen app without mouse reporting should not receive forwarded mouse input")
+	}
+	m.updateMouseWheel(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if tab.Terminal.ViewOffset == before {
+		t.Errorf("wheel should scroll medusa vterm when the app did not request the mouse")
+	}
+}
+
+// PgUp on a classic tab whose app is in the alt screen must go to the app
+// (fall through to key forwarding), not scroll medusa's vterm.
+func TestClassicTabAltScreenPgUpGoesToApp(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	tab.Agent = &appPty.Agent{Terminal: &appPty.Terminal{}}
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = false
+	tab.Terminal.Write([]byte("\x1b[?1049h"))
+	before := tab.Terminal.ViewOffset
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+
+	if tab.Terminal.ViewOffset != before {
+		t.Fatalf("PgUp must not scroll medusa vterm while the app owns the alt screen (offset %d -> %d)", before, tab.Terminal.ViewOffset)
+	}
+}

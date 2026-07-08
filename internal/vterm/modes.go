@@ -47,6 +47,12 @@ func (p *Parser) executeMode(set bool) {
 				p.vt.CursorHidden = hidden
 				p.vt.bumpVersion()
 			}
+		case 1000: // X11 mouse reporting (press/release)
+			p.vt.setMouseMode(mouseModeNormal, set)
+		case 1002: // Button-event mouse tracking
+			p.vt.setMouseMode(mouseModeButton, set)
+		case 1003: // Any-event (all-motion) mouse tracking
+			p.vt.setMouseMode(mouseModeAnyMotion, set)
 		case 47, 1047, 1049: // Alternate screen buffer
 			if set {
 				p.vt.enterAltScreen()

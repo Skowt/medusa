@@ -45,6 +45,11 @@ type VTerm struct {
 	// Origin mode (DECOM) - cursor positions are relative to scroll region.
 	OriginMode bool
 
+	// mouseModes tracks which xterm mouse reporting modes the application
+	// has enabled (DECSET 1000/1002/1003). Used to decide whether scroll
+	// input belongs to the app (e.g. Claude Code after /tui fullscreen).
+	mouseModes uint8
+
 	// TreatLFAsCRLF makes a bare LF also return to column 0. Used when parsing
 	// tmux capture-pane history (newline-delimited rows) rather than a PTY stream.
 	TreatLFAsCRLF bool
@@ -334,6 +339,27 @@ func (v *VTerm) AbsoluteLineToScreenY(absLine int) int {
 		return -1
 	}
 	return screenY
+}
+
+// Mouse reporting modes the application can enable via DECSET.
+const (
+	mouseModeNormal    uint8 = 1 << iota // DECSET 1000: press/release
+	mouseModeButton                      // DECSET 1002: press/release + drag
+	mouseModeAnyMotion                   // DECSET 1003: all motion
+)
+
+func (v *VTerm) setMouseMode(mode uint8, on bool) {
+	if on {
+		v.mouseModes |= mode
+	} else {
+		v.mouseModes &^= mode
+	}
+}
+
+// MouseReporting reports whether the application has enabled any xterm mouse
+// reporting mode (DECSET 1000/1002/1003).
+func (v *VTerm) MouseReporting() bool {
+	return v.mouseModes != 0
 }
 
 // ScrollView scrolls the view by delta lines (positive = up into history)

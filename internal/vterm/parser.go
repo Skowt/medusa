@@ -183,6 +183,7 @@ func (p *Parser) parseEscape(b byte) {
 		p.vt.CurrentStyle = Style{}
 		p.vt.CursorX = 0
 		p.vt.CursorY = 0
+		p.vt.mouseModes = 0
 		p.state = stateGround
 	case '=', '>': // DECKPAM/DECKPNM (keypad modes)
 		p.state = stateGround
