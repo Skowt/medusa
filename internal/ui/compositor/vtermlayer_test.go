@@ -93,3 +93,24 @@ func TestVTermSnapshotRespectsViewOffsetChange(t *testing.T) {
 		t.Fatalf("expected live cell after ViewOffset reset, got %q", snap2.Screen[0][0].Rune)
 	}
 }
+
+func TestVTermLayerEmitsGraphemeCluster(t *testing.T) {
+	term := vterm.New(3, 1)
+	// 'e' + combining acute → one width-1 cell whose cluster is "é".
+	term.Screen[0][0] = vterm.Cell{Rune: 'e', Width: 1, GraphemeCluster: "é"}
+	snap := NewVTermSnapshot(term, false)
+	if snap == nil {
+		t.Fatalf("expected snapshot")
+	}
+	layer := &PositionedVTermLayer{VTermLayer: NewVTermLayer(snap), PosX: 0, PosY: 0, Width: 3, Height: 1}
+	screen := &bufferScreen{Buffer: uv.NewBuffer(3, 1)}
+	layer.Draw(screen, screen.Bounds())
+
+	cell := screen.CellAt(0, 0)
+	if cell == nil || cell.Content != "é" {
+		t.Fatalf("expected cell content to be the full cluster %q, got %+v", "é", cell)
+	}
+	if cell.Width != 1 {
+		t.Fatalf("cluster cell width must stay 1, got %d", cell.Width)
+	}
+}

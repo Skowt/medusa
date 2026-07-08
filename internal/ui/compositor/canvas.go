@@ -240,11 +240,11 @@ func (c *Canvas) Render() string {
 				lastStyle = style
 			}
 			firstCell = false
-			r := cell.Rune
-			if r == 0 {
-				r = ' '
+			if cell.GraphemeCluster != "" {
+				b.WriteString(cell.GraphemeCluster)
+			} else {
+				b.WriteRune(vterm.RenderableRune(cell.Rune))
 			}
-			b.WriteRune(r)
 		}
 		if y < c.Height-1 {
 			b.WriteRune('\n')

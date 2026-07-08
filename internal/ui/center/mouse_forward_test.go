@@ -7,6 +7,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
+	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/vterm"
 )
 
@@ -103,5 +104,89 @@ func TestClassicTabScrollsVterm(t *testing.T) {
 
 	if tab.Terminal.ViewOffset == before {
 		t.Errorf("classic tab must scroll medusa vterm (offset unchanged at %d)", before)
+	}
+}
+
+// TestFullscreenTabDoesNotScrollOnPgUp and TestClassicTabScrollsOnPgUp drive
+// PgUp through the real Model.Update entry point (there is no standalone
+// key-handling method to call the way updateMouseWheel exists for wheel
+// events; Update's tea.KeyPressMsg case owns this logic directly). Reaching
+// the PgUp/PgDown switch requires tab.Agent/tab.Agent.Terminal to be
+// non-nil, so unlike newTestModelWithAgentTab's default (nil Agent, which is
+// fine for mouse-forward routing tests), these tests attach a zero-value
+// *pty.Terminal: its SendString always errors (no real ptyFile), which is
+// harmless here since a successful PgUp/PgDown scroll returns before ever
+// reaching the "forward key to terminal" code path.
+func TestFullscreenTabDoesNotScrollOnPgUp(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	tab.Agent = &appPty.Agent{Terminal: &appPty.Terminal{}}
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = true
+	before := tab.Terminal.ViewOffset
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+
+	if tab.Terminal.ViewOffset != before {
+		t.Fatalf("fullscreen tab must not scroll its vterm on PgUp (offset %d -> %d)", before, tab.Terminal.ViewOffset)
+	}
+}
+
+func TestClassicTabScrollsOnPgUp(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	tab.Agent = &appPty.Agent{Terminal: &appPty.Terminal{}}
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = false
+	before := tab.Terminal.ViewOffset
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+
+	if tab.Terminal.ViewOffset == before {
+		t.Fatalf("classic tab must scroll its vterm on PgUp")
+	}
+}
+
+// TestFullscreenTabDoesNotScrollOnMonitorPgUp and
+// TestClassicTabScrollsOnMonitorPgUp exercise the monitor-view scroll gate
+// (HandleMonitorInput) the same way TestFullscreenTabDoesNotScrollOnPgUp and
+// TestClassicTabScrollsOnPgUp exercise the main-view gate above: a fullscreen
+// tab must not have its medusa vterm scrolled by monitor PgUp — that key must
+// fall through to the PTY-forward tail and reach Claude instead.
+func TestFullscreenTabDoesNotScrollOnMonitorPgUp(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	tab.Agent = &appPty.Agent{Terminal: &appPty.Terminal{}}
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = true
+	before := tab.Terminal.ViewOffset
+
+	_ = m.HandleMonitorInput(tab.ID, tea.KeyPressMsg{Code: tea.KeyPgUp})
+
+	if tab.Terminal.ViewOffset != before {
+		t.Fatalf("fullscreen tab must not scroll its vterm on monitor PgUp (offset %d -> %d)", before, tab.Terminal.ViewOffset)
+	}
+}
+
+func TestClassicTabScrollsOnMonitorPgUp(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	tab.Agent = &appPty.Agent{Terminal: &appPty.Terminal{}}
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = false
+	before := tab.Terminal.ViewOffset
+
+	_ = m.HandleMonitorInput(tab.ID, tea.KeyPressMsg{Code: tea.KeyPgUp})
+
+	if tab.Terminal.ViewOffset == before {
+		t.Fatalf("classic tab must scroll its vterm on monitor PgUp")
 	}
 }

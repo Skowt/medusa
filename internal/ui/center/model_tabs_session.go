@@ -386,7 +386,9 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		displayName = "Terminal"
 	}
 	term := vterm.New(termWidth, termHeight)
-	term.AllowAltScreenScrollback = true
+	// Claude fullscreen agents own their alt-screen scrollback; medusa keeps
+	// none for them so PgUp/drag never scrolls a vterm the app can't see.
+	term.AllowAltScreenScrollback = !info.Fullscreen
 	tab := &Tab{
 		ID:                       generateTabID(),
 		Name:                     displayName,

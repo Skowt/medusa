@@ -55,7 +55,10 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 		createdTerminal = true
 	}
 	if tab.Terminal != nil {
-		tab.Terminal.AllowAltScreenScrollback = true
+		// Claude fullscreen agents own their alt-screen scrollback; medusa
+		// keeps none for them so PgUp/drag never scrolls a vterm the app
+		// can't see.
+		tab.Terminal.AllowAltScreenScrollback = !msg.Fullscreen
 		if createdTerminal {
 			tab.Terminal.PrependScrollback(msg.ScrollbackCapture)
 		}

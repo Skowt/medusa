@@ -140,17 +140,33 @@ func TestPrependScrollbackRespectsMaxScrollback(t *testing.T) {
 
 func TestPrependScrollbackAllBlankContent(t *testing.T) {
 	vt := New(80, 24)
-	// Feed whitespace-only content -- should be a no-op
+	// Feed whitespace-only content -- produces two rows of space cells.
 	vt.PrependScrollback([]byte("   \n   \n"))
-	// The spaces are non-blank (they're space runes), so this actually
-	// produces lines. But pure empty lines (just newlines) produce blank
-	// screen rows that get trimmed.
-	// Feed truly empty content
+	if got := len(vt.Scrollback); got != 2 {
+		t.Errorf("expected 2 scrollback lines for whitespace content, got %d", got)
+	}
+
+	// Feed truly empty (newline-only) content. Capture parsing is row-count
+	// exact (it counts the newlines in the capture, not whatever happens to
+	// be blank on the temp screen), so three newline-delimited rows produce
+	// three blank scrollback rows rather than being silently dropped -- real
+	// tmux capture-pane output is already bounded to actual pane content
+	// (see `capture-pane -S - -E -1`), so this no longer needs a
+	// trailing-blank-trim heuristic to avoid capturing unused padding.
 	vt2 := New(80, 24)
 	vt2.PrependScrollback([]byte("\n\n\n"))
-	// All lines are blank newlines -> screen rows are blank -> trimmed
-	if len(vt2.Scrollback) != 0 {
-		t.Errorf("expected 0 scrollback lines for all-blank content, got %d", len(vt2.Scrollback))
+	if got := len(vt2.Scrollback); got != 3 {
+		t.Errorf("expected 3 scrollback lines for all-blank content, got %d", got)
+	}
+}
+
+func TestPrependScrollbackFullWidthRows(t *testing.T) {
+	v := New(4, 3)
+	// Three capture rows, each exactly Width(4) chars, newline-delimited.
+	data := []byte("AAAA\nBBBB\nCCCC\n")
+	v.PrependScrollback(data)
+	if got := len(v.Scrollback); got != 3 {
+		t.Fatalf("expected 3 scrollback rows, got %d (raw PTY parse double-advances full-width rows)", got)
 	}
 }
 

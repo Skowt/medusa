@@ -255,45 +255,50 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 					return m, nil
 				}
 
-				// PgUp/PgDown for scrollback (these don't conflict with embedded TUIs)
-				switch msg.Key().Code {
-				case tea.KeyPgUp:
-					if m.isTabActorReady() {
-						if m.sendTabEvent(tabEvent{
-							tab:         tab,
-							workspaceID: m.workspaceID(),
-							tabID:       tab.ID,
-							kind:        tabEventScrollPage,
-							scrollPage:  1,
-						}) {
-							return m, nil
+				// PgUp/PgDown scroll medusa's own scrollback ONLY for classic
+				// tabs. Fullscreen/alt-screen agents (Claude) own their
+				// scrollback, so these keys fall through to the key->PTY
+				// forwarder below and reach the app.
+				if !tab.Fullscreen {
+					switch msg.Key().Code {
+					case tea.KeyPgUp:
+						if m.isTabActorReady() {
+							if m.sendTabEvent(tabEvent{
+								tab:         tab,
+								workspaceID: m.workspaceID(),
+								tabID:       tab.ID,
+								kind:        tabEventScrollPage,
+								scrollPage:  1,
+							}) {
+								return m, nil
+							}
 						}
-					}
-					tab.mu.Lock()
-					if tab.Terminal != nil {
-						tab.Terminal.ScrollView(tab.Terminal.Height / 4)
-					}
-					tab.mu.Unlock()
-					return m, nil
+						tab.mu.Lock()
+						if tab.Terminal != nil {
+							tab.Terminal.ScrollView(tab.Terminal.Height / 4)
+						}
+						tab.mu.Unlock()
+						return m, nil
 
-				case tea.KeyPgDown:
-					if m.isTabActorReady() {
-						if m.sendTabEvent(tabEvent{
-							tab:         tab,
-							workspaceID: m.workspaceID(),
-							tabID:       tab.ID,
-							kind:        tabEventScrollPage,
-							scrollPage:  -1,
-						}) {
-							return m, nil
+					case tea.KeyPgDown:
+						if m.isTabActorReady() {
+							if m.sendTabEvent(tabEvent{
+								tab:         tab,
+								workspaceID: m.workspaceID(),
+								tabID:       tab.ID,
+								kind:        tabEventScrollPage,
+								scrollPage:  -1,
+							}) {
+								return m, nil
+							}
 						}
+						tab.mu.Lock()
+						if tab.Terminal != nil {
+							tab.Terminal.ScrollView(-tab.Terminal.Height / 4)
+						}
+						tab.mu.Unlock()
+						return m, nil
 					}
-					tab.mu.Lock()
-					if tab.Terminal != nil {
-						tab.Terminal.ScrollView(-tab.Terminal.Height / 4)
-					}
-					tab.mu.Unlock()
-					return m, nil
 				}
 
 				// If scrolled, any typing goes back to live and sends key

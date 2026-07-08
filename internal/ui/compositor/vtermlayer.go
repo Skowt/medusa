@@ -338,13 +338,13 @@ func cellToUVSnapshot(cell vterm.Cell, snap *VTermSnapshot, x, y int) *uv.Cell {
 		style.Underline = false
 	}
 
-	r := cell.Rune
-	if r == 0 {
-		r = ' '
+	content := cell.GraphemeCluster
+	if content == "" {
+		content = runeToString(vterm.RenderableRune(cell.Rune))
 	}
 
 	uvCell := getCell()
-	uvCell.Content = runeToString(r)
+	uvCell.Content = content
 	uvCell.Style = vtermStyleToUV(style)
 	uvCell.Width = cell.Width
 	return uvCell

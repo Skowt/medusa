@@ -95,136 +95,142 @@ func (m *Model) HandleMonitorInput(tabID TabID, msg tea.Msg) tea.Cmd {
 		return nil
 
 	case tea.KeyPressMsg:
-		switch {
-		case msg.Key().Code == tea.KeyPgUp:
-			if m.isTabActorReady() {
-				if m.sendTabEvent(tabEvent{
-					tab:         tab,
-					workspaceID: wtID,
-					tabID:       tab.ID,
-					kind:        tabEventScrollPage,
-					scrollPage:  1,
-				}) {
-					return nil
+		// Scroll keys move medusa's own scrollback ONLY for classic tabs.
+		// Fullscreen/alt-screen agents (Claude) own their scrollback, so
+		// these keys must fall through to the key->PTY forwarder below and
+		// reach the app, mirroring the gate in model_input.go.
+		if !tab.Fullscreen {
+			switch {
+			case msg.Key().Code == tea.KeyPgUp:
+				if m.isTabActorReady() {
+					if m.sendTabEvent(tabEvent{
+						tab:         tab,
+						workspaceID: wtID,
+						tabID:       tab.ID,
+						kind:        tabEventScrollPage,
+						scrollPage:  1,
+					}) {
+						return nil
+					}
 				}
-			}
-			{
-				tab.mu.Lock()
-				if tab.Terminal != nil {
-					tab.Terminal.ScrollView(tab.Terminal.Height / 4)
-					tab.monitorDirty = true
+				{
+					tab.mu.Lock()
+					if tab.Terminal != nil {
+						tab.Terminal.ScrollView(tab.Terminal.Height / 4)
+						tab.monitorDirty = true
+					}
+					tab.mu.Unlock()
 				}
-				tab.mu.Unlock()
-			}
-			return nil
+				return nil
 
-		case msg.Key().Code == tea.KeyPgDown:
-			if m.isTabActorReady() {
-				if m.sendTabEvent(tabEvent{
-					tab:         tab,
-					workspaceID: wtID,
-					tabID:       tab.ID,
-					kind:        tabEventScrollPage,
-					scrollPage:  -1,
-				}) {
-					return nil
+			case msg.Key().Code == tea.KeyPgDown:
+				if m.isTabActorReady() {
+					if m.sendTabEvent(tabEvent{
+						tab:         tab,
+						workspaceID: wtID,
+						tabID:       tab.ID,
+						kind:        tabEventScrollPage,
+						scrollPage:  -1,
+					}) {
+						return nil
+					}
 				}
-			}
-			{
-				tab.mu.Lock()
-				if tab.Terminal != nil {
-					tab.Terminal.ScrollView(-tab.Terminal.Height / 4)
-					tab.monitorDirty = true
+				{
+					tab.mu.Lock()
+					if tab.Terminal != nil {
+						tab.Terminal.ScrollView(-tab.Terminal.Height / 4)
+						tab.monitorDirty = true
+					}
+					tab.mu.Unlock()
 				}
-				tab.mu.Unlock()
-			}
-			return nil
+				return nil
 
-		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+u"))):
-			if m.isTabActorReady() {
-				if m.sendTabEvent(tabEvent{
-					tab:         tab,
-					workspaceID: wtID,
-					tabID:       tab.ID,
-					kind:        tabEventScrollPage,
-					scrollPage:  1,
-				}) {
-					return nil
+			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+u"))):
+				if m.isTabActorReady() {
+					if m.sendTabEvent(tabEvent{
+						tab:         tab,
+						workspaceID: wtID,
+						tabID:       tab.ID,
+						kind:        tabEventScrollPage,
+						scrollPage:  1,
+					}) {
+						return nil
+					}
 				}
-			}
-			{
-				tab.mu.Lock()
-				if tab.Terminal != nil {
-					tab.Terminal.ScrollView(tab.Terminal.Height / 4)
-					tab.monitorDirty = true
+				{
+					tab.mu.Lock()
+					if tab.Terminal != nil {
+						tab.Terminal.ScrollView(tab.Terminal.Height / 4)
+						tab.monitorDirty = true
+					}
+					tab.mu.Unlock()
 				}
-				tab.mu.Unlock()
-			}
-			return nil
+				return nil
 
-		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+d"))):
-			if m.isTabActorReady() {
-				if m.sendTabEvent(tabEvent{
-					tab:         tab,
-					workspaceID: wtID,
-					tabID:       tab.ID,
-					kind:        tabEventScrollPage,
-					scrollPage:  -1,
-				}) {
-					return nil
+			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+d"))):
+				if m.isTabActorReady() {
+					if m.sendTabEvent(tabEvent{
+						tab:         tab,
+						workspaceID: wtID,
+						tabID:       tab.ID,
+						kind:        tabEventScrollPage,
+						scrollPage:  -1,
+					}) {
+						return nil
+					}
 				}
-			}
-			{
-				tab.mu.Lock()
-				if tab.Terminal != nil {
-					tab.Terminal.ScrollView(-tab.Terminal.Height / 4)
-					tab.monitorDirty = true
+				{
+					tab.mu.Lock()
+					if tab.Terminal != nil {
+						tab.Terminal.ScrollView(-tab.Terminal.Height / 4)
+						tab.monitorDirty = true
+					}
+					tab.mu.Unlock()
 				}
-				tab.mu.Unlock()
-			}
-			return nil
+				return nil
 
-		case key.Matches(msg, key.NewBinding(key.WithKeys("home"))):
-			if m.isTabActorReady() {
-				if m.sendTabEvent(tabEvent{
-					tab:         tab,
-					workspaceID: wtID,
-					tabID:       tab.ID,
-					kind:        tabEventScrollToTop,
-				}) {
-					return nil
+			case key.Matches(msg, key.NewBinding(key.WithKeys("home"))):
+				if m.isTabActorReady() {
+					if m.sendTabEvent(tabEvent{
+						tab:         tab,
+						workspaceID: wtID,
+						tabID:       tab.ID,
+						kind:        tabEventScrollToTop,
+					}) {
+						return nil
+					}
 				}
-			}
-			{
-				tab.mu.Lock()
-				if tab.Terminal != nil {
-					tab.Terminal.ScrollViewToTop()
-					tab.monitorDirty = true
+				{
+					tab.mu.Lock()
+					if tab.Terminal != nil {
+						tab.Terminal.ScrollViewToTop()
+						tab.monitorDirty = true
+					}
+					tab.mu.Unlock()
 				}
-				tab.mu.Unlock()
-			}
-			return nil
+				return nil
 
-		case key.Matches(msg, key.NewBinding(key.WithKeys("end"))):
-			if m.isTabActorReady() {
-				if m.sendTabEvent(tabEvent{
-					tab:         tab,
-					workspaceID: wtID,
-					tabID:       tab.ID,
-					kind:        tabEventScrollToBottom,
-				}) {
-					return nil
+			case key.Matches(msg, key.NewBinding(key.WithKeys("end"))):
+				if m.isTabActorReady() {
+					if m.sendTabEvent(tabEvent{
+						tab:         tab,
+						workspaceID: wtID,
+						tabID:       tab.ID,
+						kind:        tabEventScrollToBottom,
+					}) {
+						return nil
+					}
 				}
-			}
-			{
-				tab.mu.Lock()
-				if tab.Terminal != nil {
-					tab.Terminal.ScrollViewToBottom()
-					tab.monitorDirty = true
+				{
+					tab.mu.Lock()
+					if tab.Terminal != nil {
+						tab.Terminal.ScrollViewToBottom()
+						tab.monitorDirty = true
+					}
+					tab.mu.Unlock()
 				}
-				tab.mu.Unlock()
+				return nil
 			}
-			return nil
 		}
 
 		// If scrolled, any typing goes back to live and sends key.

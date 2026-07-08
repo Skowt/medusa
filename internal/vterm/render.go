@@ -4,6 +4,25 @@ import (
 	"strings"
 )
 
+func writeCellContent(buf *strings.Builder, cell Cell) {
+	if cell.Rune == 0 {
+		buf.WriteRune(' ')
+	} else if cell.GraphemeCluster != "" {
+		buf.WriteString(cell.GraphemeCluster)
+	} else {
+		buf.WriteRune(cell.Rune)
+	}
+}
+
+// RenderableRune substitutes a NUL rune (an unwritten cell) with a space so
+// callers emit a blank instead of a zero byte.
+func RenderableRune(r rune) rune {
+	if r == 0 {
+		return ' '
+	}
+	return r
+}
+
 // Render returns the terminal content as a string with ANSI codes
 func (v *VTerm) Render() string {
 	screen, scrollbackLen := v.RenderBuffers()
@@ -19,6 +38,7 @@ func (v *VTerm) Render() string {
 // RenderBuffers returns the current screen buffer and scrollback length.
 // During synchronized output, it returns the frozen snapshot.
 func (v *VTerm) RenderBuffers() ([][]Cell, int) {
+	v.maybeReleaseStaleSync()
 	if v.syncActive && v.syncScreen != nil {
 		scrollbackLen := v.syncScrollbackLen
 		if scrollbackLen > len(v.Scrollback) {
@@ -201,11 +221,7 @@ func (v *VTerm) renderRow(row []Cell, y int) string {
 			continue
 		}
 
-		if cell.Rune == 0 {
-			buf.WriteRune(' ')
-		} else {
-			buf.WriteRune(cell.Rune)
-		}
+		writeCellContent(&buf, cell)
 	}
 
 	return buf.String()
@@ -276,11 +292,7 @@ func (v *VTerm) renderWithScrollbackFrom(screen [][]Cell, scrollbackLen int) str
 				continue
 			}
 
-			if cell.Rune == 0 {
-				buf.WriteRune(' ')
-			} else {
-				buf.WriteRune(cell.Rune)
-			}
+			writeCellContent(&buf, cell)
 		}
 
 		if i < v.Height-1 {

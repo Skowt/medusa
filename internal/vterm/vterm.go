@@ -1,5 +1,7 @@
 package vterm
 
+import "time"
+
 const MaxScrollback = 10000
 
 // ResponseWriter is called when the terminal needs to send a response back to the PTY
@@ -43,6 +45,10 @@ type VTerm struct {
 	// Origin mode (DECOM) - cursor positions are relative to scroll region.
 	OriginMode bool
 
+	// TreatLFAsCRLF makes a bare LF also return to column 0. Used when parsing
+	// tmux capture-pane history (newline-delimited rows) rather than a PTY stream.
+	TreatLFAsCRLF bool
+
 	// Current style for new characters
 	CurrentStyle Style
 
@@ -79,6 +85,9 @@ type VTerm struct {
 	syncScreen        [][]Cell
 	syncScrollbackLen int
 	syncDeferTrim     bool
+	// syncStartedAt is when the open sync region began; used by the stall
+	// failsafe (SyncStallTimeout).
+	syncStartedAt time.Time
 
 	// Render cache for live screen (ViewOffset == 0)
 	renderCache    []string
@@ -257,6 +266,7 @@ func (v *VTerm) Resize(width, height int) {
 
 // Write processes input bytes from PTY
 func (v *VTerm) Write(data []byte) {
+	v.maybeReleaseStaleSync()
 	v.parser.Parse(data)
 }
 
@@ -394,33 +404,14 @@ func (v *VTerm) PrependScrollback(data []byte) {
 	if len(data) == 0 {
 		return
 	}
-
-	// Use a temporary vterm to parse the ANSI content into styled cells.
-	tmp := New(v.Width, v.Height)
-	tmp.Write(data)
-
-	// Collect lines: scrollback first, then screen lines (trim trailing unused rows).
-	var lines [][]Cell
-	for _, line := range tmp.Scrollback {
-		lines = append(lines, CopyLine(line))
+	tmp := parseCaptureWithSize(data, v.Width, v.Height)
+	if tmp == nil {
+		return
 	}
-	screenLines := make([][]Cell, 0, len(tmp.Screen))
-	for _, line := range tmp.Screen {
-		screenLines = append(screenLines, CopyLine(line))
-	}
-	lastNonBlank := len(screenLines) - 1
-	for lastNonBlank >= 0 && isBlankLine(screenLines[lastNonBlank]) {
-		lastNonBlank--
-	}
-	if lastNonBlank >= 0 {
-		lines = append(lines, screenLines[:lastNonBlank+1]...)
-	}
-
+	lines := captureLines(data, tmp)
 	if len(lines) == 0 {
 		return
 	}
-
-	// Prepend captured lines before existing scrollback.
 	newScrollback := make([][]Cell, 0, len(lines)+len(v.Scrollback))
 	newScrollback = append(newScrollback, lines...)
 	newScrollback = append(newScrollback, v.Scrollback...)

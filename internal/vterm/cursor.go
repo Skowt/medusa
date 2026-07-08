@@ -106,6 +106,7 @@ func (v *VTerm) exitAltScreen() {
 	v.altScreenBuf = nil
 	v.CursorX = v.altCursorX
 	v.CursorY = v.altCursorY
+	v.clampCursor()
 	v.invalidateRenderCache()
 }
 

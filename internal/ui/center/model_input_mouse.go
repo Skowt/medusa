@@ -203,10 +203,14 @@ func (m *Model) updateMouseMotion(msg tea.MouseMotionMsg) (*Model, tea.Cmd) {
 			termX = termWidth - 1
 		}
 		if termY < 0 {
-			tab.Terminal.ScrollView(1)
+			if !tab.Fullscreen {
+				tab.Terminal.ScrollView(1)
+			}
 			termY = 0
 		} else if termY >= termHeight {
-			tab.Terminal.ScrollView(-1)
+			if !tab.Fullscreen {
+				tab.Terminal.ScrollView(-1)
+			}
 			termY = termHeight - 1
 		}
 		absLine := tab.Terminal.ScreenYToAbsoluteLine(termY)
