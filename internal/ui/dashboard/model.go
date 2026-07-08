@@ -38,6 +38,24 @@ type Row struct {
 	MemberCount int    // number of hidden children when Collapsed; 0 otherwise
 }
 
+// wsButtonAction identifies a workspace action button.
+type wsButtonAction int
+
+const (
+	btnDuplicate wsButtonAction = iota
+	btnGroup
+	btnArchive
+)
+
+// wsButtonHit is the clickable hit box of one action button on the selected
+// workspace row. line is the row-relative display line; x0..x1 is the
+// content-relative X range [x0, x1).
+type wsButtonHit struct {
+	action wsButtonAction
+	line   int
+	x0, x1 int
+}
+
 // toolbarButtonKind identifies toolbar buttons
 type toolbarButtonKind int
 
@@ -73,9 +91,7 @@ type Model struct {
 	toolbarY        int             // Y position of toolbar in content coordinates
 	toolbarFocused  bool            // Whether toolbar actions are focused
 	toolbarIndex    int             // Focused toolbar action index
-	deleteIconX     int             // X position of delete "x" icon for currently selected row
-	duplicateIconX  int             // X position of the "+" duplicate icon for the currently selected row
-	groupIconX      int             // X position of the "#" group-edit icon for the currently selected row
+	wsButtonHits    []wsButtonHit   // clickable action buttons of the currently selected workspace row
 	collapsedGroups map[string]bool // Group label ("" = Ungrouped) → collapsed
 
 	// Loading state

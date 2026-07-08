@@ -128,7 +128,7 @@ func TestRebuildRows_WithinGroup_SortedByRepoNames(t *testing.T) {
 	}
 }
 
-func TestRenderWorkspaceRow_MultiRepoSelected_ShowsThreeLines(t *testing.T) {
+func TestRenderWorkspaceRow_MultiRepoSelected_ShowsFourLines(t *testing.T) {
 	m := New()
 	m.width = 40
 	m.workspaces = []*data.Workspace{
@@ -149,15 +149,18 @@ func TestRenderWorkspaceRow_MultiRepoSelected_ShowsThreeLines(t *testing.T) {
 
 	out := m.renderWorkspaceRow(m.rows[wsIdx], true)
 	lines := strings.Split(out, "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines for selected multi-repo, got %d:\n%s", len(lines), out)
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines for selected multi-repo (name+meta+repos+footer), got %d:\n%s", len(lines), out)
 	}
 	if !strings.Contains(lines[2], "billing") {
 		t.Errorf("line 3 missing repo: %q", lines[2])
 	}
+	if !strings.Contains(lines[3], "[archive]") {
+		t.Errorf("line 4 missing action footer: %q", lines[3])
+	}
 }
 
-func TestRenderWorkspaceRow_SingleRepoSelected_StaysTwoLines(t *testing.T) {
+func TestRenderWorkspaceRow_SingleRepoSelected_StaysThreeLines(t *testing.T) {
 	m := New()
 	m.width = 40
 	m.workspaces = []*data.Workspace{
@@ -175,8 +178,11 @@ func TestRenderWorkspaceRow_SingleRepoSelected_StaysTwoLines(t *testing.T) {
 
 	out := m.renderWorkspaceRow(m.rows[wsIdx], true)
 	lines := strings.Split(out, "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines for selected single-repo, got %d:\n%s", len(lines), out)
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines for selected single-repo (name+meta+footer), got %d:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[2], "[dupe]") {
+		t.Errorf("line 3 missing action footer: %q", lines[2])
 	}
 }
 
@@ -226,6 +232,7 @@ func TestRebuildRows_GroupsWithArchivedAndOrphanSections(t *testing.T) {
 
 func TestRowLineCount_SelectedMultiRepo(t *testing.T) {
 	m := New()
+	m.width = 40 // wide enough that a short name fits one line
 	m.workspaces = []*data.Workspace{
 		mkWS("alpha", "", []string{"medusa", "billing"}, time.Unix(1, 0)),
 	}
@@ -237,13 +244,56 @@ func TestRowLineCount_SelectedMultiRepo(t *testing.T) {
 			break
 		}
 	}
+	// Selected multi-repo: name(1) + metadata(1) + repo list(1) + footer(1).
 	m.cursor = wsIdx
-	if got := m.rowLineCount(wsIdx); got != 3 {
-		t.Errorf("rowLineCount selected multi-repo = %d, want 3", got)
+	if got := m.rowLineCount(wsIdx); got != 4 {
+		t.Errorf("rowLineCount selected multi-repo = %d, want 4", got)
 	}
 
 	m.cursor = -1
 	if got := m.rowLineCount(wsIdx); got != 2 {
 		t.Errorf("rowLineCount non-selected multi-repo = %d, want 2", got)
+	}
+}
+
+func TestActiveRowLineCount_MatchesRender(t *testing.T) {
+	cases := []struct {
+		name     string
+		wsName   string
+		repos    []string
+		selected bool
+	}{
+		{"short-unselected", "alpha", []string{"medusa"}, false},
+		{"short-selected", "alpha", []string{"medusa"}, true},
+		{"long-selected-wraps", "no-ticket-prompt-injection-hardening-pass", []string{"medusa"}, true},
+		{"multirepo-selected", "PE-37895-place-to-place-migration-spike", []string{"a", "b", "c"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := New()
+			m.width = 35
+			m.workspaces = []*data.Workspace{mkWS(c.wsName, "", c.repos, time.Unix(1, 0))}
+			m.rebuildRows()
+			wsIdx := -1
+			for i, r := range m.rows {
+				if r.Type == RowWorkspace {
+					wsIdx = i
+					break
+				}
+			}
+			if wsIdx == -1 {
+				t.Fatal("expected a workspace row")
+			}
+			if c.selected {
+				m.cursor = wsIdx
+			} else {
+				m.cursor = -1
+			}
+			rendered := m.renderRow(m.rows[wsIdx], c.selected)
+			wantLines := strings.Count(rendered, "\n") + 1
+			if got := m.rowLineCount(wsIdx); got != wantLines {
+				t.Errorf("rowLineCount=%d but render produced %d lines:\n%s", got, wantLines, rendered)
+			}
+		})
 	}
 }

@@ -60,7 +60,8 @@ func (m *Model) renderRow(row Row, selected bool) string {
 	return ""
 }
 
-// renderWorkspaceRow renders a 2-line workspace entry
+// renderWorkspaceRow renders an active workspace entry: wrapped name line(s),
+// metadata, an optional repo list, and (when selected) an action-button footer.
 func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 	ws := row.Workspace
 	if ws == nil {
@@ -82,23 +83,33 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 		return m.renderArchivedRow(ws, selected, contentWidth)
 	}
 
-	line1 := m.renderWorkspaceLine1(ws, selected, contentWidth)
-	line2 := m.renderWorkspaceLine2(ws, selected, contentWidth)
+	if selected {
+		m.wsButtonHits = nil
+	}
+
+	lines := m.renderWorkspaceNameLines(ws, selected, contentWidth)
+	lines = append(lines, m.renderWorkspaceLine2(ws, selected, contentWidth))
+	if selected && len(ws.Repos) >= 2 {
+		if line3 := m.renderWorkspaceLine3(ws, contentWidth); line3 != "" {
+			lines = append(lines, line3)
+		}
+	}
+	if selected {
+		footerLine := len(lines)
+		for _, h := range footerButtonHits() {
+			h.line += footerLine
+			m.wsButtonHits = append(m.wsButtonHits, h)
+		}
+		lines = append(lines, m.renderFooterLine())
+	}
 
 	if selected {
 		bg := lipgloss.NewStyle().Background(common.ColorSelection)
-		line1 = padWithBg(line1, contentWidth, bg)
-		line2 = padWithBg(line2, contentWidth, bg)
-	}
-
-	if selected && len(ws.Repos) >= 2 {
-		line3 := m.renderWorkspaceLine3(ws, contentWidth)
-		if line3 != "" {
-			return line1 + "\n" + line2 + "\n" + line3
+		for i := range lines {
+			lines[i] = padWithBg(lines[i], contentWidth, bg)
 		}
 	}
-
-	return line1 + "\n" + line2
+	return strings.Join(lines, "\n")
 }
 
 // renderOrphanRow renders a 2-line orphaned workspace entry.
@@ -121,7 +132,19 @@ func (m *Model) renderOrphanRow(ws *data.Workspace, selected bool, contentWidth 
 		deleteSlot = " " + common.Icons.Close + " "
 	}
 
-	line1 := bg.Render(" ") + warnStyle.Render("⚠ ") + nameStyle.Render(ws.Name) + nameStyle.Render(deleteSlot)
+	nameW := contentWidth - 6 // " " + "⚠ " + name + "   "
+	if nameW < 1 {
+		nameW = 1
+	}
+	prefix := bg.Render(" ") + warnStyle.Render("⚠ ")
+	name := nameStyle.Render(truncateRunes([]rune(ws.Name), nameW))
+	line1 := prefix + name + nameStyle.Render(deleteSlot)
+
+	if selected {
+		// Orphan rows expose only the delete action (× hard-deletes the orphan).
+		x0 := lipgloss.Width(prefix) + lipgloss.Width(name) + 1 // skip leading space in " × "
+		m.wsButtonHits = []wsButtonHit{{action: btnArchive, line: 0, x0: x0, x1: x0 + lipgloss.Width(common.Icons.Close)}}
+	}
 
 	// Line 2: description of orphan type
 	arrowStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
@@ -129,9 +152,6 @@ func (m *Model) renderOrphanRow(ws *data.Workspace, selected bool, contentWidth 
 	if selected {
 		arrowStyle = arrowStyle.Background(common.ColorSelection)
 		mutedStyle = mutedStyle.Background(common.ColorSelection)
-		// Reset duplicate/group icon positions since orphan rows don't expose them
-		m.duplicateIconX = 0
-		m.groupIconX = 0
 	}
 
 	desc := "worktree missing"
@@ -170,20 +190,21 @@ func (m *Model) renderArchivedRow(ws *data.Workspace, selected bool, contentWidt
 		deleteSlot = " " + common.Icons.Close + " "
 	}
 
+	nameW := contentWidth - 6 // " " + "◇ " + name + "   "
+	if nameW < 1 {
+		nameW = 1
+	}
 	prefix := bg.Render(" ") + iconStyle.Render("◇ ")
-	name := nameStyle.Render(ws.Name)
+	name := nameStyle.Render(truncateRunes([]rune(ws.Name), nameW))
 	line := prefix + name + nameStyle.Render(deleteSlot)
 
 	if selected {
-		// Reset duplicate/group icon positions since archived rows don't expose them
-		m.duplicateIconX = 0
-		m.groupIconX = 0
-		// Record the delete icon column for this row so the click handler in
-		// model.go can map a click on the "×" back to the delete action.
-		// Without this, handleClick reads a stale deleteIconX from whatever
-		// non-archived row was last rendered and clicks on the archived row's
-		// × either miss entirely or hit the wrong column.
-		m.deleteIconX = lipgloss.Width(prefix) + lipgloss.Width(name)
+		// Archived rows expose only the delete action (× hard-deletes). Record
+		// its column so the click handler maps a click on the "×" to the
+		// delete action; without this a click would read a stale hit from
+		// whatever row was last rendered.
+		x0 := lipgloss.Width(prefix) + lipgloss.Width(name) + 1 // skip leading space in " × "
+		m.wsButtonHits = []wsButtonHit{{action: btnArchive, line: 0, x0: x0, x1: x0 + lipgloss.Width(common.Icons.Close)}}
 
 		bgStyle := lipgloss.NewStyle().Background(common.ColorSelection)
 		line = padWithBg(line, contentWidth, bgStyle)

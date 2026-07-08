@@ -67,13 +67,16 @@ func (m *Model) rowLineCount(idx int) int {
 	switch m.rows[idx].Type {
 	case RowWorkspace:
 		ws := m.rows[idx].Workspace
-		if ws != nil && ws.Archived() {
+		if ws == nil {
+			return 2
+		}
+		if ws.Archived() {
 			return 1
 		}
-		if idx == m.cursor && ws != nil && len(ws.Repos) >= 2 {
-			return 3
+		if ws.IsOrphaned() {
+			return 2
 		}
-		return 2
+		return m.activeRowLineCount(ws, idx == m.cursor)
 	case RowSectionHeader:
 		if m.rows[idx].Label == "archived" || m.rows[idx].Label == "archived-footer" {
 			return 2
@@ -86,7 +89,26 @@ func (m *Model) rowLineCount(idx int) int {
 	}
 }
 
-func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
+// activeRowLineCount returns the display-line count of an active workspace row.
+// It mirrors renderWorkspaceRow exactly by reusing nameChunks and the same
+// selection conditions, so scroll math and hit-testing never disagree.
+func (m *Model) activeRowLineCount(ws *data.Workspace, selected bool) int {
+	contentWidth := m.width - 3
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+	lines := len(m.nameChunks(ws, selected, contentWidth)) // name (1 if unselected)
+	lines++                                                // metadata
+	if selected && len(ws.Repos) >= 2 {
+		lines++ // repo list
+	}
+	if selected {
+		lines++ // footer
+	}
+	return lines
+}
+
+func (m *Model) rowIndexAt(screenX, screenY int) (int, int, bool) {
 	borderTop := 1
 	borderLeft := 1
 	borderRight := 1
@@ -99,13 +121,13 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 	contentWidth := m.width - (borderLeft + borderRight + paddingLeft + paddingRight)
 	innerHeight := m.height - 2
 	if contentWidth <= 0 || innerHeight <= 0 {
-		return -1, false
+		return -1, 0, false
 	}
 	if contentX < 0 || contentX >= contentWidth {
-		return -1, false
+		return -1, 0, false
 	}
 	if contentY < 0 || contentY >= innerHeight {
-		return -1, false
+		return -1, 0, false
 	}
 
 	helpHeight := m.helpLineCount()
@@ -116,7 +138,7 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 	}
 
 	if contentY < 0 || contentY >= rowAreaHeight {
-		return -1, false
+		return -1, 0, false
 	}
 
 	rowY := contentY
@@ -145,7 +167,7 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 			break
 		}
 		if rowY >= visLine && rowY < visLine+rowLines {
-			return i, true
+			return i, rowY - visLine, true
 		}
 		line += rowLines
 	}
@@ -157,13 +179,13 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, bool) {
 		for i := archivedStart; i < len(m.rows); i++ {
 			rowLines := m.rowLineCount(i)
 			if rowY >= aLine && rowY < aLine+rowLines {
-				return i, true
+				return i, rowY - aLine, true
 			}
 			aLine += rowLines
 		}
 	}
 
-	return -1, false
+	return -1, 0, false
 }
 
 // previewCurrentRow returns a command to preview the currently selected row.

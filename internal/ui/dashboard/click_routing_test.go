@@ -7,10 +7,10 @@ import (
 	"github.com/Skowt/medusa/internal/data"
 )
 
-// TestClickRouting_DuplicateIconTriggersDuplicate verifies that the icon
-// positions recorded while rendering a selected workspace row correspond to
-// the column spacing of the " + # × " slot layout.
-func TestClickRouting_DuplicateIconTriggersDuplicate(t *testing.T) {
+// TestClickRouting_ButtonHitsRecordedOnFooter verifies that rendering a
+// selected workspace row records the three action-button hit boxes on the
+// footer line, ordered dupe < group < archive.
+func TestClickRouting_ButtonHitsRecordedOnFooter(t *testing.T) {
 	m := New()
 	m.workspaces = []*data.Workspace{
 		mkWS("alpha", "", []string{"medusa"}, time.Unix(1, 0)),
@@ -30,22 +30,26 @@ func TestClickRouting_DuplicateIconTriggersDuplicate(t *testing.T) {
 		t.Fatal("expected a workspace row")
 	}
 	m.cursor = wsIdx
-	_ = m.renderWorkspaceRow(m.rows[wsIdx], true) // triggers the selected branch to record icon positions
+	_ = m.renderWorkspaceRow(m.rows[wsIdx], true) // records button hits
 
-	if m.duplicateIconX == 0 || m.groupIconX == 0 || m.deleteIconX == 0 {
-		t.Fatalf("icon positions not set: dup=%d grp=%d del=%d", m.duplicateIconX, m.groupIconX, m.deleteIconX)
+	if len(m.wsButtonHits) != 3 {
+		t.Fatalf("expected 3 button hits, got %d: %+v", len(m.wsButtonHits), m.wsButtonHits)
 	}
-	if m.deleteIconX <= m.duplicateIconX {
-		t.Fatalf("deleteIconX (%d) must be to the right of duplicateIconX (%d)", m.deleteIconX, m.duplicateIconX)
+	// All three share the footer line.
+	line := m.wsButtonHits[0].line
+	for _, h := range m.wsButtonHits {
+		if h.line != line {
+			t.Errorf("button %d on line %d, expected all on %d", h.action, h.line, line)
+		}
 	}
-	// Layout " + # × ": dup at nameEnd+1, group at nameEnd+3, del at nameEnd+5.
-	if m.deleteIconX-m.duplicateIconX != 4 {
-		t.Errorf("expected delete-duplicate gap of 4 cols, got %d", m.deleteIconX-m.duplicateIconX)
+	if m.wsButtonHits[0].action != btnDuplicate || m.wsButtonHits[1].action != btnGroup || m.wsButtonHits[2].action != btnArchive {
+		t.Errorf("unexpected button order: %+v", m.wsButtonHits)
 	}
-	if m.groupIconX <= m.duplicateIconX || m.groupIconX >= m.deleteIconX {
-		t.Errorf("groupIconX (%d) not between duplicate (%d) and delete (%d)", m.groupIconX, m.duplicateIconX, m.deleteIconX)
+	if m.wsButtonHits[0].x0 >= m.wsButtonHits[1].x0 || m.wsButtonHits[1].x0 >= m.wsButtonHits[2].x0 {
+		t.Errorf("buttons must be left-to-right: %+v", m.wsButtonHits)
 	}
-	if m.groupIconX-m.duplicateIconX != 2 {
-		t.Errorf("expected group-duplicate gap of 2 cols, got %d", m.groupIconX-m.duplicateIconX)
+	// The footer is the last line of a selected single-repo row (name+meta+footer).
+	if line != m.rowLineCount(wsIdx)-1 {
+		t.Errorf("footer line %d, expected last row line %d", line, m.rowLineCount(wsIdx)-1)
 	}
 }

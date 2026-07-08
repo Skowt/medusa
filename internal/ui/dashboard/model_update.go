@@ -22,7 +22,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				return m, cmd
 			}
 
-			idx, ok := m.rowIndexAt(msg.X, msg.Y)
+			idx, lineWithinRow, ok := m.rowIndexAt(msg.X, msg.Y)
 			if !ok {
 				return m, nil
 			}
@@ -33,23 +33,22 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Check if click is on the delete or duplicate icons
-			if idx == m.cursor {
-				rowType := m.rows[idx].Type
-				if rowType == RowWorkspace {
-					borderLeft := 1
-					paddingLeft := 0
-					contentX := msg.X - borderLeft - paddingLeft
-					if contentX >= m.duplicateIconX && contentX < m.duplicateIconX+2 {
-						m.toolbarFocused = false
+			// Check if the click landed on an action button of the selected row.
+			if idx == m.cursor && m.rows[idx].Type == RowWorkspace {
+				borderLeft := 1
+				paddingLeft := 0
+				contentX := msg.X - borderLeft - paddingLeft
+				for _, h := range m.wsButtonHits {
+					if lineWithinRow != h.line || contentX < h.x0 || contentX >= h.x1 {
+						continue
+					}
+					m.toolbarFocused = false
+					switch h.action {
+					case btnDuplicate:
 						return m, m.handleDuplicate()
-					}
-					if contentX >= m.groupIconX && contentX < m.groupIconX+2 {
-						m.toolbarFocused = false
+					case btnGroup:
 						return m, m.handleSetGroup()
-					}
-					if contentX >= m.deleteIconX && contentX < m.deleteIconX+2 {
-						m.toolbarFocused = false
+					case btnArchive:
 						return m, m.handleDelete()
 					}
 				}

@@ -14,13 +14,94 @@ import (
 )
 
 const (
-	rightSlotWidth = 7 // " + # × " — duplicate, group-edit, delete slots
+	nameIndent   = 3 // width of the leading " ● " prefix on line 1
+	footerIndent = 3 // left indent of the action footer; equals width of " └ "
 )
 
-// renderWorkspaceLine1: hook indicator + name + delete icon
-func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentWidth int) string {
-	indicatorWidth := 2
+// detailIndent returns the " └ " tree connector prefix used by every detail
+// line hanging off a workspace name (metadata, repo list, action footer). The
+// connector is drawn in a color that stays visible on the selection
+// background so it is not swallowed when the row is selected.
+func detailIndent(selected bool) string {
+	bg := lipgloss.NewStyle()
+	arrowFg := common.ColorSurface2
+	if selected {
+		bg = bg.Background(common.ColorSelection)
+		arrowFg = common.ColorMuted // visible against the selection background
+	}
+	arrowStyle := lipgloss.NewStyle().Foreground(arrowFg)
+	if selected {
+		arrowStyle = arrowStyle.Background(common.ColorSelection)
+	}
+	return bg.Render(" ") + arrowStyle.Render("└ ")
+}
 
+// wsButtonDefs is the ordered set of action buttons and their labels.
+var wsButtonDefs = []struct {
+	action wsButtonAction
+	label  string
+}{
+	{btnDuplicate, "[dupe]"},
+	{btnGroup, "[group]"},
+	{btnArchive, "[archive]"},
+}
+
+// workspacePending reports whether the workspace is mid-create or mid-delete
+// (its row shows a spinner + status text instead of wrapping the name).
+func (m *Model) workspacePending(ws *data.Workspace) bool {
+	if m.deletingWorkspaces[ws.Root()] {
+		return true
+	}
+	_, creating := m.creatingWorkspaces[ws.Root()]
+	return creating
+}
+
+// nameChunks returns the display lines of the workspace name (text only, no
+// styling). An unselected or pending row gets a single ellipsized line; a
+// selected row wraps up to maxNameLines. Both the renderer and rowLineCount
+// call this so their line counts cannot drift.
+func (m *Model) nameChunks(ws *data.Workspace, selected bool, contentWidth int) []string {
+	width := contentWidth - nameIndent
+	if width < 1 {
+		width = 1
+	}
+	if !selected || m.workspacePending(ws) {
+		return []string{truncateRunes([]rune(ws.Name), width)}
+	}
+	return wrapName(ws.Name, width, maxNameLines)
+}
+
+// footerButtonHits returns each button's footer-relative hit box (line 0).
+func footerButtonHits() []wsButtonHit {
+	x := footerIndent
+	hits := make([]wsButtonHit, 0, len(wsButtonDefs))
+	for _, b := range wsButtonDefs {
+		w := lipgloss.Width(b.label)
+		hits = append(hits, wsButtonHit{action: b.action, line: 0, x0: x, x1: x + w})
+		x += w + 1 // one space between buttons
+	}
+	return hits
+}
+
+// renderFooterLine renders the action button row for a selected active row.
+// The footer only shows on the selected row, so it always uses the selected
+// tree connector and aligns its buttons under the metadata text above.
+func (m *Model) renderFooterLine() string {
+	bg := lipgloss.NewStyle().Background(common.ColorSelection)
+	btnStyle := lipgloss.NewStyle().Foreground(common.ColorMuted).Background(common.ColorSelection)
+	parts := []string{detailIndent(true)}
+	for i, b := range wsButtonDefs {
+		if i > 0 {
+			parts = append(parts, bg.Render(" "))
+		}
+		parts = append(parts, btnStyle.Render(b.label))
+	}
+	return strings.Join(parts, "")
+}
+
+// renderWorkspaceNameLines renders the styled name line(s): the indicator +
+// first name chunk (plus any status text), then indented continuation lines.
+func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, contentWidth int) []string {
 	wsID := string(ws.ID())
 
 	// Status text for creating/deleting
@@ -98,55 +179,29 @@ func (m *Model) renderWorkspaceLine1(ws *data.Workspace, selected bool, contentW
 	// Prefix is the leading space + rendered indicator (" <indicator> "), width 3.
 	prefix := style.Render(" ") + renderedIndicator
 
-	// Right-edge icon slot: " + # × " when selected (7 cols), "       " otherwise (7 cols).
-	rightSlot := "       "
+	chunks := m.nameChunks(ws, selected, contentWidth)
+	contPrefixStyle := lipgloss.NewStyle()
 	if selected {
-		rightSlot = " " + common.Icons.Add + " " + common.Icons.Group + " " + common.Icons.Close + " "
+		contPrefixStyle = contPrefixStyle.Background(common.ColorSelection)
 	}
+	contPrefix := contPrefixStyle.Render(strings.Repeat(" ", nameIndent))
 
-	// Truncate name
-	name := ws.Name
-	prefixWidth := 2 + indicatorWidth // logical width used for truncation budget
-	maxNameWidth := contentWidth - lipgloss.Width(statusText) - rightSlotWidth - prefixWidth
-	if maxNameWidth > 0 && lipgloss.Width(name) > maxNameWidth {
-		runes := []rune(name)
-		for len(runes) > 0 && lipgloss.Width(string(runes)) > maxNameWidth-1 {
-			runes = runes[:len(runes)-1]
-		}
-		name = string(runes) + "…"
+	lines := make([]string, 0, len(chunks))
+	lines = append(lines, prefix+style.Render(chunks[0])+statusText)
+	for _, c := range chunks[1:] {
+		lines = append(lines, contPrefix+style.Render(c))
 	}
-
-	if selected {
-		// Measure from the actual rendered prefix so icon click ranges match
-		// what's on screen. rightSlot layout is " + # × " — positions relative
-		// to nameEnd: 0=space, 1=+, 2=space, 3=#, 4=space, 5=×, 6=space.
-		nameEnd := lipgloss.Width(prefix) + lipgloss.Width(style.Render(name))
-		m.duplicateIconX = nameEnd + 1
-		m.groupIconX = nameEnd + 3
-		m.deleteIconX = nameEnd + 5
-	}
-
-	return prefix + style.Render(name) + style.Render(rightSlot) + statusText
+	return lines
 }
 
 // renderWorkspaceLine2: profile · git changes · created day
 func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentWidth int) string {
-	bg := lipgloss.NewStyle()
-	if selected {
-		bg = bg.Background(common.ColorSelection)
-	}
-
 	mutedStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
 	if selected {
 		mutedStyle = mutedStyle.Background(common.ColorSelection)
 	}
 
-	arrowStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
-	if selected {
-		arrowStyle = arrowStyle.Background(common.ColorSelection)
-	}
-
-	indent := bg.Render(" ") + arrowStyle.Render("└ ")
+	indent := detailIndent(selected)
 
 	var parts []string
 
@@ -200,9 +255,8 @@ func (m *Model) renderWorkspaceLine3(ws *data.Workspace, contentWidth int) strin
 
 	bg := lipgloss.NewStyle().Background(common.ColorSelection)
 	mutedStyle := lipgloss.NewStyle().Foreground(common.ColorMuted).Background(common.ColorSelection)
-	arrowStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2).Background(common.ColorSelection)
 
-	indent := bg.Render(" ") + arrowStyle.Render("└ ")
+	indent := detailIndent(true)
 	label := mutedStyle.Render(strings.Join(names, ", "))
 
 	line := indent + label
