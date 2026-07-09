@@ -65,6 +65,55 @@ func TestVTermLayerClearsContinuationCells(t *testing.T) {
 	}
 }
 
+func TestVTermLayerPreservesWideGlyph(t *testing.T) {
+	term := vterm.New(3, 1)
+	term.Screen[0][0] = vterm.Cell{Rune: '✅', Width: 2}
+	term.Screen[0][1] = vterm.Cell{Width: 0}
+	term.Screen[0][2] = vterm.Cell{Rune: '│', Width: 1}
+
+	snap := NewVTermSnapshot(term, false)
+	if snap == nil {
+		t.Fatalf("expected snapshot, got nil")
+	}
+	layer := NewVTermLayer(snap)
+
+	screen := &bufferScreen{Buffer: uv.NewBuffer(3, 1)}
+	layer.Draw(screen, screen.Bounds())
+
+	// The base glyph must survive and still claim two columns, otherwise every
+	// cell to its right shifts left by one and the pane border tears.
+	base := screen.CellAt(0, 0)
+	if base == nil || base.Content != "✅" || base.Width != 2 {
+		t.Fatalf("wide glyph not preserved, got %+v", base)
+	}
+	if trailing := screen.CellAt(2, 0); trailing == nil || trailing.Content != "│" {
+		t.Fatalf("expected trailing cell to stay put, got %+v", trailing)
+	}
+}
+
+func TestVTermLayerClearsOrphanContinuationCell(t *testing.T) {
+	// A continuation cell with no wide cell before it has no base to inherit a
+	// placeholder from, so the layer must blank it itself.
+	term := vterm.New(2, 1)
+	term.Screen[0][0] = vterm.Cell{Rune: 'A', Width: 1}
+	term.Screen[0][1] = vterm.Cell{Width: 0}
+
+	snap := NewVTermSnapshot(term, false)
+	if snap == nil {
+		t.Fatalf("expected snapshot, got nil")
+	}
+	layer := NewVTermLayer(snap)
+
+	screen := &bufferScreen{Buffer: uv.NewBuffer(2, 1)}
+	screen.SetCell(1, 0, &uv.Cell{Content: "X", Width: 1})
+	layer.Draw(screen, screen.Bounds())
+
+	cell := screen.CellAt(1, 0)
+	if cell == nil || cell.Content != " " || cell.Width != 1 {
+		t.Fatalf("expected orphan continuation to be blanked, got %+v", cell)
+	}
+}
+
 func TestVTermSnapshotRespectsViewOffsetChange(t *testing.T) {
 	term := vterm.New(2, 1)
 	live := vterm.MakeBlankLine(2)

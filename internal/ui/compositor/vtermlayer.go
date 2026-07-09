@@ -297,12 +297,18 @@ func (l *VTermLayer) DrawAt(s uv.Screen, posX, posY, maxWidth, maxHeight int) {
 		for x := 0; x < width && x < len(row); x++ {
 			cell := row[x]
 
-			// For continuation cells (part of wide character), write an empty cell
-			// to clear any stale content at that position from previous renders.
 			if cell.Width == 0 {
+				// Setting the wide base cell already made ultraviolet write this
+				// placeholder. Writing it again reads to ultraviolet as a partial
+				// overwrite of the wide cell, and it blanks the base glyph.
+				if x > 0 && row[x-1].Width == 2 {
+					continue
+				}
+				// Continuation with no wide base: emit a blank so the column
+				// still clears stale content and occupies its width.
 				uvCell := getCell()
-				uvCell.Content = ""
-				uvCell.Width = 0
+				uvCell.Content = " "
+				uvCell.Width = 1
 				s.SetCell(posX+x, posY+y, uvCell)
 				putCell(uvCell)
 				continue
