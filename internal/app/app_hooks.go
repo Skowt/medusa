@@ -148,6 +148,32 @@ func (a *App) handleSessionStart(wsID string, msg hookActivityEvent) []tea.Cmd {
 	return nil
 }
 
+// setHookOutstanding records the latest authoritative background-task count
+// for a workspace. OutstandingUnknown (legacy shell hooks) leaves the previous
+// knowledge untouched; zero deletes the entry to keep the map from growing.
+func (a *App) setHookOutstanding(wsID string, outstanding int) {
+	switch {
+	case outstanding < 0:
+	case outstanding == 0:
+		delete(a.hookOutstanding, wsID)
+	default:
+		a.hookOutstanding[wsID] = outstanding
+	}
+}
+
+// restoreHookOutstanding rebuilds background-work knowledge from restored
+// states: a persisted SubagentWait means the turn ended with live background
+// tasks, so the first idle_prompt after a restart must not false-ping. The
+// exact count is unknown; 1 is enough to gate the idle until real events
+// refresh it (or the reconciler clears a dead session).
+func (a *App) restoreHookOutstanding() {
+	for wsID, evt := range a.hookWorkspaceStates {
+		if evt == hooks.EventSubagentWait {
+			a.hookOutstanding[wsID] = 1
+		}
+	}
+}
+
 // isNeedsInputState reports whether a stored state means the agent is blocked
 // on the user (permission dialog, question, MCP elicitation).
 func isNeedsInputState(evt hooks.EventType) bool {
@@ -174,6 +200,7 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 	evt := msg.Event
 	switch {
 	case evt == hooks.EventStop || evt == hooks.EventStopFailure:
+		a.setHookOutstanding(wsID, msg.Outstanding)
 		if msg.Outstanding > 0 {
 			a.hookWorkspaceStates[wsID] = hooks.EventSubagentWait
 			return hookTransitionNone
@@ -187,15 +214,25 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 		return hookTransitionNone
 
 	case evt == hooks.EventSubagentStop:
-		// Inert by design; the auto-resumed turn's events carry the state.
+		// Inert for the state; only its outstanding count is trusted (it is
+		// authoritative and assignment-only, so a phantom SubagentStop's own
+		// payload still describes the session truthfully).
+		a.setHookOutstanding(wsID, msg.Outstanding)
 		return hookTransitionNone
 
 	case evt == hooks.EventNotificationIdle:
-		// Claude reports idle only when truly waiting for input, so this is
-		// the self-healing clear for any wedged busy state (missed Stop, lost
-		// event). It must not wipe a pending '!': the permission dialog is
-		// still on screen.
+		// Claude fires idle_prompt ~60s after the REPL goes quiet — including
+		// while background agents still work (the REPL is idle between
+		// auto-resumes). With outstanding work it must read as still-busy, not
+		// done; the auto-resumed turn's final Stop delivers the real ping.
+		// With nothing outstanding it is the self-healing clear for any
+		// wedged busy state (missed Stop, lost event). It must never wipe a
+		// pending '!': the permission dialog is still on screen.
 		if hadPrev && isNeedsInputState(prev) {
+			return hookTransitionNone
+		}
+		if a.hookOutstanding[wsID] > 0 {
+			a.hookWorkspaceStates[wsID] = hooks.EventSubagentWait
 			return hookTransitionNone
 		}
 		delete(a.hookWorkspaceStates, wsID)
@@ -311,6 +348,7 @@ func (a *App) restoreHookStatesFromWorkspaces() {
 		}
 		a.hookWorkspaceStates[string(ws.ID())] = hooks.EventType(ws.ActivityState)
 	}
+	a.restoreHookOutstanding()
 }
 
 // handleAgentInterrupted clears the hook state for a workspace whose agent was
@@ -318,6 +356,7 @@ func (a *App) restoreHookStatesFromWorkspaces() {
 // interrupts, so the spinner would otherwise keep running indefinitely. The
 // clear is silent: the user caused it and is looking at the workspace.
 func (a *App) handleAgentInterrupted(wsID string) []tea.Cmd {
+	delete(a.hookOutstanding, wsID)
 	if _, ok := a.hookWorkspaceStates[wsID]; !ok {
 		return nil
 	}

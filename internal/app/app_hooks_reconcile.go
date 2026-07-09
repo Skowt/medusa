@@ -44,6 +44,9 @@ func (a *App) staleBusyWorkspaces() []string {
 			continue
 		}
 		delete(a.hookWorkspaceStates, wsID)
+		// Drop the background-work knowledge with the state: a dead session
+		// must not leave a stale count that swallows a future idle rescue.
+		delete(a.hookOutstanding, wsID)
 		cleared = append(cleared, wsID)
 	}
 	return cleared

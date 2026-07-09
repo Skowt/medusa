@@ -11,6 +11,7 @@ func newHookTestApp() *App {
 	return &App{
 		hookLastStamp:       map[string]hookEventStamp{},
 		hookWorkspaceStates: map[string]hooks.EventType{},
+		hookOutstanding:     map[string]int{},
 	}
 }
 
@@ -208,6 +209,90 @@ func TestNeedsInputTransitions(t *testing.T) {
 	})
 }
 
+// TestIdleNotificationWithOutstandingWork verifies the idle notification is
+// outstanding-aware: Claude Code fires idle_prompt ~60s after the REPL goes
+// idle even while background agents are still working (the REPL is idle
+// between auto-resumes), so it must not be trusted as "done" when the last
+// authoritative Stop/SubagentStop reported live background tasks.
+func TestIdleNotificationWithOutstandingWork(t *testing.T) {
+	t.Run("idle while background agents run parks busy without a ping", func(t *testing.T) {
+		a := newHookTestApp()
+		applyEvent(a, "ws", ev(hooks.EventUserPromptSubmit, hooks.OutstandingUnknown, stamp(0)))
+		applyEvent(a, "ws", ev(hooks.EventStop, 2, stamp(1)))
+
+		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationIdle, hooks.OutstandingUnknown, stamp(70))); tr != hookTransitionNone {
+			t.Fatalf("idle with outstanding work must not ping, got %v", tr)
+		}
+		if a.hookWorkspaceStates["ws"] != hooks.EventSubagentWait {
+			t.Fatalf("state = %q, want SubagentWait (still waiting on background work)", a.hookWorkspaceStates["ws"])
+		}
+	})
+
+	t.Run("idle after background agent activity overwrote the wait state", func(t *testing.T) {
+		// Background-agent tool events replace SubagentWait with a tool state;
+		// the outstanding count must survive that and still gate the idle.
+		a := newHookTestApp()
+		applyEvent(a, "ws", ev(hooks.EventStop, 1, stamp(0)))
+		applyEvent(a, "ws", ev(hooks.EventPostToolUse, hooks.OutstandingUnknown, stamp(10)))
+
+		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationIdle, hooks.OutstandingUnknown, stamp(75))); tr != hookTransitionNone {
+			t.Fatalf("idle with outstanding work must not ping, got %v", tr)
+		}
+		if !a.hookActiveIDs()["ws"] {
+			t.Fatal("workspace must stay busy while background work is outstanding")
+		}
+	})
+
+	t.Run("idle rescue works once outstanding drains to zero", func(t *testing.T) {
+		// The last SubagentStop reports nothing outstanding but the auto-resume
+		// never happens (wedged session): idle must still rescue with a ping.
+		a := newHookTestApp()
+		applyEvent(a, "ws", ev(hooks.EventStop, 1, stamp(0)))
+		applyEvent(a, "ws", ev(hooks.EventSubagentStop, 0, stamp(30)))
+
+		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationIdle, hooks.OutstandingUnknown, stamp(95))); tr != hookTransitionReady {
+			t.Fatalf("idle with nothing outstanding must rescue with ready, got %v", tr)
+		}
+	})
+
+	t.Run("legacy events without outstanding keep idle as full clear", func(t *testing.T) {
+		a := newHookTestApp()
+		applyEvent(a, "ws", ev(hooks.EventPreToolUse, hooks.OutstandingUnknown, stamp(0)))
+		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationIdle, hooks.OutstandingUnknown, stamp(65))); tr != hookTransitionReady {
+			t.Fatalf("idle without any outstanding knowledge must clear and ping, got %v", tr)
+		}
+	})
+
+	t.Run("interrupt clears outstanding so idle does not park a dead session", func(t *testing.T) {
+		a := newHookTestApp()
+		applyEvent(a, "ws", ev(hooks.EventStop, 2, stamp(0)))
+		a.handleAgentInterrupted("ws")
+
+		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationIdle, hooks.OutstandingUnknown, stamp(70))); tr != hookTransitionNone {
+			t.Fatalf("idle after interrupt must be silent, got %v", tr)
+		}
+		if _, ok := a.hookWorkspaceStates["ws"]; ok {
+			t.Fatal("idle after interrupt must not revive a busy state")
+		}
+	})
+}
+
+// TestRestoreInfersOutstandingForSubagentWait verifies a persisted SubagentWait
+// state restores its background-work knowledge: without it, the first
+// idle_prompt after a Medusa restart would false-ping while agents still run.
+func TestRestoreInfersOutstandingForSubagentWait(t *testing.T) {
+	a := newHookTestApp()
+	a.hookWorkspaceStates["ws"] = hooks.EventSubagentWait
+	a.restoreHookOutstanding()
+
+	if tr := applyEvent(a, "ws", ev(hooks.EventNotificationIdle, hooks.OutstandingUnknown, stamp(70))); tr != hookTransitionNone {
+		t.Fatalf("idle over a restored SubagentWait must not ping, got %v", tr)
+	}
+	if a.hookWorkspaceStates["ws"] != hooks.EventSubagentWait {
+		t.Fatal("restored SubagentWait must survive the idle notification")
+	}
+}
+
 // TestIdleNotification verifies the 60s idle notification acts as the
 // self-healing clear: it rescues a wedged busy state (with a ping — the user
 // was never told the agent finished) but never wipes a pending '!' indicator.
@@ -309,6 +394,21 @@ func TestReconcileStaleHookStates(t *testing.T) {
 		a.hookLastStamp["ws"] = hookEventStamp{at: time.Now().Add(-time.Second)}
 		if cleared := a.staleBusyWorkspaces(); len(cleared) != 0 {
 			t.Fatalf("fresh state must survive, got %v", cleared)
+		}
+	})
+
+	t.Run("reconcile clears outstanding knowledge with the state", func(t *testing.T) {
+		// A dead session must not leave a stale outstanding count behind that
+		// would swallow the idle rescue of a future run.
+		a := newHookTestApp()
+		applyEvent(a, "ws", ev(hooks.EventStop, 2, stamp(0)))
+		a.hookLastStamp["ws"] = hookEventStamp{at: time.Now().Add(-2 * staleBusyTimeout)}
+
+		if cleared := a.staleBusyWorkspaces(); len(cleared) != 1 {
+			t.Fatalf("stale SubagentWait must clear, got %v", cleared)
+		}
+		if n := a.hookOutstanding["ws"]; n != 0 {
+			t.Fatalf("outstanding after reconcile = %d, want cleared", n)
 		}
 	})
 

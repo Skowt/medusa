@@ -188,6 +188,13 @@ type App struct {
 	// rejected (shouldApplyHookEvent) and stale busy states can be reconciled
 	// (staleBusyWorkspaces).
 	hookLastStamp map[string]hookEventStamp
+	// hookOutstanding is the last authoritative count of still-running
+	// background tasks per workspace, assigned only from Stop/SubagentStop
+	// payloads (never incremented/decremented, so it cannot drift). It gates
+	// the idle_prompt notification: Claude fires idle ~60s after the REPL
+	// goes quiet even while background agents work, so idle must not read as
+	// "done" while this is non-zero. See applyHookStateTransition.
+	hookOutstanding map[string]int
 
 	// Auto-start agent
 	pendingAutoLaunch  string // workspace root for post-creation auto-launch
@@ -369,6 +376,7 @@ func New(version, commit, date string) (*App, error) {
 		tmuxOptions:         tmuxOpts,
 		hookWorkspaceStates: make(map[string]hooks.EventType),
 		hookLastStamp:       make(map[string]hookEventStamp),
+		hookOutstanding:     make(map[string]int),
 		dirtyWorkspaces:     make(map[string]bool),
 	}
 	app.supervisor = supervisor.New(ctx)

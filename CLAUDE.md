@@ -92,8 +92,12 @@ and `SubagentStop` is deliberately inert — Claude Code fires phantom
 SubagentStop events after Stop (upstream #59719/#70151), so nothing may treat
 it as a busy signal. Sounds/highlights fire only on explicit ready or
 needs-input transitions (`notifyWorkspaceAttention`), never from a workspace
-"leaving the active set". A reconciler (`app_hooks_reconcile.go`) silently
-clears busy states with no hook event for 3 minutes. Background-task awareness
+"leaving the active set". The idle_prompt notification is outstanding-aware:
+Claude fires it ~60s after the REPL goes quiet even while background agents
+work, so it only clears/pings when the last authoritative Stop/SubagentStop
+reported no live background tasks (`hookOutstanding`, assignment-only — never
+counted). A reconciler (`app_hooks_reconcile.go`) silently clears busy states
+with no hook event for 3 minutes. Background-task awareness
 needs **Claude Code v2.1.145+** (`background_tasks` in Stop payloads); older
 versions degrade to ping-on-Stop.
 
