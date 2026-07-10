@@ -95,11 +95,12 @@ func (m *Model) HandleMonitorInput(tabID TabID, msg tea.Msg) tea.Cmd {
 		return nil
 
 	case tea.KeyPressMsg:
-		// Scroll keys move medusa's own scrollback ONLY for classic tabs on
-		// the main screen. Fullscreen/alt-screen apps (Claude, vim, less) own
-		// their scrollback, so these keys must fall through to the key->PTY
-		// forwarder below and reach the app, mirroring model_input.go.
-		if !tabAppOwnsScrollKeys(tab) {
+		// Scroll keys move medusa's own scrollback ONLY for tabs whose agent
+		// streams a transcript (default-mode Claude). An agent driving the
+		// screen itself owns its scrollback, so these keys must fall through to
+		// the key->PTY forwarder below and reach the app, mirroring
+		// model_input.go.
+		if !tabAppOwnsScreen(tab) {
 			switch {
 			case msg.Key().Code == tea.KeyPgUp:
 				if m.isTabActorReady() {

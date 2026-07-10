@@ -152,6 +152,7 @@ func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cm
 		isolated := a.config.UI.LastIsolated
 		allowUnsandboxed := a.config.UI.LastAllowUnsandboxedCommands
 		permMode := defaultPermissionMode(a.config.UI.LastPermissionMode)
+		fullscreen := a.config.UI.LastFullscreen
 		for _, ws := range a.allWorkspaces {
 			if ws.Root() == root {
 				w := ws
@@ -162,6 +163,7 @@ func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cm
 						Isolated:                 isolated,
 						AllowUnsandboxedCommands: allowUnsandboxed,
 						PermissionMode:           permMode,
+						Fullscreen:               fullscreen,
 					}
 				})
 				break

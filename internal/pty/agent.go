@@ -24,8 +24,9 @@ type AgentOptions struct {
 	Isolated                 bool   // Enable Claude's built-in sandbox via --settings
 	AllowUnsandboxedCommands bool   // sandbox.allowUnsandboxedCommands; only used when Isolated is true
 	PermissionMode           string // claude --permission-mode value (acceptEdits, plan, auto, bypassPermissions)
-	// Fullscreen launches Claude in its fullscreen TUI renderer via
-	// CLAUDE_CODE_NO_FLICKER=1 and marks the tmux session accordingly.
+	// Fullscreen selects Claude's fullscreen TUI renderer via
+	// CLAUDE_CODE_NO_FLICKER (1 on, 0 off) and marks the tmux session
+	// accordingly. It is always passed explicitly: see buildAgentCommand.
 	Fullscreen bool
 }
 
@@ -51,10 +52,22 @@ func buildAgentCommand(agentType AgentType, command, sessionName, profileDir str
 	if opts.Isolated && agentType == AgentClaude {
 		cmd += " --settings " + shellutil.Quote(config.ClaudeSandboxSettingsJSON(opts.AllowUnsandboxedCommands))
 	}
-	if agentType == AgentClaude && opts.Fullscreen {
-		cmd = "CLAUDE_CODE_NO_FLICKER=1 " + cmd
+	if agentType == AgentClaude {
+		// State the renderer explicitly in both directions. Claude's /tui command
+		// persists the user's choice as "tui" in the profile's settings.json, and
+		// that setting wins whenever the env var is absent — so merely omitting
+		// the var for a default-mode tab would still launch fullscreen once any
+		// session in that profile had ever run /tui fullscreen.
+		cmd = "CLAUDE_CODE_NO_FLICKER=" + noFlickerValue(opts.Fullscreen) + " " + cmd
 	}
 	return cmd
+}
+
+func noFlickerValue(fullscreen bool) string {
+	if fullscreen {
+		return "1"
+	}
+	return "0"
 }
 
 // GenerateSessionID returns a new random UUID v4 string.

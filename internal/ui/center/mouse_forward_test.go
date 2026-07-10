@@ -236,22 +236,47 @@ func TestClassicTabAltScreenNoMouseStillScrollsVterm(t *testing.T) {
 	}
 }
 
-// PgUp on a classic tab whose app is in the alt screen must go to the app
-// (fall through to key forwarding), not scroll medusa's vterm.
-func TestClassicTabAltScreenPgUpGoesToApp(t *testing.T) {
+// Every center tab reads from a tmux client, and a tmux client enters the alt
+// screen at attach whatever the agent does. So an alt screen with no mouse
+// reporting is a default-mode agent streaming a transcript: PgUp must scroll
+// medusa's scrollback, not fall through to the app.
+func TestDefaultTabPgUpScrollsMedusaScrollback(t *testing.T) {
 	m := newTestModelWithAgentTab(t)
 	tab := m.getTabs()[m.getActiveTabIdx()]
 	tab.Agent = &appPty.Agent{Terminal: &appPty.Terminal{}}
+	tab.Terminal.AllowAltScreenScrollback = true
+	tab.Terminal.Write([]byte("\x1b[?1049h")) // tmux client attaches
 	for i := 0; i < 50; i++ {
 		tab.Terminal.Write([]byte("line\r\n"))
 	}
 	tab.Fullscreen = false
+	before := tab.Terminal.ViewOffset
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+
+	if tab.Terminal.ViewOffset == before {
+		t.Fatalf("PgUp must scroll medusa's scrollback for a default-mode agent (offset stuck at %d)", before)
+	}
+}
+
+// Once the agent grabs the mouse it owns the screen (Claude's /tui fullscreen),
+// so PgUp belongs to it: medusa must not scroll its own vterm.
+func TestMouseOwningAppPgUpGoesToApp(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	tab.Agent = &appPty.Agent{Terminal: &appPty.Terminal{}}
+	tab.Terminal.AllowAltScreenScrollback = true
 	tab.Terminal.Write([]byte("\x1b[?1049h"))
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.Fullscreen = false
+	tab.Terminal.Write([]byte("\x1b[?1000h\x1b[?1006h")) // agent takes the mouse
 	before := tab.Terminal.ViewOffset
 
 	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
 
 	if tab.Terminal.ViewOffset != before {
-		t.Fatalf("PgUp must not scroll medusa vterm while the app owns the alt screen (offset %d -> %d)", before, tab.Terminal.ViewOffset)
+		t.Fatalf("PgUp must not scroll medusa vterm while the app owns the screen (offset %d -> %d)", before, tab.Terminal.ViewOffset)
 	}
 }

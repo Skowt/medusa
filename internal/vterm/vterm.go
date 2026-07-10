@@ -33,11 +33,18 @@ type VTerm struct {
 	// Alt screen mode (full-screen TUI applications).
 	AltScreen bool
 	// AllowAltScreenScrollback keeps scrollback active even in alt screen.
-	// Useful for tmux-backed sessions where scrollback should remain available.
+	// Set it for vterms fed by a `tmux attach` client: the client enters the
+	// alternate screen at attach no matter what the pane's app does, so
+	// AltScreen describes tmux, not the app, and must not gate scrollback.
 	AllowAltScreenScrollback bool
-	altScreenBuf             [][]Cell
-	altCursorX               int
-	altCursorY               int
+	// AppFullscreen marks an app launched as a fullscreen renderer (Claude with
+	// CLAUDE_CODE_NO_FLICKER, which repaints in place without ever entering the
+	// alt screen). It seeds appPaintsFrames before the app has enabled mouse
+	// reporting.
+	AppFullscreen bool
+	altScreenBuf  [][]Cell
+	altCursorX    int
+	altCursorY    int
 
 	// Scrolling region (for DECSTBM)
 	ScrollTop    int
@@ -121,7 +128,21 @@ func New(width, height int) *VTerm {
 }
 
 func (v *VTerm) scrollbackEnabled() bool {
+	if v.appPaintsFrames() {
+		return false
+	}
 	return !v.AltScreen || v.AllowAltScreenScrollback
+}
+
+// appPaintsFrames reports whether the application is repainting whole frames
+// rather than streaming a transcript. Rows that scroll off such an app are
+// fragments of the previous frame, not history, so capturing them corrupts
+// scrollback. Mouse reporting is the live signal — an app that grabs the mouse
+// is driving the screen itself, and tmux replays an app's mouse modes to its
+// clients, so it survives attach — and AppFullscreen covers a renderer that
+// paints frames without the alt screen.
+func (v *VTerm) appPaintsFrames() bool {
+	return v.AppFullscreen || v.MouseReporting()
 }
 
 // makeScreen creates a blank screen buffer

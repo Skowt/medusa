@@ -64,6 +64,7 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	tabIsolated := tab.Isolated
 	tabAllowUnsandboxed := tab.AllowUnsandboxedCommands
 	tabPermissionMode := tab.PermissionMode
+	tabFullscreen := tab.Fullscreen
 	scriptFullCmd := tab.ScriptFullCmd
 	tab.mu.Unlock()
 
@@ -99,7 +100,7 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	termWidth := tm.Width
 	termHeight := tm.Height
 	assistant := tab.Assistant
-	fullscreen := appPty.AgentType(assistant) == appPty.AgentClaude
+	fullscreen := tabFullscreen && appPty.AgentType(assistant) == appPty.AgentClaude
 
 	return func() tea.Msg {
 		_ = tmux.KillSession(sessionName, tmuxOpts)

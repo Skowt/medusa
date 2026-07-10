@@ -206,6 +206,7 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 					Isolated:                 a.config.UI.LastIsolated,
 					AllowUnsandboxedCommands: a.config.UI.LastAllowUnsandboxedCommands,
 					PermissionMode:           defaultPermissionMode(a.config.UI.LastPermissionMode),
+					Fullscreen:               a.config.UI.LastFullscreen,
 				}
 			}
 		}

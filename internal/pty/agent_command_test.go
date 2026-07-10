@@ -80,8 +80,12 @@ func TestBuildAgentCommandFullscreenEnvVar(t *testing.T) {
 	if !strings.Contains(resume, "CLAUDE_CODE_NO_FLICKER=1") || !strings.Contains(resume, "--resume 'id'") {
 		t.Errorf("fullscreen must apply on resume too: %s", resume)
 	}
+	// A default-mode tab must say 0 rather than leave the var out: Claude's /tui
+	// command persists "tui" in the profile's settings.json, and that setting
+	// wins when the env var is absent — so an omitted var launches fullscreen
+	// for anyone whose profile has ever run /tui fullscreen.
 	off := buildAgentCommand(AgentClaude, "claude", "s", "/cfg", AgentOptions{ClaudeSessionID: "id", Fullscreen: false})
-	if strings.Contains(off, "CLAUDE_CODE_NO_FLICKER") {
-		t.Errorf("non-fullscreen launch must not set the env var: %s", off)
+	if !strings.Contains(off, "CLAUDE_CODE_NO_FLICKER=0") {
+		t.Errorf("default-mode launch must set CLAUDE_CODE_NO_FLICKER=0 to override a persisted tui setting: %s", off)
 	}
 }

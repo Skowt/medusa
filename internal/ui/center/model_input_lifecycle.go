@@ -17,7 +17,7 @@ import (
 
 // updateLaunchAgent handles messages.LaunchAgent.
 func (m *Model) updateLaunchAgent(msg messages.LaunchAgent) (*Model, tea.Cmd) {
-	return m, m.createAgentTab(msg.Assistant, msg.Workspace, msg.Isolated, msg.AllowUnsandboxedCommands, msg.PermissionMode)
+	return m, m.createAgentTab(msg.Assistant, msg.Workspace, msg.Isolated, msg.AllowUnsandboxedCommands, msg.PermissionMode, msg.Fullscreen)
 }
 
 // updateLaunchScript handles messages.LaunchScript.
@@ -55,10 +55,11 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 		createdTerminal = true
 	}
 	if tab.Terminal != nil {
-		// Alt-screen apps (fullscreen Claude, vim, less) own their
-		// scrollback; capturing their viewport scroll-offs would fill
-		// medusa's scrollback with frame fragments no real terminal keeps.
-		tab.Terminal.AllowAltScreenScrollback = false
+		// The tmux client this vterm reads from enters the alt screen at attach
+		// whatever the agent does, so scrollback must not be gated on AltScreen.
+		// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
+		tab.Terminal.AllowAltScreenScrollback = true
+		tab.Terminal.AppFullscreen = msg.Fullscreen
 		if createdTerminal {
 			tab.Terminal.PrependScrollback(msg.ScrollbackCapture)
 		}
@@ -205,6 +206,7 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 	tabIsolated := tab.Isolated
 	tabAllowUnsandboxed := tab.AllowUnsandboxedCommands
 	tabPermissionMode := tab.PermissionMode
+	tabFullscreen := tab.Fullscreen
 	tab.autoRestartAttempt = msg.Attempt
 	tab.mu.Unlock()
 
@@ -233,7 +235,7 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 	termHeight := tm.Height
 	assistant := tab.Assistant
 	attempt := msg.Attempt
-	fullscreen := appPty.AgentType(assistant) == appPty.AgentClaude
+	fullscreen := tabFullscreen && appPty.AgentType(assistant) == appPty.AgentClaude
 
 	logging.Info("Auto-restart attempt %d/%d for tab %s", attempt, tabAutoRestartMax, tabID)
 

@@ -294,8 +294,9 @@ func (a *App) handleShowDeleteWorkspaceDialog(msg messages.ShowDeleteWorkspaceDi
 }
 
 // handleShowCustomizeTabDialog shows the customize tab dialog: a Sandbox
-// checkbox with an "Allow unsandboxed commands" sub-checkbox, plus a
-// "Starting Mode" select that wires through to claude --permission-mode.
+// checkbox with an "Allow unsandboxed commands" sub-checkbox, a "Fullscreen
+// TUI" checkbox, plus a "Starting Mode" select that wires through to
+// claude --permission-mode.
 func (a *App) handleShowCustomizeTabDialog() {
 	if a.activeWorkspace == nil {
 		return
@@ -309,6 +310,8 @@ func (a *App) handleShowCustomizeTabDialog() {
 	a.dialog.SetCheckbox2("Allow unsandboxed commands", a.config.UI.LastAllowUnsandboxedCommands)
 	a.dialog.SetCheckboxDescription(2, "Allows Claude to try run blocked commands outside of the sandbox, using the user's allowed permissions. Do not use in 'Bypass Permissions' mode.")
 	a.dialog.SetCheckbox2RequiresFirst(true)
+	a.dialog.SetCheckbox3("Fullscreen TUI", a.config.UI.LastFullscreen)
+	a.dialog.SetCheckboxDescription(3, "Runs Claude in its fullscreen renderer and forwards the mouse to Claude. Requires Claude Code v2.1.89+.")
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()

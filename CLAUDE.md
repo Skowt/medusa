@@ -69,15 +69,56 @@ PTY readers run as long-lived goroutines. They capture the workspace ID at start
 
 Workspace rename: do NOT restart PTY readers — the redirect map handles routing and restarting races with the blocked read goroutine.
 
-### Fullscreen TUI default
+### Fullscreen TUI mode
 
-New and relaunched Claude agents run in Claude's fullscreen renderer
-(`CLAUDE_CODE_NO_FLICKER=1`), and their tmux session is set to `mouse on` so
-mouse events reach Claude. medusa forwards wheel/click/drag/release to the PTY
-for those tabs instead of scrolling its own vterm; medusa's vterm scroll/select
-remains only for pre-existing classic sessions until they are restarted.
-Requires **Claude Code v2.1.89+** — older versions ignore the env var and mouse
-behavior degrades (there is no kill switch).
+**On by default**, opt-out. The "Fullscreen TUI" checkbox in the New Claude Tab
+dialog sets `config.UI.LastFullscreen` (persisted to `~/.medusa/config.json` as
+`last_fullscreen`), which rides on `messages.LaunchAgent.Fullscreen` →
+`pty.AgentOptions.Fullscreen` → `CLAUDE_CODE_NO_FLICKER` plus the
+`@medusa_fullscreen` tmux tag and `mouse on`.
+
+**`CLAUDE_CODE_NO_FLICKER` must always be set explicitly — `=1` on, `=0` off —
+never omitted.** Claude's `/tui` command persists the user's choice as `"tui"`
+in `settings.json`, and medusa launches agents with `CLAUDE_CONFIG_DIR` pointing
+at the *profile* dir, so that persisted setting lives in
+`~/.medusa/profiles/<name>/settings.json` and wins whenever the env var is
+absent. Omitting the var for an unchecked tab therefore still launched
+fullscreen for any profile where a session had ever run `/tui fullscreen` — the
+checkbox could turn fullscreen on but not off (`buildAgentCommand` in
+`internal/pty/agent.go`).
+
+The checkbox is a sticky "last used" value: it defaults to on when
+`last_fullscreen` is absent, and a stored value (including `false`) wins
+thereafter.
+
+Fullscreen is per-tab state, not a property of the agent type: it is persisted
+in `data.TabInfo.Fullscreen` and every restore/reattach/restart path must read
+`tab.Fullscreen` rather than re-deriving it from `assistant == claude`.
+
+For fullscreen tabs medusa forwards wheel/click/drag/release to the PTY instead
+of scrolling its own vterm, so vterm scroll/select is unavailable there. Requires
+**Claude Code v2.1.89+** — older versions ignore the env var and mouse behavior
+degrades, so leave the checkbox off on those.
+
+**Never use `vterm.AltScreen` to decide what the agent is doing.** A center
+tab's vterm reads from a `tmux attach` client, and a tmux client enters the
+alternate screen at attach no matter what runs in the pane — so `AltScreen` is
+true for *every* tab and carries no information about the agent. (Fullscreen
+Claude does not even enter the pane's alt screen; it repaints in place, so
+tmux's own `#{alternate_on}` is 0 for it too.) The signal that tracks the agent
+is **mouse reporting**: tmux replays an app's mouse modes to its clients, so it
+survives attach and adoption. `tabAppOwnsScreen` (`model_input_mouse_forward.go`)
+is that predicate — `tab.Fullscreen || Terminal.MouseReporting()` — and it gates
+mouse forwarding, PgUp/PgDn, and scrollback capture alike.
+
+Consequently center vterms set `AllowAltScreenScrollback = true` (the alt screen
+they see is tmux's, not the agent's) and `AppFullscreen` from `tab.Fullscreen`;
+`vterm.appPaintsFrames` suppresses scrollback capture while the agent owns the
+screen, so frame fragments never land in history. Gating scrollback on
+`AltScreen` instead silently disables it for every tab — `ScrollView` then
+clamps to an empty buffer and default-mode tabs cannot scroll at all.
+Regression cover: `internal/e2e/default_scroll_e2e_test.go` (default mode must
+scroll) and `internal/e2e/fullscreen_scroll_e2e_test.go` (fullscreen must not).
 
 ### Activity detection & notifications
 

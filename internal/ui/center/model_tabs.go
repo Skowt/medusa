@@ -89,9 +89,10 @@ func truncateDisplayName(name string) string {
 	return name
 }
 
-// createAgentTab creates a new agent tab with per-tab settings
-func (m *Model) createAgentTab(assistant string, ws *data.Workspace, isolated, allowUnsandboxed bool, permissionMode string) tea.Cmd {
-	fullscreen := appPty.AgentType(assistant) == appPty.AgentClaude
+// createAgentTab creates a new agent tab with per-tab settings. Fullscreen is
+// a Claude-only renderer mode, so it is ignored for other assistants.
+func (m *Model) createAgentTab(assistant string, ws *data.Workspace, isolated, allowUnsandboxed bool, permissionMode string, fullscreen bool) tea.Cmd {
+	fullscreen = fullscreen && appPty.AgentType(assistant) == appPty.AgentClaude
 	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", isolated, allowUnsandboxed, permissionMode, fullscreen)
 }
 
@@ -197,10 +198,11 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 
 	// Create virtual terminal emulator with scrollback
 	term := vterm.New(cols, rows)
-	// Alt-screen apps (fullscreen Claude, vim, less) own their scrollback;
-	// capturing their viewport scroll-offs would fill medusa's scrollback
-	// with frame fragments no real terminal keeps.
-	term.AllowAltScreenScrollback = false
+	// The tmux client this vterm reads from enters the alt screen at attach
+	// whatever the agent does, so scrollback must not be gated on AltScreen.
+	// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
+	term.AllowAltScreenScrollback = true
+	term.AppFullscreen = msg.Fullscreen
 	term.PrependScrollback(msg.ScrollbackCapture)
 
 	// Create tab with unique ID (pre-generated if provided)

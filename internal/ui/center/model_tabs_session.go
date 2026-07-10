@@ -386,10 +386,11 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		displayName = "Terminal"
 	}
 	term := vterm.New(termWidth, termHeight)
-	// Alt-screen apps (fullscreen Claude, vim, less) own their scrollback;
-	// capturing their viewport scroll-offs would fill medusa's scrollback
-	// with frame fragments no real terminal keeps.
-	term.AllowAltScreenScrollback = false
+	// The tmux client this vterm reads from enters the alt screen at attach
+	// whatever the agent does, so scrollback must not be gated on AltScreen.
+	// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
+	term.AllowAltScreenScrollback = true
+	term.AppFullscreen = info.Fullscreen
 	tab := &Tab{
 		ID:                       generateTabID(),
 		Name:                     displayName,

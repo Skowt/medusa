@@ -19,6 +19,7 @@ type UISettings struct {
 	LastIsolated                 bool   // Last state of "run isolated" checkbox for new workspaces
 	LastAllowUnsandboxedCommands bool   // Last state of "allow unsandboxed commands" checkbox
 	LastPermissionMode           string // Last selected starting mode (default "auto")
+	LastFullscreen               bool   // Last state of "Fullscreen TUI" checkbox (default on)
 	Theme                        string // Theme ID, defaults to "gruvbox"
 	TmuxServer                   string
 	TmuxConfigPath               string
@@ -39,6 +40,7 @@ func defaultUISettings() UISettings {
 		GlobalPermissions:  true,
 		AutoAddPermissions: false,
 		LastPermissionMode: "auto",
+		LastFullscreen:     true,
 		Theme:              "gruvbox",
 		TmuxServer:         "",
 		TmuxConfigPath:     "",
@@ -71,6 +73,7 @@ func loadUISettings(path string) UISettings {
 			LastSkipPermissions          *bool           `json:"last_skip_permissions"` // legacy → coalesced into LastPermissionMode
 			LastAllowUnsandboxedCommands *bool           `json:"last_allow_unsandboxed_commands"`
 			LastPermissionMode           *string         `json:"last_permission_mode"`
+			LastFullscreen               *bool           `json:"last_fullscreen"`
 			Theme                        *string         `json:"theme"`
 			TmuxServer                   *string         `json:"tmux_server"`
 			TmuxConfigPath               *string         `json:"tmux_config"`
@@ -120,6 +123,9 @@ func loadUISettings(path string) UISettings {
 	} else if raw.UI.LastSkipPermissions != nil && *raw.UI.LastSkipPermissions {
 		// Legacy: skip_permissions=true mapped to bypassPermissions.
 		settings.LastPermissionMode = "bypassPermissions"
+	}
+	if raw.UI.LastFullscreen != nil {
+		settings.LastFullscreen = *raw.UI.LastFullscreen
 	}
 	if raw.UI.Theme != nil {
 		settings.Theme = *raw.UI.Theme
@@ -178,6 +184,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["last_isolated"] = settings.LastIsolated
 	ui["last_allow_unsandboxed_commands"] = settings.LastAllowUnsandboxedCommands
 	ui["last_permission_mode"] = settings.LastPermissionMode
+	ui["last_fullscreen"] = settings.LastFullscreen
 	ui["theme"] = settings.Theme
 	ui["tmux_server"] = settings.TmuxServer
 	ui["tmux_config"] = settings.TmuxConfigPath

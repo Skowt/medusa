@@ -57,6 +57,46 @@ func TestSaveLoadUISettingsCollapsedGroups(t *testing.T) {
 	}
 }
 
+func TestUISettingsFullscreenDefaultsOn(t *testing.T) {
+	if !defaultUISettings().LastFullscreen {
+		t.Error("LastFullscreen should default to on")
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if !loadUISettings(path).LastFullscreen {
+		t.Error("LastFullscreen should default to on when missing from config")
+	}
+}
+
+// Unticking the box must stick: a stored false is a user decision, not the
+// absence of one.
+func TestUISettingsFullscreenRespectsStoredFalse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	in := defaultUISettings()
+	in.LastFullscreen = false // user unticks the box; the dialog saves immediately
+	if err := saveUISettings(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	if loadUISettings(path).LastFullscreen {
+		t.Error("a stored false must survive a reload")
+	}
+}
+
+func TestUISettingsFullscreenRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	in := defaultUISettings()
+	in.LastFullscreen = true
+	if err := saveUISettings(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	if !loadUISettings(path).LastFullscreen {
+		t.Error("LastFullscreen should persist true value")
+	}
+}
+
 func TestUISettingsIDERoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 

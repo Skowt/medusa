@@ -179,9 +179,11 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			isolated := result.CheckboxValue
 			allowUnsandboxed := result.Checkbox2Value
 			permMode := defaultPermissionMode(result.SelectValue)
+			fullscreen := result.Checkbox3Value
 			a.config.UI.LastIsolated = isolated
 			a.config.UI.LastAllowUnsandboxedCommands = allowUnsandboxed
 			a.config.UI.LastPermissionMode = permMode
+			a.config.UI.LastFullscreen = fullscreen
 			_ = a.config.SaveUISettings()
 			ws := a.activeWorkspace
 			return func() tea.Msg {
@@ -191,6 +193,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 					Isolated:                 isolated,
 					AllowUnsandboxedCommands: allowUnsandboxed,
 					PermissionMode:           permMode,
+					Fullscreen:               fullscreen,
 				}
 			}
 		}

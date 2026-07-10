@@ -43,11 +43,17 @@ func encodeSGRMouse(code, col1, row1 int, release bool) []byte {
 	return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", code, col1, row1, final))
 }
 
-// tabAppOwnsMouse reports whether the tab's application should receive mouse
-// input: either a fullscreen-launched agent, or any app that is currently in
-// the alt screen with mouse reporting enabled (e.g. Claude Code switched to
-// fullscreen at runtime via /tui fullscreen in a classic-launched session).
-func tabAppOwnsMouse(tab *Tab) bool {
+// tabAppOwnsScreen reports whether the tab's application is driving the screen
+// itself — a fullscreen-launched agent, or one that has grabbed the mouse at
+// runtime (Claude Code's /tui fullscreen in a default-launched session).
+//
+// It deliberately does not consult Terminal.AltScreen: the vterm is fed by a
+// `tmux attach` client, and a tmux client enters the alternate screen at attach
+// no matter what the pane's app does, so AltScreen is true for every tab and
+// says nothing about the agent. Mouse reporting is the signal that tracks the
+// app — tmux replays an app's mouse modes to its clients, so it survives attach
+// and adoption.
+func tabAppOwnsScreen(tab *Tab) bool {
 	if tab == nil {
 		return false
 	}
@@ -56,22 +62,7 @@ func tabAppOwnsMouse(tab *Tab) bool {
 	if tab.Fullscreen {
 		return true
 	}
-	return tab.Terminal != nil && tab.Terminal.AltScreen && tab.Terminal.MouseReporting()
-}
-
-// tabAppOwnsScrollKeys reports whether scroll keys (PgUp/PgDown) belong to the
-// tab's application rather than medusa's scrollback view. Any alt-screen app
-// owns its paging keys, mouse reporting or not (vim, less, fullscreen Claude).
-func tabAppOwnsScrollKeys(tab *Tab) bool {
-	if tab == nil {
-		return false
-	}
-	tab.mu.Lock()
-	defer tab.mu.Unlock()
-	if tab.Fullscreen {
-		return true
-	}
-	return tab.Terminal != nil && tab.Terminal.AltScreen
+	return tab.Terminal != nil && tab.Terminal.MouseReporting()
 }
 
 // activeTabForwardsMouse reports whether mouse input for the active tab should
@@ -88,7 +79,7 @@ func (m *Model) activeTabForwardsMouse() (*Tab, bool) {
 		return nil, false
 	}
 	tab := tabs[idx]
-	if !tabAppOwnsMouse(tab) {
+	if !tabAppOwnsScreen(tab) {
 		return nil, false
 	}
 	if m.getDiffViewer(tab) != nil {

@@ -165,10 +165,9 @@ func (d *Dialog) buildInput(b *LineBuilder) {
 		}
 		d.appendCheckbox(b, dialogIDCheckbox2, d.checkbox2Label, d.checkbox2Value, d.checkbox2Focused, d.checkbox2Disabled(), d.checkbox2Desc)
 	}
+	// Checkbox 3 is never nested under 1/2, so it always gets a separating blank.
 	if d.checkbox3Label != "" {
-		if d.checkboxLabel == "" && d.checkbox2Label == "" {
-			b.Blank()
-		}
+		b.Blank()
 		d.appendCheckbox(b, dialogIDCheckbox3, d.checkbox3Label, d.checkbox3Value, d.checkbox3Focused, false, d.checkbox3Desc)
 	}
 	b.Blank()
