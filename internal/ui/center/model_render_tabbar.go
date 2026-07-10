@@ -5,256 +5,345 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
-// renderTabBar renders the tab bar with activity indicators
+// renderTabBar renders the tab bar: pinned Info tab, a horizontally
+// scrollable strip of agent tabs, a pinned "+ New Agent" button, and the
+// workspace note right-aligned at the content edge.
 func (m *Model) renderTabBar() string {
 	m.tabHits = m.tabHits[:0]
 	currentTabs := m.getTabs()
 	activeIdx := m.getActiveTabIdx()
+	if m.infoTabActive {
+		activeIdx = -1
+	}
+	width := m.contentWidth()
 
-	var renderedTabs []string
+	// --- Zone 1: pinned Info tab ---
+	infoRendered := m.renderInfoTab()
+	infoWidth := lipgloss.Width(infoRendered)
+
+	// --- Zone 3: pinned "+ New Agent" (omitted for archived workspaces) ---
+	var plusRendered string
+	if m.workspace == nil || !m.workspace.Archived() {
+		plusRendered = m.styles.TabPlus.Render("+ New Agent")
+	}
+	plusWidth := lipgloss.Width(plusRendered)
+
+	// Measure each agent tab before allocating the note: phase 2 of the note
+	// allocation below needs to know how much the viewport needs, and
+	// measurement depends only on activeIdx, not on how much room the note
+	// leaves.
+	widths := make([]int, len(currentTabs))
+	rendered := make([]string, len(currentTabs))
+	for i, tab := range currentTabs {
+		rendered[i] = m.renderAgentTab(i, tab, activeIdx)
+		widths[i] = lipgloss.Width(rendered[i])
+	}
+
+	// --- Zone 4: note reservation, phase 1 (its guaranteed minimum) ---
+	var note string
+	if m.workspace != nil {
+		note = m.workspace.Note
+	}
+	noteFull := noteWidth(note, width) // one-third-capped desired width
+	gap := 0
+	if noteFull > 0 {
+		gap = 1 // one cell between "+ New Agent" and the note
+	}
+
+	// A set note always keeps at least this much, so it is never fully hidden.
+	nWidth := noteFull
+	if nWidth > minNoteWidth {
+		nWidth = minNoteWidth
+	}
+
+	// noteWidth caps against the full content width and cannot know how many
+	// cells the pinned chrome already claimed. Clamp into what the chrome left,
+	// so the assembled line never exceeds the pane and tears the border.
+	room := width - infoWidth - plusWidth - gap
+	if room < 0 {
+		room = 0
+	}
+	if nWidth > room {
+		nWidth = room
+	}
+	if nWidth == 0 {
+		gap = 0
+	}
+
+	// --- Zone 2: the viewport gets what is left after the note's minimum ---
+	avail := width - infoWidth - plusWidth - nWidth - gap
+	if avail < 0 {
+		avail = 0
+	}
+
+	// Pull the viewport to the active tab only when the active tab changed.
+	// renderTabBar runs on every View(), so an unconditional pull would undo
+	// a manual arrow scroll on the very next repaint.
+	//
+	// Identity, not index: closing the active tab slides a different tab into
+	// the same index, and that must still pull.
+	var activeID TabID
+	if activeIdx >= 0 && activeIdx < len(currentTabs) {
+		activeID = currentTabs[activeIdx].ID
+	}
+	pullTarget := activeIdx
+	if activeID == m.lastRenderedActiveID {
+		pullTarget = -1
+	}
+	// Only record a real agent tab. While the Info tab is active, activeIdx is
+	// -1 and activeID is "", and storing that would make the return to the
+	// SAME agent tab look like a change — force-pulling the viewport and
+	// discarding the user's manual scroll.
+	if activeID != "" {
+		m.lastRenderedActiveID = activeID
+	}
+
+	// --- Zone 4, phase 1b: the note yields to the first agent tab. ---
+	// Chrome (21) + gap (1) + the note's 8-cell floor + one tab (12) + its
+	// arrow (2) needs 44 cells. Below that the floor and the first tab cannot
+	// both fit, and the tabs win — but the note never disappears, so the user
+	// still knows one is set. Hence a floor of one cell, which renders as "…".
+	//
+	// Shrink only when it actually buys a visible tab: at contentWidth 36 the
+	// widest viewport any visible note allows is 13 cells, one short of the 14
+	// a tab needs, so shrinking there would cost legibility and gain nothing.
+	if nWidth > 1 && len(widths) > 0 && m.visibleTabCount(widths, avail, pullTarget) == 0 {
+		for w := nWidth - 1; w >= 1; w-- {
+			a := width - infoWidth - plusWidth - w - gap
+			if a < 0 {
+				a = 0
+			}
+			if m.visibleTabCount(widths, a, pullTarget) > 0 {
+				nWidth, avail = w, a
+				break
+			}
+		}
+	}
+
+	// --- Zone 4, phase 2: the note grows into whatever the tabs do not need.
+	// Bounded by (avail - tabsNeed), so growing can never push the tabs into
+	// needing scroll arrows. The agent tabs are never sacrificed for the note.
+	tabsNeed := 0
+	for _, w := range widths {
+		tabsNeed += w
+	}
+	if spare := avail - tabsNeed; spare > 0 && nWidth < noteFull {
+		grow := noteFull - nWidth
+		if grow > spare {
+			grow = spare
+		}
+		nWidth += grow
+		avail -= grow
+	}
+
+	vp := visibleTabs(widths, avail, m.tabScrollOffset, pullTarget)
+	m.tabScrollOffset = vp.start
+
+	// fitRun budgets arrowWidth per arrow out of avail, so the visible tabs
+	// plus their arrows always fit whenever the arrows themselves fit. When
+	// avail is smaller than the arrows alone, drawing them would overflow the
+	// pane — and the affordance is useless at that width anyway.
+	arrowCells := 0
+	if vp.showPrev {
+		arrowCells += arrowWidth
+	}
+	if vp.showNext {
+		arrowCells += arrowWidth
+	}
+	if arrowCells > avail {
+		vp.showPrev = false
+		vp.showNext = false
+	}
+
+	// --- Assemble left-to-right, tracking hit regions against x. ---
+	var segments []string
 	x := 0
 
-	// Info tab (virtual, always first)
-	{
-		infoLabel := "Info"
-		infoIndicator := common.Icons.Running + " "
-		var infoRendered string
-		if m.infoTabActive {
-			bg := common.ColorSurface2
-			pad := lipgloss.NewStyle().Background(bg).Render(" ")
-			indicatorPart := lipgloss.NewStyle().Foreground(common.ColorInfo).Background(bg).Render(infoIndicator)
-			namePart := lipgloss.NewStyle().Foreground(common.ColorForeground).Background(bg).Render(infoLabel)
-			infoRendered = pad + indicatorPart + namePart + pad
-		} else {
-			indicatorStyled := lipgloss.NewStyle().Foreground(common.ColorInfo).Render(infoIndicator)
-			infoRendered = m.styles.Tab.Render(indicatorStyled + m.styles.Muted.Render(infoLabel))
-		}
-		infoWidth := lipgloss.Width(infoRendered)
-		if infoWidth > 0 {
-			m.tabHits = append(m.tabHits, tabHit{
-				kind:  tabHitInfo,
-				index: -1,
-				region: common.HitRegion{
-					X:      x,
-					Y:      0,
-					Width:  infoWidth,
-					Height: 1,
-				},
-			})
-		}
-		renderedTabs = append(renderedTabs, infoRendered)
-		x += infoWidth
+	m.addHit(tabHitInfo, -1, x, infoWidth)
+	segments = append(segments, infoRendered)
+	x += infoWidth
+
+	if vp.showPrev {
+		arrow := m.styles.Muted.Render("‹ ")
+		m.addHit(tabHitPrev, -1, x, arrowWidth)
+		segments = append(segments, arrow)
+		x += arrowWidth
 	}
 
-	for i, tab := range currentTabs {
-		name := tab.Name
-		if name == "" {
-			name = tab.Assistant
-		}
-
-		// Read tab state under lock
-		tab.mu.Lock()
-		tabDisconnected := tab.Detached || !tab.Running
-		tab.mu.Unlock()
-
-		// Brand-color indicator for agent and script tabs
-		// (running = solid dot, idle = ring).
-		var indicator string
-		var tabActive bool
-		isChat := m.isChatTab(tab)
-		isScript := tab.Assistant == "script"
-		if isChat || isScript {
-			if tabDisconnected {
-				indicator = common.Icons.Idle + " "
-			} else {
-				indicator = common.Icons.Running + " "
-			}
-			if isChat {
-				tabActive = m.IsTabActive(tab)
-			}
-		}
-
-		agentStyle := m.styles.AgentClaude
-		switch {
-		case isScript:
-			agentStyle = m.styles.AgentScript
-		case tab.Assistant != "claude":
-			agentStyle = m.styles.AgentTerm
-		}
-
-		// Build tab content with close affordance
-		closeLabel := m.styles.Muted.Render("×")
-		var rendered string
-		var style lipgloss.Style
-		if i == activeIdx && !m.infoTabActive {
-			// Active tab - each part styled with same background
-			bg := common.ColorSurface2
-			pad := lipgloss.NewStyle().Background(bg).Render(" ")
-			indicatorFg := agentStyle.GetForeground()
-			if tabDisconnected {
-				indicatorFg = common.ColorMuted
-			}
-			indicatorPart := lipgloss.NewStyle().Foreground(indicatorFg).Background(bg).Render(indicator)
-			nameStyle := lipgloss.NewStyle().Foreground(common.ColorForeground).Background(bg)
-			if tabDisconnected {
-				nameStyle = nameStyle.Foreground(common.ColorMuted)
-			}
-			namePart := nameStyle.Render(name)
-			space := lipgloss.NewStyle().Background(bg).Render(" ")
-			closePart := lipgloss.NewStyle().Foreground(common.ColorMuted).Background(bg).Render("×")
-			rendered = pad + indicatorPart + namePart + space + closePart + pad
-			style = m.styles.ActiveTab
-		} else {
-			// Inactive tab
-			var nameStyled string
-			if tabDisconnected {
-				nameStyled = m.styles.Muted.Render(name)
-			} else if tabActive {
-				nameStyled = lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true).Render(name)
-			} else {
-				nameStyled = m.styles.Muted.Render(name)
-			}
-			var indicatorStyled string
-			if tabDisconnected {
-				indicatorStyled = m.styles.Muted.Render(indicator)
-			} else {
-				indicatorStyled = agentStyle.Render(indicator)
-			}
-			content := indicatorStyled + nameStyled + " " + closeLabel
-			rendered = m.styles.Tab.Render(content)
-			style = m.styles.Tab
-		}
-		renderedWidth := lipgloss.Width(rendered)
-		if renderedWidth > 0 {
-			m.tabHits = append(m.tabHits, tabHit{
-				kind:  tabHitTab,
-				index: i,
-				region: common.HitRegion{
-					X:      x,
-					Y:      0,
-					Width:  renderedWidth,
-					Height: 1,
-				},
-			})
-
-			frameX, _ := style.GetFrameSize()
-			leftFrame := frameX / 2
-
-			// Close button: anchor from the right edge of the rendered tab.
-			// The close label (×) plus right padding occupies the rightmost cells.
-			closeWidth := lipgloss.Width(closeLabel) + 1 // +1 for pad/space before ×
-			closeX := x + renderedWidth - leftFrame - closeWidth
-			if closeX > x {
-				m.tabHits = append(m.tabHits, tabHit{
-					kind:  tabHitClose,
-					index: i,
-					region: common.HitRegion{
-						X:      closeX,
-						Y:      0,
-						Width:  renderedWidth - (closeX - x),
-						Height: 1,
-					},
-				})
-			}
-		}
-		x += renderedWidth
-		renderedTabs = append(renderedTabs, rendered)
+	for i := vp.start; i < vp.end; i++ {
+		m.addHit(tabHitTab, i, x, widths[i])
+		m.addCloseHit(i, x, widths[i])
+		segments = append(segments, rendered[i])
+		x += widths[i]
 	}
 
-	// Add control button (hidden for archived workspaces). Clicking always
-	// opens the customize dialog so settings can be chosen per tab.
-	if m.workspace == nil || !m.workspace.Archived() {
-		btn := m.styles.TabPlus.Render("+ New Agent")
-		btnWidth := lipgloss.Width(btn)
-		if btnWidth > 0 {
-			m.tabHits = append(m.tabHits, tabHit{
-				kind:  tabHitPlus,
-				index: -1,
-				region: common.HitRegion{
-					X:      x,
-					Y:      0,
-					Width:  btnWidth,
-					Height: 1,
-				},
-			})
-		}
-		renderedTabs = append(renderedTabs, btn)
+	if vp.showNext {
+		arrow := m.styles.Muted.Render("› ")
+		m.addHit(tabHitNext, -1, x, arrowWidth)
+		segments = append(segments, arrow)
+		x += arrowWidth
 	}
 
-	// Join tabs horizontally at the bottom so borders align
-	tabLine := lipgloss.JoinHorizontal(lipgloss.Bottom, renderedTabs...)
+	if plusWidth > 0 {
+		m.addHit(tabHitPlus, -1, x, plusWidth)
+		segments = append(segments, plusRendered)
+		x += plusWidth
+	}
 
-	// Add a subtle separator line below the tabs
+	// --- Right-align the note by padding out to the content edge. ---
+	if nWidth > 0 {
+		pad := width - x - nWidth
+		if pad < 0 {
+			pad = 0
+		}
+		segments = append(segments, strings.Repeat(" ", pad))
+		x += pad
+
+		noteStyle := lipgloss.NewStyle().Foreground(common.ColorPrimary)
+		truncated := ansi.Truncate(note, nWidth, "…")
+		m.addHit(tabHitNote, -1, x, nWidth)
+		segments = append(segments, noteStyle.Render(truncated))
+	}
+
+	tabLine := lipgloss.JoinHorizontal(lipgloss.Bottom, segments...)
+
 	separatorStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
-	separatorLine := separatorStyle.Render(strings.Repeat("─", m.contentWidth()))
+	separatorLine := separatorStyle.Render(strings.Repeat("─", width))
 
 	return tabLine + "\n" + separatorLine
 }
 
+// visibleTabCount reports how many whole agent tabs fit in avail cells.
+func (m *Model) visibleTabCount(widths []int, avail, pullTarget int) int {
+	vp := visibleTabs(widths, avail, m.tabScrollOffset, pullTarget)
+	return vp.end - vp.start
+}
+
+// addHit appends a single-row hit region at x of the given width.
+func (m *Model) addHit(kind tabHitKind, index, x, w int) {
+	if w <= 0 {
+		return
+	}
+	m.tabHits = append(m.tabHits, tabHit{
+		kind:   kind,
+		index:  index,
+		region: common.HitRegion{X: x, Y: 0, Width: w, Height: 1},
+	})
+}
+
+// addCloseHit registers the × region, anchored from the tab's right edge.
+func (m *Model) addCloseHit(i, x, renderedWidth int) {
+	style := m.styles.Tab
+	if i == m.getActiveTabIdx() && !m.infoTabActive {
+		style = m.styles.ActiveTab
+	}
+	frameX, _ := style.GetFrameSize()
+	leftFrame := frameX / 2
+
+	closeWidth := lipgloss.Width(m.styles.Muted.Render("×")) + 1
+	closeX := x + renderedWidth - leftFrame - closeWidth
+	if closeX > x {
+		m.tabHits = append(m.tabHits, tabHit{
+			kind:   tabHitClose,
+			index:  i,
+			region: common.HitRegion{X: closeX, Y: 0, Width: renderedWidth - (closeX - x), Height: 1},
+		})
+	}
+}
+
 func (m *Model) handleTabBarClick(msg tea.MouseClickMsg) tea.Cmd {
-	// Tab bar is below the info bar (if present).
-	// Layout: border (Y=0) → info bar (Y=1..infoBarHeight) → tab bar
-	// Account for border (1) and padding (1) on the left side when converting X coordinates
 	const (
 		borderTop   = 1
 		borderLeft  = 1
 		paddingLeft = 1
 	)
 
-	// Tab bar Y position depends on info bar height
-	infoBarHeight := m.infoBarHeight()
-	tabBarY := borderTop + infoBarHeight
-
+	tabBarY := borderTop + m.infoBarHeight()
 	if msg.Y != tabBarY {
 		return nil
 	}
-	// Convert screen X to content X (subtract pane offset, border, and padding)
 	localX := msg.X - m.offsetX - borderLeft - paddingLeft
 	if localX < 0 {
 		return nil
 	}
-	// All tab hits are at Y=0 relative to the tab bar
-	localY := 0
-	// Check close buttons (they overlap with tab regions)
+	return m.dispatchTabHit(localX)
+}
+
+// scrollTabs moves the tab strip by delta tabs, clamped to the tab count.
+func (m *Model) scrollTabs(delta int) {
+	n := len(m.getTabs())
+	if n == 0 {
+		m.tabScrollOffset = 0
+		return
+	}
+	off := m.tabScrollOffset + delta
+	if off < 0 {
+		off = 0
+	}
+	if off > n-1 {
+		off = n - 1
+	}
+	m.tabScrollOffset = off
+}
+
+// dispatchTabHit resolves a tab-bar-local X coordinate to an action.
+// Close buttons are checked first because they overlap tab regions.
+func (m *Model) dispatchTabHit(localX int) tea.Cmd {
+	const localY = 0
+
 	for _, hit := range m.tabHits {
 		if hit.kind == tabHitClose && hit.region.Contains(localX, localY) {
 			idx := hit.index
-			return func() tea.Msg {
-				return messages.CloseTabAt{Index: idx}
-			}
+			return func() tea.Msg { return messages.CloseTabAt{Index: idx} }
 		}
 	}
-	// Then check tabs and other buttons
+
 	for _, hit := range m.tabHits {
-		if hit.region.Contains(localX, localY) {
-			switch hit.kind {
-			case tabHitPlus:
-				if m.workspace != nil && m.workspace.Archived() {
-					ws := m.workspace
-					return func() tea.Msg {
-						return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
-					}
-				}
-				return func() tea.Msg { return messages.ShowCustomizeTabDialog{} }
-			case tabHitInfo:
-				m.infoTabActive = true
+		if !hit.region.Contains(localX, localY) {
+			continue
+		}
+		switch hit.kind {
+		case tabHitPrev:
+			m.scrollTabs(-1)
+			return nil
+		case tabHitNext:
+			m.scrollTabs(1)
+			return nil
+		case tabHitNote:
+			ws := m.workspace
+			if ws == nil {
 				return nil
-			case tabHitTab:
-				if m.workspace != nil && m.workspace.Archived() {
-					ws := m.workspace
-					return func() tea.Msg {
-						return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
-					}
-				}
-				m.infoTabActive = false
-				m.setActiveTabIdx(hit.index)
-				return m.tabSelectionChangedCmd()
 			}
+			return func() tea.Msg {
+				return messages.ShowSetWorkspaceNoteDialog{Workspace: ws}
+			}
+		case tabHitPlus:
+			if m.workspace != nil && m.workspace.Archived() {
+				ws := m.workspace
+				return func() tea.Msg {
+					return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
+				}
+			}
+			return func() tea.Msg { return messages.ShowCustomizeTabDialog{} }
+		case tabHitInfo:
+			m.infoTabActive = true
+			return nil
+		case tabHitTab:
+			if m.workspace != nil && m.workspace.Archived() {
+				ws := m.workspace
+				return func() tea.Msg {
+					return messages.ShowArchivedWorkspaceDialog{Workspace: ws}
+				}
+			}
+			m.infoTabActive = false
+			m.setActiveTabIdx(hit.index)
+			return m.tabSelectionChangedCmd()
 		}
 	}
 	return nil

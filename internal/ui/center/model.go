@@ -165,6 +165,19 @@ type Model struct {
 	infoContent   string
 	infoCursor    int
 
+	// Tab strip horizontal scroll (index of the leftmost visible agent tab)
+	tabScrollOffset int
+
+	// lastRenderedActiveID is the ID of the active agent tab at the previous
+	// render, or "" when the Info tab is active, there are no tabs, or the
+	// workspace just changed. renderTabBar asks visibleTabs to pull the
+	// viewport to the active tab only when this changes.
+	//
+	// Compared by ID, not index: closing the active tab shifts a different
+	// tab into the same index, and that is a changed active tab. TabID is
+	// documented to survive slice reordering, which is exactly what this needs.
+	lastRenderedActiveID TabID
+
 	// Layout
 	width           int
 	height          int
@@ -218,6 +231,7 @@ const (
 	tabHitInfo
 	tabHitPrev
 	tabHitNext
+	tabHitNote
 )
 
 // actionBarButtonKind identifies which action bar button was clicked

@@ -31,11 +31,12 @@ func (m *Model) Focused() bool {
 }
 
 // SetWorkspace sets the active workspace.
-// If the workspace has a note, stay on the Info tab so the user sees it first.
 func (m *Model) SetWorkspace(ws *data.Workspace) {
 	m.workspace = ws
 	m.infoCursor = 0
-	m.infoTabActive = ws != nil && ws.Note != ""
+	m.infoTabActive = false
+	m.tabScrollOffset = 0
+	m.lastRenderedActiveID = ""
 	// Activating a workspace shows the info bar, which shrinks the terminal
 	// paint height. Reconcile tab sizes so a tab sized under the previous
 	// (info-bar-absent) state isn't painted — and clipped — at the new height.
