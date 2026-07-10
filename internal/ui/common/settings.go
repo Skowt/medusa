@@ -87,6 +87,11 @@ type SettingsDialog struct {
 	currentVersion  string
 	latestVersion   string
 	updateAvailable bool
+	// selfUpdateBlocked is set when medusa's binary lives in a directory the
+	// user cannot write, so an in-place upgrade would fail. The reinstall
+	// command is shown instead of the [Install update] link.
+	selfUpdateBlocked bool
+	reinstallCommand  string
 }
 
 type settingsHitRegion struct {
@@ -126,6 +131,18 @@ func (s *SettingsDialog) SetUpdateInfo(current, latest string, available bool) {
 	s.currentVersion = current
 	s.latestVersion = latest
 	s.updateAvailable = available
+}
+
+// SetSelfUpdateBlocked reports that medusa cannot install over its own binary.
+// command is the reinstall command to show the user.
+func (s *SettingsDialog) SetSelfUpdateBlocked(blocked bool, command string) {
+	s.selfUpdateBlocked = blocked
+	s.reinstallCommand = command
+}
+
+// canInstallUpdate reports whether the [Install update] link should be offered.
+func (s *SettingsDialog) canInstallUpdate() bool {
+	return s.updateAvailable && !s.selfUpdateBlocked
 }
 
 // Update handles input.
@@ -222,7 +239,7 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		return s, openURL(medusaReleasesURL)
 
 	case settingsItemUpgrade:
-		if !s.updateAvailable {
+		if !s.canInstallUpdate() {
 			return s, nil
 		}
 		s.visible = false
@@ -282,8 +299,12 @@ func (s *SettingsDialog) skipDisabledForward() {
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemNotificationSound
 	}
-	// Skip About-update items when no update is available
-	if !s.updateAvailable && (s.focusedItem == settingsItemReleases || s.focusedItem == settingsItemUpgrade) {
+	// Skip [View changes] when no update is available, then [Install update]
+	// when it is absent too — a blocked install keeps the changelog reachable.
+	if !s.updateAvailable && s.focusedItem == settingsItemReleases {
+		s.focusedItem = settingsItemUpgrade
+	}
+	if !s.canInstallUpdate() && s.focusedItem == settingsItemUpgrade {
 		s.focusedItem = settingsItemSave
 	}
 }
@@ -293,8 +314,11 @@ func (s *SettingsDialog) skipDisabledBackward() {
 	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
 		s.focusedItem = settingsItemGlobalPerms
 	}
-	// Skip About-update items when no update is available
-	if !s.updateAvailable && (s.focusedItem == settingsItemReleases || s.focusedItem == settingsItemUpgrade) {
+	// Mirror of skipDisabledForward, walking the About items in reverse.
+	if !s.canInstallUpdate() && s.focusedItem == settingsItemUpgrade {
+		s.focusedItem = settingsItemReleases
+	}
+	if !s.updateAvailable && s.focusedItem == settingsItemReleases {
 		s.focusedItem = settingsItemEditTheme
 	}
 	// Wrap around from before first item to last

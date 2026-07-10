@@ -3,10 +3,13 @@ set -e
 
 # medusa installer script
 # Usage: curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | sh
+#
+# Installs into a directory you already own. Never asks for a password.
+# Override the destination with INSTALL_DIR=/somewhere/else.
 
 REPO="Skowt/medusa"
 BINARY="medusa"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -29,6 +32,61 @@ case "$ARCH" in
     exit 1
     ;;
 esac
+
+# Print the first executable named $1 found on PATH, or return 1.
+# Resolves PATH by hand rather than using `command -v`, which some shells
+# answer from a stale hash table.
+first_on_path() {
+  _name="$1"
+  _saved_ifs="$IFS"
+  IFS=:
+  for _dir in $PATH; do
+    [ -n "$_dir" ] || _dir="."
+    if [ -x "${_dir}/${_name}" ]; then
+      IFS="$_saved_ifs"
+      printf '%s\n' "${_dir}/${_name}"
+      return 0
+    fi
+  done
+  IFS="$_saved_ifs"
+  return 1
+}
+
+# Pick a destination that needs no admin rights:
+#   1. An explicit INSTALL_DIR always wins.
+#   2. Upgrade in place if medusa already sits in a directory we can write.
+#   3. Otherwise ~/.local/bin.
+resolve_install_dir() {
+  if [ -n "${INSTALL_DIR:-}" ]; then
+    printf '%s\n' "$INSTALL_DIR"
+    return 0
+  fi
+
+  if _existing=$(first_on_path "$BINARY"); then
+    _existing_dir=$(dirname "$_existing")
+    if [ -w "$_existing_dir" ]; then
+      printf '%s\n' "$_existing_dir"
+      return 0
+    fi
+  fi
+
+  if [ -z "${HOME:-}" ]; then
+    echo "Error: HOME is not set; re-run with INSTALL_DIR=/path/you/own" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$DEFAULT_INSTALL_DIR"
+}
+
+INSTALL_DIR=$(resolve_install_dir)
+
+if ! mkdir -p "$INSTALL_DIR" 2>/dev/null || [ ! -w "$INSTALL_DIR" ]; then
+  echo "Error: ${INSTALL_DIR} is not writable."
+  echo ""
+  echo "Install somewhere you own instead:"
+  echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | INSTALL_DIR=\"\$HOME/.local/bin\" sh"
+  exit 1
+fi
 
 # Get latest version from GitHub API
 get_latest_version() {
@@ -80,13 +138,12 @@ install_binary() {
   fi
 
   echo "Installing ${NAME} to ${DEST}..."
-  if [ -w "$INSTALL_DIR" ]; then
-    mv "$SRC" "$DEST"
-    chmod +x "$DEST"
-  else
-    sudo mv "$SRC" "$DEST"
-    sudo chmod +x "$DEST"
-  fi
+  chmod +x "$SRC"
+  # A running medusa holds its binary open; replacing the inode beats writing
+  # into it. mv within the same filesystem does that, but TMP_DIR often isn't,
+  # so copy to a sibling of the target and rename.
+  cp "$SRC" "${DEST}.new"
+  mv "${DEST}.new" "$DEST"
 }
 
 install_binary "medusa" required
@@ -96,4 +153,26 @@ install_binary "medusa-hook-emit"
 echo ""
 echo "✓ ${BINARY} ${VERSION} installed successfully!"
 echo ""
+
+# Warn if INSTALL_DIR isn't on PATH, or if an older copy earlier on PATH wins.
+case ":${PATH}:" in
+  *:"${INSTALL_DIR}":*)
+    if _found=$(first_on_path "$BINARY") && [ "$_found" != "${INSTALL_DIR}/${BINARY}" ]; then
+      echo "Warning: ${_found} comes earlier on your PATH and will shadow this install."
+      echo "Remove it, or move ${INSTALL_DIR} ahead of $(dirname "$_found") in PATH."
+      echo ""
+    fi
+    ;;
+  *)
+    echo "Warning: ${INSTALL_DIR} is not on your PATH. Add it:"
+    echo ""
+    case "$(basename "${SHELL:-sh}")" in
+      fish) echo "  fish_add_path ${INSTALL_DIR}" ;;
+      zsh)  echo "  echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.zshrc && exec zsh" ;;
+      *)    echo "  echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.bashrc && exec bash" ;;
+    esac
+    echo ""
+    ;;
+esac
+
 echo "Run '${BINARY}' to get started."

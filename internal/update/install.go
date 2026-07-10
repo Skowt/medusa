@@ -175,8 +175,11 @@ func IsGoInstall() bool {
 	if err != nil {
 		return false
 	}
+	return isGoInstallPath(binPath)
+}
 
-	// Typical go install path: $GOPATH/bin or $HOME/go/bin
+// isGoInstallPath reports whether binPath sits under $GOPATH/bin (or $HOME/go/bin).
+func isGoInstallPath(binPath string) bool {
 	home, _ := os.UserHomeDir()
 	goPath := os.Getenv("GOPATH")
 	if goPath == "" {
@@ -187,23 +190,20 @@ func IsGoInstall() bool {
 	return strings.HasPrefix(binPath, goBin)
 }
 
-// CanWrite checks if we have write permission to the binary path.
+// CanWrite reports whether a new binary can be installed at path.
+//
+// InstallBinary never writes to the target file in place — it stages a sibling
+// and renames over it — so the parent directory's permissions, not the file's,
+// decide whether an upgrade can succeed. A sudo install into a root-owned
+// /usr/local/bin leaves a world-readable binary that looks writable while the
+// staging step would fail, so probing the directory is the only honest check.
 func CanWrite(path string) bool {
-	// Try to open for writing
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
-	if err == nil {
-		_ = f.Close()
-		return true
-	}
-
-	// Check if parent directory is writable (for rename operation)
-	dir := filepath.Dir(path)
-	testFile := filepath.Join(dir, ".medusa-write-test")
-	f, err = os.Create(testFile)
+	f, err := os.CreateTemp(filepath.Dir(path), ".medusa-write-test-*")
 	if err != nil {
 		return false
 	}
+	name := f.Name()
 	_ = f.Close()
-	_ = os.Remove(testFile)
+	_ = os.Remove(name)
 	return true
 }

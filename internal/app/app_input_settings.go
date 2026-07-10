@@ -10,6 +10,7 @@ import (
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/update"
 )
 
 func (a *App) handleShowSettingsDialog() {
@@ -37,6 +38,7 @@ func (a *App) handleShowSettingsDialog() {
 	} else {
 		a.settingsDialog.SetUpdateInfo(a.version, "", false)
 	}
+	a.settingsDialog.SetSelfUpdateBlocked(a.selfUpdate.Blocked(), update.ReinstallCommand)
 
 	a.settingsDialog.Show()
 }

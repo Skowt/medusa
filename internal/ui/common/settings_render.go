@@ -73,9 +73,16 @@ func (s *SettingsDialog) build() *LineBuilder {
 	if s.updateAvailable {
 		b.Append("", muted.Render("Update available → "+s.latestVersion))
 		s.appendLink(b, settingsItemReleases, muted, "[View changes]")
-		s.appendLinkBold(b, settingsItemUpgrade, "[Install update]")
+		if s.canInstallUpdate() {
+			s.appendLinkBold(b, settingsItemUpgrade, "[Install update]")
+		}
 	} else {
 		b.Append("", muted.Render("No new updates"))
+	}
+	if s.selfUpdateBlocked {
+		b.Append("", muted.Render("Cannot update in place — medusa is installed"))
+		b.Append("", muted.Render("somewhere you can't write. Reinstall with:"))
+		b.Append("", muted.Render("  "+s.reinstallCommand))
 	}
 	b.Blank()
 

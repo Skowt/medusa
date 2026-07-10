@@ -97,9 +97,11 @@ func (u *Updater) Upgrade(release *Release) error {
 		return fmt.Errorf("getting current binary path: %w", err)
 	}
 
-	// Check write permission
+	// Check write permission. Don't suggest sudo: users on managed laptops often
+	// can't run it at all, and it's what put the binary somewhere unwritable.
 	if !CanWrite(currentBinary) {
-		return fmt.Errorf("no write permission to %s; try running with sudo", currentBinary)
+		return fmt.Errorf("cannot write to %s; reinstall with: %s",
+			filepath.Dir(currentBinary), ReinstallCommand)
 	}
 
 	// Fetch checksums

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -109,7 +110,8 @@ type App struct {
 	commit           string
 	buildDate        string
 	upgradeRunning   bool
-	updateToastShown bool // guards against re-emitting the update-available toast
+	updateToastShown bool                    // guards against re-emitting the update-available toast
+	selfUpdate       update.SelfUpdateStatus // whether we can install over our own binary
 
 	// Button focus state for welcome/workspace info screens
 	centerBtnFocused bool
@@ -370,6 +372,7 @@ func New(version, commit, date string) (*App, error) {
 		version:             version,
 		commit:              commit,
 		buildDate:           date,
+		selfUpdate:          update.CheckSelfUpdate(),
 		externalMsgs:        make(chan tea.Msg, 4096),
 		externalCritical:    make(chan tea.Msg, 512),
 		ctx:                 ctx,
@@ -381,6 +384,10 @@ func New(version, commit, date string) (*App, error) {
 	}
 	app.supervisor = supervisor.New(ctx)
 	app.installSupervisorErrorHandler()
+	if app.selfUpdate.Blocked() {
+		logging.Warn("Cannot self-update: %s is not writable. Reinstall with: %s",
+			filepath.Dir(app.selfUpdate.BinaryPath), update.ReinstallCommand)
+	}
 	// Route PTY messages through the app-level pump.
 	app.center.SetMsgSink(app.enqueueExternalMsg)
 	app.sidebarTerminal.SetMsgSink(app.enqueueExternalMsg)

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -36,6 +37,14 @@ func (a *App) handleUpdateCheckComplete(msg messages.UpdateCheckComplete) tea.Cm
 	// One-time toast on discovery so users don't miss the upgrade.
 	if !a.updateToastShown {
 		a.updateToastShown = true
+		// Pointing a user at an [Install update] button that cannot work is
+		// worse than saying nothing; give them the command that will.
+		if a.selfUpdate.Blocked() {
+			return a.toast.ShowWarning(fmt.Sprintf(
+				"Update available: %s → %s · %s is not writable, reinstall with: %s",
+				msg.CurrentVersion, msg.LatestVersion,
+				filepath.Dir(a.selfUpdate.BinaryPath), update.ReinstallCommand))
+		}
 		return a.toast.ShowInfo(fmt.Sprintf("Update available: %s → %s · open Settings to install", msg.CurrentVersion, msg.LatestVersion))
 	}
 	return nil

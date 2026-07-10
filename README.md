@@ -36,6 +36,14 @@ Install with the shell script:
 curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | sh
 ```
 
+This installs into `~/.local/bin` and never asks for a password, so it works on
+machines where you don't have admin rights. Point it somewhere else with
+`INSTALL_DIR`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | INSTALL_DIR="$HOME/bin" sh
+```
+
 Then run it:
 
 ```bash
@@ -160,8 +168,12 @@ Medusa was heavily inspired by [amux](https://github.com/andyrewlee/amux) by [@a
 
 ## Uninstalling
 
+The install script puts medusa in `~/.local/bin` by default. To remove it and its two helper binaries:
+
 ```bash
-rm /usr/local/bin/medusa
+rm -f ~/.local/bin/medusa ~/.local/bin/medusa-approve-compound ~/.local/bin/medusa-hook-emit
 ```
+
+If you installed somewhere else, `command -v medusa` will tell you where.
 
 State is kept under `~/.medusa/` (workspace registry, logs, workspace metadata). Remove it too if you want a clean slate.
