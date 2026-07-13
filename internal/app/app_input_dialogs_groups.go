@@ -132,8 +132,9 @@ func (a *App) showBranchModeDialogForCreate() {
 		DialogSelectBranchMode,
 		"Base Branch",
 		"Which branch should this worktree be based on?",
-		[]string{"Latest remote main", "Checked out branch", "Custom branch"},
+		branchModeOptions,
 	)
+	a.dialog.SetOptionHints(branchModeHints)
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()

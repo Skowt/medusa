@@ -483,4 +483,10 @@ type WorkspaceFetchDone struct {
 	Profile     string
 	CopyIgnored bool
 	Group       string // User-assigned group label (inherited from duplicated workspace)
+
+	// CustomBranch is the branch the user asked for (BranchModeCustom only).
+	CustomBranch string
+	// FallbackRepos names the repos that did not have CustomBranch and were
+	// based on their default branch instead. Empty for every other branch mode.
+	FallbackRepos []string
 }

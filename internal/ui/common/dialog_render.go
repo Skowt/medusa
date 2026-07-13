@@ -276,13 +276,41 @@ func (d *Dialog) appendInputButtons(b *LineBuilder) {
 
 // appendOptions renders DialogConfirm/DialogSelect options either vertically
 // (one per row, registered as option-N) or horizontally (single row with
-// inline regions per option).
+// inline regions per option), followed by the focused option's hint if it has
+// one.
 func (d *Dialog) appendOptions(b *LineBuilder) {
 	if d.verticalLayout || (d.dtype == DialogSelect && d.filterEnabled) {
 		d.appendVerticalOptions(b)
+	} else {
+		d.appendHorizontalOptions(b)
+	}
+	d.appendFocusedOptionHint(b)
+}
+
+// appendFocusedOptionHint renders the hint for the currently focused option as a
+// dimmed, word-wrapped block below the option row. Pre-wrapped and appended via
+// AppendRaw so the builder's row count matches what's drawn — lipgloss
+// soft-wrapping would drift it out of sync with the click regions.
+func (d *Dialog) appendFocusedOptionHint(b *LineBuilder) {
+	hint := d.optionHint(d.focusedOptionIndex())
+	if hint == "" {
 		return
 	}
-	d.appendHorizontalOptions(b)
+	hintStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+	b.Blank()
+	for _, line := range wordWrap(hint, b.ContentWidth()) {
+		b.AppendRaw("", hintStyle.Render(line))
+	}
+}
+
+// focusedOptionIndex maps d.cursor back to an index into d.options. Under a
+// fuzzy filter the cursor indexes the visible subset, not the full list.
+func (d *Dialog) focusedOptionIndex() int {
+	indices := d.visibleOptionIndices()
+	if d.cursor < 0 || d.cursor >= len(indices) {
+		return -1
+	}
+	return indices[d.cursor]
 }
 
 func (d *Dialog) appendVerticalOptions(b *LineBuilder) {

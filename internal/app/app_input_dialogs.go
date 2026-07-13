@@ -14,6 +14,27 @@ import (
 	"github.com/Skowt/medusa/internal/validation"
 )
 
+// Base Branch dialog options, in the order handleDialogResult switches on them:
+// index 0 = remote default, 1 = checked out, 2 = named branch.
+var branchModeOptions = []string{"Latest remote default", "Checked out branch", "Pick a branch"}
+
+var branchModeHints = []string{
+	"Fetches origin, then branches from this repo's default branch (main, master, or develop).",
+	"Branches from whatever this repo currently has checked out. Does not fetch.",
+	"Type a branch name. Looked up locally, then on origin.",
+}
+
+// branchPickMessage describes how a picked branch is resolved. Multi-repo
+// workspaces get the extra sentence because the partial-match rule only applies
+// to them — a single repo without the branch is an error.
+func branchPickMessage(repoCount int) string {
+	msg := "Looked up locally first, then on origin."
+	if repoCount > 1 {
+		msg += " Repos without this branch use their default branch instead."
+	}
+	return msg
+}
+
 // handleDialogResult handles dialog completion
 func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 	workspace := a.dialogWorkspace
@@ -102,8 +123,9 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				DialogSelectBranchMode,
 				"Base Branch",
 				"Which branch should this worktree be based on?",
-				[]string{"Latest remote main", "Checked out branch", "Custom branch"},
+				branchModeOptions,
 			)
+			a.dialog.SetOptionHints(branchModeHints)
 			a.dialog.SetSize(a.width, a.height)
 			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 			a.dialog.Show()
@@ -339,7 +361,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			wsGroup := workspace.Group
 			copyIgnored := workspace.CopyIgnored
 			switch result.Index {
-			case 0: // Latest remote main
+			case 0: // Latest remote default
 				steps := []string{"Fetching latest changes", "Creating worktree"}
 				if copyIgnored {
 					steps = append(steps, "Copying gitignored files")
@@ -357,11 +379,11 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 				a.creationOverlay.SetStepDetail(repos[0].Name)
 				a.creationOverlay.SetSize(a.width, a.height)
 				return a.fetchCheckedOutBase(repos, name, wsProfile, wsGroup, copyIgnored)
-			case 2: // Custom branch
+			case 2: // Pick a branch
 				a.dialogWorkspace = workspace
 				a.dialogDefaultName = name
-				a.dialog = common.NewInputDialog(DialogCustomBranch, "Custom Branch", "")
-				a.dialog.SetMessage("Branch will be looked up locally first, then on remote.")
+				a.dialog = common.NewInputDialog(DialogCustomBranch, "Pick a Branch", "")
+				a.dialog.SetMessage(branchPickMessage(len(repos)))
 				a.dialog.SetSize(a.width, a.height)
 				a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 				a.dialog.Show()
@@ -380,7 +402,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			wsProfile := workspace.Profile
 			wsGroup := workspace.Group
 			copyIgnored := workspace.CopyIgnored
-			steps := []string{"Resolving custom branch", "Creating worktree"}
+			steps := []string{"Resolving branch", "Creating worktree"}
 			if copyIgnored {
 				steps = append(steps, "Copying gitignored files")
 			}

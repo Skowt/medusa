@@ -9,36 +9,53 @@ import (
 type BranchMode int
 
 const (
-	BranchModeRemoteMain BranchMode = iota // Fetch latest origin/<main>
+	BranchModeRemoteMain BranchMode = iota // Fetch, then use the repo's default branch
 	BranchModeCheckedOut                   // Use current local branch, no fetch
-	BranchModeCustom                       // Resolve specific branch locally then remote
+	BranchModeCustom                       // Resolve a named branch locally, then on origin
 )
 
-// GetBaseBranch returns the base branch (main, master, or the default branch)
+// GetBaseBranch returns the repo's default branch name.
+//
+// origin/HEAD is git's own record of which branch is the default, so it wins
+// whenever it is set. The name guesses below are only a fallback for repos with
+// no remote: guessing first would return "main" for a master repo that happens
+// to have a stale local main lying around, and never even read origin/HEAD.
+//
+// The guesses check for a *branch* (BranchExists) rather than any ref that
+// resolves. "rev-parse --verify main" also matches a *tag* named main, which is
+// not a branch and is usually pinned to some long-past commit — branching a new
+// worktree off it silently strands the work in history.
 func GetBaseBranch(repoPath string) (string, error) {
-	// Try common base branch names in order of preference
-	candidates := []string{"main", "master", "develop", "dev"}
+	if branch := remoteDefaultBranch(repoPath); branch != "" {
+		return branch, nil
+	}
 
-	for _, branch := range candidates {
-		// Check if branch exists
-		_, err := RunGit(repoPath, "rev-parse", "--verify", branch)
-		if err == nil {
+	for _, branch := range []string{"main", "master", "develop", "dev"} {
+		if BranchExists(repoPath, branch) {
 			return branch, nil
 		}
 	}
 
-	// Try to get the default branch from remote
-	output, err := RunGit(repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
-	if err == nil {
-		// Output is like "refs/remotes/origin/main"
-		parts := strings.Split(output, "/")
-		if len(parts) > 0 {
-			return parts[len(parts)-1], nil
-		}
-	}
-
-	// Fall back to "main" if nothing else works
+	// Nothing to go on — assume the modern default.
 	return "main", nil
+}
+
+// remoteDefaultBranch reads the branch origin/HEAD points at, e.g.
+// "refs/remotes/origin/main" -> "main". Returns "" when origin/HEAD is unset,
+// which is the case for a repo with no remote. Trims the whole prefix rather
+// than taking the last path segment, so a default branch with a slash in its
+// name (release/stable) survives intact.
+func remoteDefaultBranch(repoPath string) string {
+	output, err := RunGit(repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return ""
+	}
+	const prefix = "refs/remotes/origin/"
+	ref := strings.TrimSpace(output)
+	if !strings.HasPrefix(ref, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(ref, prefix)
 }
 
 // ValidateRef checks that a ref resolves to a valid commit.
@@ -72,7 +89,9 @@ func GetCheckedOutBase(repoPath string) (string, error) {
 }
 
 // ResolveCustomBranch looks up a branch locally first, then on the remote.
-// Returns an error if neither is found.
+// Returns an error if neither is found. Callers decide what a miss means —
+// in a multi-repo workspace a branch that exists in only some repos is not
+// fatal, and that judgement needs a view of every repo (see fetchCustomBase).
 func ResolveCustomBranch(repoPath, branch string) (string, error) {
 	if BranchExists(repoPath, branch) {
 		return branch, nil
@@ -81,23 +100,7 @@ func ResolveCustomBranch(repoPath, branch string) (string, error) {
 	if ValidateRef(repoPath, remote) == nil {
 		return remote, nil
 	}
-	return "", fmt.Errorf("branch %q not found locally or on remote", branch)
-}
-
-// ResolveCustomBranchWithFallback is like ResolveCustomBranch but falls back to
-// GetFreshRemoteBase when the branch is not found. The usedFallback return
-// value indicates whether the fallback was used. Used for grouped workspaces.
-func ResolveCustomBranchWithFallback(repoPath, branch string) (string, bool, error) {
-	ref, err := ResolveCustomBranch(repoPath, branch)
-	if err == nil {
-		return ref, false, nil
-	}
-	// Branch not found — fall back to remote main
-	base, fbErr := GetFreshRemoteBase(repoPath)
-	if fbErr != nil {
-		return "", false, fmt.Errorf("branch %q not found and fallback failed: %w", branch, fbErr)
-	}
-	return base, true, nil
+	return "", fmt.Errorf("branch %q not found locally or on origin", branch)
 }
 
 // GetBranchFileDiff returns the full diff for a single file on the branch

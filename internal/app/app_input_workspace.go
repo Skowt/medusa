@@ -45,6 +45,15 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 			cmds = append(cmds, cmd)
 		}
 	}
+	if len(msg.FallbackRepos) > 0 {
+		notice := fmt.Sprintf(
+			"%q not found in %s — based on the default branch instead",
+			msg.CustomBranch, strings.Join(msg.FallbackRepos, ", "),
+		)
+		cmds = append(cmds, func() tea.Msg {
+			return messages.Toast{Message: notice, Level: messages.ToastWarning}
+		})
+	}
 	cmds = append(cmds, a.createWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, msg.CopyIgnored))
 	return cmds
 }
