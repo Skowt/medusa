@@ -62,6 +62,36 @@ func TestRebuildRows_OneGroup_UngroupedTrails(t *testing.T) {
 	}
 }
 
+// A workspace still being created belongs in the group it was designated for,
+// not in Ungrouped — the row must not move once creation finishes.
+func TestRebuildRows_CreatingWorkspace_SitsInItsGroup(t *testing.T) {
+	m := New()
+	m.workspaces = []*data.Workspace{
+		mkWS("existing", "shipping", []string{"medusa"}, time.Unix(1, 0)),
+	}
+	pending := mkWS("pending", "shipping", []string{"medusa"}, time.Unix(2, 0))
+	m.creatingWorkspaces[pending.Root()] = pending
+	m.rebuildRows()
+
+	var section string
+	var members []string
+	for _, r := range m.rows {
+		switch r.Type {
+		case RowSectionHeader:
+			if r.IsUserGroup {
+				section = r.Label
+			}
+		case RowWorkspace:
+			if r.Workspace != nil && r.Workspace.Name == "pending" {
+				members = append(members, section)
+			}
+		}
+	}
+	if len(members) != 1 || members[0] != "shipping" {
+		t.Fatalf("creating workspace rendered under %v, want [shipping]", members)
+	}
+}
+
 func TestRebuildRows_MultipleGroups_FirstUseOrder(t *testing.T) {
 	m := New()
 	m.workspaces = []*data.Workspace{

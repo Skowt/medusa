@@ -25,22 +25,7 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 		a.creationOverlay.AdvanceStep()
 	}
 	// Show the "creating" indicator in the dashboard
-	if msg.Name != "" && len(msg.Repos) > 0 {
-		var pending *data.Workspace
-		if len(msg.Repos) == 1 {
-			workspacePath := filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name)
-			pending = data.NewWorkspace(msg.Name, msg.Name, msg.Bases[0], msg.Repos[0].Path, workspacePath)
-		} else {
-			worktrees := make([]data.WorktreeRef, len(msg.Repos))
-			for i, repo := range msg.Repos {
-				worktrees[i] = data.WorktreeRef{
-					Branch: msg.Name,
-					Base:   msg.Bases[i],
-					Root:   filepath.Join(a.config.Paths.WorkspacesRoot, msg.Name, repo.Name),
-				}
-			}
-			pending = data.NewMultiRepoWorkspace(msg.Name, msg.Repos, worktrees)
-		}
+	if pending := pendingWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, a.config.Paths.WorkspacesRoot); pending != nil {
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -56,6 +41,41 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 	}
 	cmds = append(cmds, a.createWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, msg.CopyIgnored))
 	return cmds
+}
+
+// pendingWorkspace builds the placeholder the dashboard renders while a workspace
+// is being created. It must carry the group and profile the user picked: the
+// sidebar partitions rows by Group, so a placeholder without one sits under
+// Ungrouped and jumps groups the moment creation finishes. Returns nil when
+// there is nothing to show yet.
+func pendingWorkspace(name string, repos []data.RepoRef, bases []string, profile, group, workspacesRoot string) *data.Workspace {
+	if name == "" || len(repos) == 0 {
+		return nil
+	}
+	base := func(i int) string {
+		if i < len(bases) {
+			return bases[i]
+		}
+		return ""
+	}
+
+	var ws *data.Workspace
+	if len(repos) == 1 {
+		ws = data.NewWorkspace(name, name, base(0), repos[0].Path, filepath.Join(workspacesRoot, name))
+	} else {
+		worktrees := make([]data.WorktreeRef, len(repos))
+		for i, repo := range repos {
+			worktrees[i] = data.WorktreeRef{
+				Branch: name,
+				Base:   base(i),
+				Root:   filepath.Join(workspacesRoot, name, repo.Name),
+			}
+		}
+		ws = data.NewMultiRepoWorkspace(name, repos, worktrees)
+	}
+	ws.Profile = profile
+	ws.Group = group
+	return ws
 }
 
 // handleWorkspaceWorktreeDone handles the WorkspaceWorktreeDone message (worktree created, now copy gitignored files).
