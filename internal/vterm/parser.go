@@ -181,6 +181,7 @@ func (p *Parser) parseEscape(b byte) {
 		p.state = stateGround
 	case 'c': // RIS - reset
 		p.vt.CurrentStyle = Style{}
+		p.vt.CurrentLink = 0
 		p.vt.CursorX = 0
 		p.vt.CursorY = 0
 		p.vt.mouseModes = 0
@@ -193,11 +194,12 @@ func (p *Parser) parseEscape(b byte) {
 }
 
 func (p *Parser) parseOSC(b byte) {
-	if b == 0x07 || b == 0x1b { // BEL or ESC terminates
+	if b == 0x07 || b == 0x1b { // BEL or ST (ESC \) terminates
+		p.executeOSC()
 		if b == 0x1b {
-			p.state = stateEscape // Will see \ next
+			// ST: hand the trailing backslash to parseEscape, which drops it.
+			p.state = stateEscape
 		} else {
-			p.executeOSC()
 			p.state = stateGround
 		}
 		return
@@ -205,12 +207,24 @@ func (p *Parser) parseOSC(b byte) {
 	p.oscBuf.WriteByte(b)
 }
 
+// executeOSC dispatches a completed OSC sequence. Everything except hyperlinks
+// is ignored (window title, palette queries), but it must still be consumed so
+// the payload never reaches the screen as text.
 func (p *Parser) executeOSC() {
-	// OSC sequences - ignore for now
-	// Could handle:
-	// - OSC 0;title - set window title
-	// - OSC 10;color - query/set foreground
-	// - OSC 11;color - query/set background
+	data := p.oscBuf.String()
+	p.oscBuf.Reset()
+
+	code, rest, ok := strings.Cut(data, ";")
+	if !ok || code != "8" {
+		return
+	}
+
+	// OSC 8 ; params ; URI — an empty URI closes the current hyperlink.
+	params, uri, ok := strings.Cut(rest, ";")
+	if !ok {
+		return
+	}
+	p.vt.setHyperlink(uri, params)
 }
 
 func (p *Parser) parseDCS(b byte) {

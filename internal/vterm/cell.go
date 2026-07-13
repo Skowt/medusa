@@ -32,6 +32,12 @@ type Style struct {
 type Cell struct {
 	Rune  rune
 	Style Style
+	// Link is the ID of the OSC 8 hyperlink covering this cell, or 0 for none.
+	// It is an interned ID rather than the URI itself: scrollback holds up to
+	// MaxScrollback*Width cells, and a string here would cost 16 bytes each.
+	// Resolve it with VTerm.LinkTarget. Deliberately not part of Style, since
+	// SGR must not disturb hyperlink state.
+	Link  uint32
 	Width int // 1 normal, 2 wide, 0 continuation
 	// GraphemeCluster, when non-empty, is the full grapheme (base rune plus
 	// combining marks) for this cell. Empty means "use Rune". Readers that emit

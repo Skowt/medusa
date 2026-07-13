@@ -120,6 +120,32 @@ clamps to an empty buffer and default-mode tabs cannot scroll at all.
 Regression cover: `internal/e2e/default_scroll_e2e_test.go` (default mode must
 scroll) and `internal/e2e/fullscreen_scroll_e2e_test.go` (fullscreen must not).
 
+### OSC 8 hyperlinks
+
+Agents print links as shorthand text wrapped in an OSC 8 sequence carrying the
+real URL (`services/protos!1638` → the GitLab MR). Keeping them clickable needs
+**both** halves of the chain, and losing either one is silent — the outer
+terminal falls back to guessing a URL from the visible text, so an MR link opens
+as `http://services/protos!1638`.
+
+1. **tmux must forward it.** tmux only sends hyperlinks to a client whose
+   terminal advertises the `hyperlinks` feature. Medusa attaches with
+   `TERM=xterm-256color` (`tmux.ClientTerm`, consumed by `pty.NewWithSize`),
+   whose terminfo says nothing about hyperlinks, so tmux strips the URI unless
+   `terminal-features` advertises it (`appendHyperlinkFeature` in
+   `internal/tmux/client_command.go`). That option is a server-wide array set on
+   every attach, so the append is guarded — a bare append duplicates per tab.
+2. **The vterm must keep it.** `Parser.executeOSC` parses `OSC 8 ; params ; URI`
+   and `VTerm.CurrentLink` rides onto each written cell as `Cell.Link`, an
+   interned ID (scrollback holds `MaxScrollback × width` cells, so a URI string
+   per cell is far too heavy). `Cell.Link` is deliberately **not** part of
+   `Style`: SGR — including a full reset, which agents emit inside a link — must
+   not end a hyperlink. `cellToUVSnapshot` resolves the ID to `uv.Cell.Link`,
+   and ultraviolet re-emits the OSC 8 to the real terminal.
+
+Regression cover: `internal/e2e/hyperlink_e2e_test.go` drives the real client
+command through tmux + PTY + vterm, so dropping either half fails it.
+
 ### Activity detection & notifications
 
 Per-workspace busy/ready/needs-input state comes from Claude Code hooks

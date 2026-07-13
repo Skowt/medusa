@@ -43,6 +43,7 @@ func (v *VTerm) putChar(r rune) {
 			v.Screen[v.CursorY][v.CursorX] = Cell{
 				Rune:  ' ',
 				Style: v.CurrentStyle,
+				Link:  v.CurrentLink,
 				Width: 1,
 			}
 			v.markDirtyLine(v.CursorY)
@@ -85,6 +86,7 @@ func (v *VTerm) putChar(r rune) {
 		v.Screen[v.CursorY][v.CursorX] = Cell{
 			Rune:  r,
 			Style: v.CurrentStyle,
+			Link:  v.CurrentLink,
 			Width: width,
 		}
 
@@ -99,6 +101,7 @@ func (v *VTerm) putChar(r rune) {
 			v.Screen[v.CursorY][v.CursorX+1] = Cell{
 				Rune:  0, // Continuation marker
 				Style: v.CurrentStyle,
+				Link:  v.CurrentLink,
 				Width: 0, // Continuation cell
 			}
 		}

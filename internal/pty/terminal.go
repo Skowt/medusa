@@ -11,6 +11,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/process"
+	"github.com/Skowt/medusa/internal/tmux"
 )
 
 // Terminal wraps a PTY with an associated command
@@ -26,7 +27,9 @@ func NewWithSize(command string, dir string, env []string, rows, cols uint16) (*
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
-	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	// tmux keys terminal-features (notably hyperlinks) off this TERM; keep the
+	// two in lockstep via the shared constant.
+	cmd.Env = append(cmd.Env, "TERM="+tmux.ClientTerm)
 	// creack/pty sets Setsid=true; Setpgid here can cause EPERM on start.
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 

@@ -64,6 +64,15 @@ type VTerm struct {
 	// Current style for new characters
 	CurrentStyle Style
 
+	// CurrentLink is the interned ID of the OSC 8 hyperlink that new characters
+	// fall under, or 0 outside a hyperlink. Kept apart from CurrentStyle because
+	// SGR (including a full reset) must not end a hyperlink.
+	CurrentLink uint32
+
+	// links interns hyperlink targets; a cell stores the 1-based ID of its entry.
+	links   []Link
+	linkIDs map[string]uint32
+
 	// Saved cursor state (for DECSC/DECRC)
 	SavedCursorX int
 	SavedCursorY int
