@@ -92,7 +92,17 @@ func TestRebuildRows_CreatingWorkspace_SitsInItsGroup(t *testing.T) {
 	}
 }
 
-func TestRebuildRows_MultipleGroups_FirstUseOrder(t *testing.T) {
+func groupHeaderOrder(m *Model) []string {
+	var order []string
+	for _, r := range m.rows {
+		if r.Type == RowSectionHeader && r.IsUserGroup {
+			order = append(order, r.Label)
+		}
+	}
+	return order
+}
+
+func TestRebuildRows_MultipleGroups_AlphabeticalOrder(t *testing.T) {
 	m := New()
 	m.workspaces = []*data.Workspace{
 		mkWS("a", "zebra", []string{"medusa"}, time.Unix(10, 0)),
@@ -100,14 +110,49 @@ func TestRebuildRows_MultipleGroups_FirstUseOrder(t *testing.T) {
 	}
 	m.rebuildRows()
 
-	var order []string
-	for _, r := range m.rows {
-		if r.Type == RowSectionHeader && r.IsUserGroup {
-			order = append(order, r.Label)
-		}
+	order := groupHeaderOrder(m)
+	if len(order) != 2 || order[0] != "apple" || order[1] != "zebra" {
+		t.Fatalf("expected alphabetical order [apple, zebra], got %v", order)
 	}
-	if len(order) != 2 || order[0] != "zebra" || order[1] != "apple" {
-		t.Fatalf("expected first-use order [zebra, apple], got %v", order)
+}
+
+func TestRebuildRows_GroupOrder_CaseInsensitive(t *testing.T) {
+	m := New()
+	m.workspaces = []*data.Workspace{
+		mkWS("a", "Zebra", []string{"medusa"}, time.Unix(10, 0)),
+		mkWS("b", "apple", []string{"medusa"}, time.Unix(20, 0)),
+	}
+	m.rebuildRows()
+
+	order := groupHeaderOrder(m)
+	if len(order) != 2 || order[0] != "apple" || order[1] != "Zebra" {
+		t.Fatalf("expected case-insensitive order [apple, Zebra], got %v", order)
+	}
+}
+
+// Archiving a group's oldest member must not move the group: order is a
+// function of the label alone, never of member creation times.
+func TestRebuildRows_GroupOrder_StableAcrossArchive(t *testing.T) {
+	oldest := mkWS("a", "zebra", []string{"medusa"}, time.Unix(10, 0))
+	m := New()
+	m.workspaces = []*data.Workspace{
+		oldest,
+		mkWS("b", "zebra", []string{"medusa"}, time.Unix(40, 0)),
+		mkWS("c", "apple", []string{"medusa"}, time.Unix(20, 0)),
+	}
+	m.rebuildRows()
+	before := groupHeaderOrder(m)
+
+	oldest.Status = data.StatusArchived
+	oldest.ArchivedAt = time.Unix(50, 0)
+	m.rebuildRows()
+	after := groupHeaderOrder(m)
+
+	if len(before) != 2 || before[0] != "apple" || before[1] != "zebra" {
+		t.Fatalf("expected [apple, zebra] before archive, got %v", before)
+	}
+	if len(after) != len(before) || after[0] != before[0] || after[1] != before[1] {
+		t.Fatalf("group order shifted on archive: %v -> %v", before, after)
 	}
 }
 
@@ -138,7 +183,18 @@ func TestRebuildRows_Collapsed_EmitsHeaderOnlyWithCount(t *testing.T) {
 	}
 }
 
-func TestRebuildRows_WithinGroup_SortedByRepoNames(t *testing.T) {
+func workspaceRowNames(m *Model) []string {
+	var names []string
+	for _, r := range m.rows {
+		if r.Type == RowWorkspace {
+			names = append(names, r.Workspace.Name)
+		}
+	}
+	return names
+}
+
+// Within a group, oldest workspace first — repo names must not influence order.
+func TestRebuildRows_WithinGroup_SortedByCreatedOldestFirst(t *testing.T) {
 	m := New()
 	m.workspaces = []*data.Workspace{
 		mkWS("z", "g", []string{"zulu"}, time.Unix(1, 0)),
@@ -147,14 +203,40 @@ func TestRebuildRows_WithinGroup_SortedByRepoNames(t *testing.T) {
 	}
 	m.rebuildRows()
 
-	var names []string
-	for _, r := range m.rows {
-		if r.Type == RowWorkspace {
-			names = append(names, r.Workspace.Name)
-		}
+	names := workspaceRowNames(m)
+	if len(names) != 3 || names[0] != "z" || names[1] != "a" || names[2] != "m" {
+		t.Fatalf("expected oldest-first order [z, a, m], got %v", names)
 	}
-	if len(names) != 3 || names[0] != "a" || names[1] != "m" || names[2] != "z" {
-		t.Fatalf("expected within-group sort [a, m, z], got %v", names)
+}
+
+// Ungrouped uses the same comparator as a named group.
+func TestRebuildRows_Ungrouped_SortedByCreatedOldestFirst(t *testing.T) {
+	m := New()
+	m.workspaces = []*data.Workspace{
+		mkWS("newest", "", []string{"alpha"}, time.Unix(30, 0)),
+		mkWS("oldest", "", []string{"zulu"}, time.Unix(10, 0)),
+		mkWS("middle", "", []string{"mike"}, time.Unix(20, 0)),
+	}
+	m.rebuildRows()
+
+	names := workspaceRowNames(m)
+	if len(names) != 3 || names[0] != "oldest" || names[1] != "middle" || names[2] != "newest" {
+		t.Fatalf("expected oldest-first order [oldest, middle, newest], got %v", names)
+	}
+}
+
+// Equal timestamps fall back to name so the order is deterministic.
+func TestRebuildRows_WithinGroup_EqualCreated_TiebreaksByName(t *testing.T) {
+	m := New()
+	m.workspaces = []*data.Workspace{
+		mkWS("beta", "g", []string{"zulu"}, time.Unix(5, 0)),
+		mkWS("alpha", "g", []string{"zulu"}, time.Unix(5, 0)),
+	}
+	m.rebuildRows()
+
+	names := workspaceRowNames(m)
+	if len(names) != 2 || names[0] != "alpha" || names[1] != "beta" {
+		t.Fatalf("expected name tiebreak [alpha, beta], got %v", names)
 	}
 }
 

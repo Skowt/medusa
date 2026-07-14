@@ -142,7 +142,6 @@ func (m *Model) rebuildRows() {
 
 	// Partition workspaces by user group. Groups are derived from distinct non-empty Group values.
 	groupMembers := make(map[string][]*data.Workspace)
-	groupMinCreated := make(map[string]time.Time)
 	var ungrouped []*data.Workspace
 
 	for _, ws := range all {
@@ -151,38 +150,38 @@ func (m *Model) rebuildRows() {
 			continue
 		}
 		groupMembers[ws.Group] = append(groupMembers[ws.Group], ws)
-		if cur, ok := groupMinCreated[ws.Group]; !ok || ws.Created.Before(cur) {
-			groupMinCreated[ws.Group] = ws.Created
-		}
 	}
 
-	// Group order: ascending by each group's earliest member Created (first-use).
-	// Ties broken alphabetically to keep output deterministic.
+	// Group order: alphabetical by label, case-insensitive, with a case-sensitive
+	// tiebreak for determinism. Deliberately a function of the label alone —
+	// ordering by member timestamps made a group's position depend on which of
+	// its members were live, so archiving a group's oldest workspace reshuffled
+	// the sidebar.
 	groupOrder := make([]string, 0, len(groupMembers))
 	for g := range groupMembers {
 		groupOrder = append(groupOrder, g)
 	}
 	sort.SliceStable(groupOrder, func(i, j int) bool {
-		ti, tj := groupMinCreated[groupOrder[i]], groupMinCreated[groupOrder[j]]
-		if ti.Equal(tj) {
+		li, lj := strings.ToLower(groupOrder[i]), strings.ToLower(groupOrder[j])
+		if li == lj {
 			return groupOrder[i] < groupOrder[j]
 		}
-		return ti.Before(tj)
+		return li < lj
 	})
 
-	// Within-group sort: sorted-joined repo names (same comparator the old repo grouping used).
+	// Within-section sort: Created ascending, so the oldest workspace sits at the
+	// top of its group. Ties broken by name to keep output deterministic. Used for
+	// named groups and the Ungrouped section alike.
 	sortMembers := func(members []*data.Workspace) {
 		sort.SliceStable(members, func(i, j int) bool {
-			ki := repoSortKey(members[i])
-			kj := repoSortKey(members[j])
-			if ki == kj {
-				return members[i].Created.Before(members[j].Created)
+			if members[i].Created.Equal(members[j].Created) {
+				return members[i].Name < members[j].Name
 			}
-			return ki < kj
+			return members[i].Created.Before(members[j].Created)
 		})
 	}
 
-	// Emit named groups in first-use order.
+	// Emit named groups in alphabetical order.
 	for _, label := range groupOrder {
 		members := groupMembers[label]
 		sortMembers(members)
@@ -354,18 +353,4 @@ func (m *Model) clampScrollOffset() {
 	if m.scrollOffset < 0 {
 		m.scrollOffset = 0
 	}
-}
-
-// repoSortKey returns a stable within-group sort key based on the workspace's sorted repo names.
-// Single-repo workspaces sort by repo name; multi-repo workspaces sort by sorted, comma-joined names.
-func repoSortKey(ws *data.Workspace) string {
-	if len(ws.Repos) == 0 {
-		return ""
-	}
-	names := make([]string, len(ws.Repos))
-	for i, r := range ws.Repos {
-		names[i] = r.Name
-	}
-	sort.Strings(names)
-	return strings.Join(names, ",")
 }
