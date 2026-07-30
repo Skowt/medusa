@@ -18,6 +18,7 @@ import (
 	"github.com/Skowt/medusa/internal/ide"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/skillstats"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -368,6 +369,53 @@ func (a *App) handleActionBarOpenIDE(msg messages.ActionBarOpenIDE) tea.Cmd {
 		}
 		return common.IDEInstallsDetected{Installs: installs, Root: root}
 	}
+}
+
+// newSkillUsageService describes the skill-usage dashboard without starting it.
+// ~/.claude/projects is included so sessions run outside Medusa still show up,
+// grouped under their own profile label.
+func newSkillUsageService(cfg *config.Config) *skillstats.Service {
+	claudeProjects := ""
+	if home, err := os.UserHomeDir(); err == nil {
+		claudeProjects = filepath.Join(home, ".claude", "projects")
+	}
+	return skillstats.NewService(
+		filepath.Join(cfg.Paths.Home, "skill-usage"),
+		cfg.Paths.ProfilesRoot,
+		claudeProjects,
+	)
+}
+
+// handleOpenSkillUsage opens the skill-usage dashboard in the browser. The
+// first press starts the server, which means a cold transcript scan, so all of
+// it runs off the UI thread.
+func (a *App) handleOpenSkillUsage() tea.Cmd {
+	service := a.skillUsage
+	return func() tea.Msg {
+		url, err := service.URL()
+		if err != nil {
+			return messages.Toast{Message: "Could not start skill dashboard: " + err.Error(), Level: messages.ToastError}
+		}
+		if err := openInBrowser(url); err != nil {
+			// The server is up regardless, so show the address to open by hand.
+			return messages.Toast{Message: "Skill dashboard at " + url, Level: messages.ToastWarning}
+		}
+		return messages.Toast{Message: "Opened skill usage in browser", Level: messages.ToastSuccess}
+	}
+}
+
+// openInBrowser hands a URL to the platform's opener.
+func openInBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default: // linux, freebsd, …
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Run()
 }
 
 // handleActionBarMergeToMain handles the merge to main action.

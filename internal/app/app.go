@@ -17,6 +17,7 @@ import (
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/permissions"
 	"github.com/Skowt/medusa/internal/process"
+	"github.com/Skowt/medusa/internal/skillstats"
 	"github.com/Skowt/medusa/internal/supervisor"
 	"github.com/Skowt/medusa/internal/tmux"
 	"github.com/Skowt/medusa/internal/ui/center"
@@ -181,6 +182,10 @@ type App struct {
 	tmuxAvailable   bool
 	tmuxCheckDone   bool
 	tmuxInstallHint string
+
+	// skillUsage serves the skill-usage dashboard. It stays idle until the
+	// toolbar's [U] button is pressed for the first time.
+	skillUsage *skillstats.Service
 
 	// Hooks socket server (Claude Code lifecycle events)
 	hooksServer         *hooks.Server
@@ -352,6 +357,7 @@ func New(version, commit, date string) (*App, error) {
 		recents:             recents,
 		scripts:             scripts,
 		statusManager:       statusManager,
+		skillUsage:          newSkillUsageService(cfg),
 		fileWatcher:         fileWatcher,
 		fileWatcherCh:       fileWatcherCh,
 		fileWatcherErr:      fileWatcherErr,
@@ -481,6 +487,9 @@ func (a *App) Shutdown() {
 		}
 		if a.hooksServer != nil {
 			_ = a.hooksServer.Close()
+		}
+		if a.skillUsage != nil {
+			_ = a.skillUsage.Close()
 		}
 	})
 }

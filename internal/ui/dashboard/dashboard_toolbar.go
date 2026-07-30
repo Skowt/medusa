@@ -20,6 +20,7 @@ func (m *Model) toolbarItems() []toolbarItem {
 		{kind: toolbarHelp, label: "?"},
 		{kind: toolbarMonitor, label: "M"},
 		{kind: toolbarSettings, label: "S"},
+		{kind: toolbarSkillUsage, label: "U"},
 	}
 }
 
@@ -31,6 +32,8 @@ func (m *Model) toolbarCommand(kind toolbarButtonKind) tea.Cmd {
 		return func() tea.Msg { return messages.ToggleMonitor{} }
 	case toolbarSettings:
 		return func() tea.Msg { return messages.ShowSettingsDialog{} }
+	case toolbarSkillUsage:
+		return func() tea.Msg { return messages.OpenSkillUsage{} }
 	default:
 		return nil
 	}
@@ -42,7 +45,9 @@ func (m *Model) renderToolbar() string {
 
 	buttonHeight := 1
 	gap := 1
-	columns := 3
+	// One column per toolbar item: toolbarHeight always reports a single row, so
+	// a second row would render outside the space the layout reserved.
+	columns := len(m.toolbarItems())
 	items := m.toolbarItems()
 	visibleItems := items
 	if len(visibleItems) == 0 {

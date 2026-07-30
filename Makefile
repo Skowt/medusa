@@ -2,7 +2,7 @@ BINARY_NAME := medusa
 MAIN_PACKAGE := ./cmd/medusa
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-race bench lint fmt fmt-check vet clean run dev help release-check release-tag release-push release
+.PHONY: build test test-race bench lint fmt fmt-check vet clean run dev skills help release-check release-tag release-push release
 
 build:
 	go build -o $(BINARY_NAME) $(MAIN_PACKAGE)
@@ -42,6 +42,9 @@ run: build
 dev:
 	air
 
+skills:
+	go run $(MAIN_PACKAGE) skills
+
 help:
 	@echo "Available targets:"
 	@echo "  build      - Build the binary"
@@ -54,6 +57,7 @@ help:
 	@echo "  clean      - Remove build artifacts"
 	@echo "  run        - Build and run"
 	@echo "  dev        - Run with hot reload (requires air)"
+	@echo "  skills     - Build and serve the skill-usage dashboard"
 	@echo "  bench      - Run rendering benchmarks"
 	@echo "  release-check - Run tests and harness smoke checks"
 	@echo "  release-tag   - Create an annotated tag (VERSION=vX.Y.Z)"

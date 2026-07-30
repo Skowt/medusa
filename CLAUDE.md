@@ -183,6 +183,72 @@ Pure type declarations; no package may import app/ui code. Split into several fi
 - `cmd/medusa-hook-emit` — standalone helper invoked as a Claude Code hook to forward lifecycle events to the activity socket.
 - `cmd/medusa-harness` — headless render driver used by `make release-check` and benchmarks.
 
+Subcommands of `cmd/medusa` run instead of the TUI and are dispatched in
+`main()` before any TUI or logging setup, so they work headlessly:
+`medusa skills` (`cmd/medusa/skills.go`). The separate helper binaries above are
+separate only because Claude Code invokes them as external hook commands — a
+subcommand cannot serve that role.
+
+### Skill-usage tracking: `internal/skillstats`
+
+Skill usage — which skills were invoked, grouped by providing plugin, in hourly
+/ daily / weekly views per profile. Two front ends over one package:
+
+- **`[U]` in the dashboard toolbar** (next to `[?] [M] [S]`) opens it in the
+  browser. `skillstats.Service` starts on that first press and stays up for the
+  session on an **ephemeral loopback port**, so it can never collide with a
+  standalone `medusa-skills` nor be reachable off the machine. The first press
+  does a cold scan, so `handleOpenSkillUsage` runs the whole thing in a
+  `tea.Cmd` — never on the UI thread. Adding a toolbar item requires nothing
+  else: `columns` is `len(toolbarItems())` and navigation is already
+  length-driven, but `toolbarHeight` hard-codes one row, so items must fit it
+  (`internal/ui/dashboard/toolbar_test.go` guards that).
+- **`medusa skills`** (or `make skills`) serves the same dashboard headlessly on
+  `127.0.0.1:7788`, plus `-scan` and `-report -gran week -profile Work` for
+  terminal output. Both front ends share `internal/skillstats` and the same
+  store, so either one's scan benefits the other.
+
+The source is **Claude Code's own transcripts**, not a hook: every skill
+invocation is a `Skill` tool_use block carrying `{"skill": "plugin:name"}`, and
+transcripts already record the timestamp, session, and cwd. That makes tracking
+retroactive over sessions that already happened and keeps it off the hook path
+entirely — nothing about activity detection changes. The profile comes from the
+transcript's location (`~/.medusa/profiles/<profile>/projects/...`, via
+`CLAUDE_CONFIG_DIR`). `~/.claude/projects` is scanned as well — Claude Code run
+outside Medusa, where `CLAUDE_CONFIG_DIR` was never set — and reported under
+`skillstats.ClaudeProfileLabel` (`~/.claude`), which appears in the profile list
+only once it has an invocation, like any other profile.
+
+Two properties are load-bearing:
+
+1. **Scanned events are copied into `~/.medusa/skill-usage/events.jsonl`.**
+   Claude Code deletes session files older than `cleanupPeriodDays` (default
+   **30**, minimum 1) at startup, while the weekly view spans a quarter — so the
+   durable log is the only reason history older than a month exists. This is not
+   theoretical: a cleanup sweep during development pruned ~580 of 1110
+   transcripts, and 63 recorded invocations then existed only in the log. Dedup
+   is by transcript entry uuid (plus a `#n` suffix when one assistant message
+   invokes several skills), which makes any rescan — incremental or full —
+   idempotent, so pruning can never double-count on the way back.
+
+   The log is itself bounded at `RetentionMonths` (**6**, calendar months). The
+   cutoff is enforced on **both** paths — dropped at load, and refused at commit
+   — because the transcript for an aged-out event can still be on disk, so a
+   commit-side check is the only thing stopping a full rescan (after a lost
+   `scan-state.json`) from resurrecting what was just pruned. Pruning rewrites
+   the log via temp+rename, and pruned uuids leave the `seen` set since the
+   commit cutoff already bars their return.
+2. **Scans are incremental.** `scan-state.json` holds size+mtime+offset per
+   transcript, so unchanged files are skipped and a grown file is read from its
+   tail: ~1s for a cold pass over 400 MB, ~40 ms in steady state. The offset only
+   ever advances past newline-terminated lines — a transcript caught mid-write
+   must reparse its partial tail, not skip it.
+
+Skills invoked as `/slash` commands are **not** counted: the harness injects the
+skill directly and no `Skill` tool call is emitted, so there is nothing in the
+transcript to attribute. Skill names with no `plugin:` prefix are bucketed as
+`personal` / `project` / `built-in` by locating the skill on disk.
+
 ### Configuration
 
 Per-repo workspace config lives at `.medusa/workspaces.json` (setup-workspace, run, archive). Environment variables passed to those commands include `$ROOT_WORKSPACE_PATH` plus an auto-allocated free port (`internal/process/env.go`).

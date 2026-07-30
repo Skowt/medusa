@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill Spy — Claude skill usage</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #fff; --ink: #1a1a19; --muted: #6b6b66;
+    --line: #e4e4e0; --accent: #b4592a; --shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a; --panel: #1f1f23; --ink: #ececee; --muted: #9a9aa2;
+      --line: #303036; --accent: #e07a4a; --shadow: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 13px; }
+  /* The note spans the full content width like every panel below it; capping
+     its measure left it ending mid-view, out of line with the grid. */
+  .info {
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: 12px;
+    padding: 13px 16px; margin-bottom: 20px; box-shadow: var(--shadow);
+    color: var(--muted); font-size: 13px;
+  }
+  .info p { margin: 0; }
+  .info p + p { margin-top: 6px; }
+  .info code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  }
+  /* Full-width control row: view tabs left, filters right, so both ends line up
+     with the card grid rather than bunching in the left half. */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center;
+    margin-bottom: 20px;
+  }
+  .filters { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-left: auto; }
+  .tabs { display: inline-flex; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 8px; padding: 2px; box-shadow: var(--shadow); }
+  .tabs button {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-weight: 550; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; }
+  label.field { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+  /* 8px vertical padding matches the tab strip's 2px shell + 6px button padding,
+     so the tabs and both selects sit on one baseline at the same height. */
+  select {
+    font: inherit; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+    box-shadow: var(--shadow); cursor: pointer;
+  }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+          padding: 14px 16px; box-shadow: var(--shadow); }
+  .card .n { font-size: 24px; font-weight: 650; letter-spacing: -.02em; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+           padding: 18px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+              color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+  .chart-scroll { overflow-x: auto; }
+  svg { display: block; }
+  svg .grid { stroke: var(--line); stroke-width: 1; }
+  svg .tick { fill: var(--muted); font-size: 10px; }
+  svg rect.seg { cursor: pointer; }
+  svg rect.seg.dim { opacity: .18; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 14px; }
+  .legend button {
+    display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
+    color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer; padding: 2px 0;
+  }
+  .legend button.off { color: var(--muted); opacity: .5; }
+  .legend button[aria-pressed="true"] { font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+  .sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.group { cursor: pointer; }
+  tr.group td { font-weight: 600; }
+  tr.group:hover td { color: var(--accent); }
+  tr.skill td:first-child { padding-left: 34px; color: var(--muted); font-weight: 400; }
+  tr.skill td.name { color: var(--ink); }
+  .plugname { display: inline-flex; align-items: center; gap: 8px; }
+  .caret { color: var(--muted); font-size: 10px; width: 8px; display: inline-block; }
+  .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+  #tip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+    max-width: 280px; z-index: 10;
+  }
+  #tip .th { font-weight: 650; margin-bottom: 4px; }
+  #tip .row { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); }
+  #tip .row b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  footer { color: var(--muted); font-size: 12px; display: flex; gap: 12px; align-items: center; }
+  footer button { font: inherit; background: var(--panel); color: var(--ink);
+                  border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Skill Spy</h1>
+    <span class="sub" id="window-sub"></span>
+  </header>
+
+  <aside class="info">
+    <p>Counts <code>Skill</code> invocations gathered from your Claude Code
+    session transcripts, grouped by the plugin that provides each skill. Stats
+    are kept for the last <span id="retention">6 months</span>.</p>
+    <p>Skills invoked as a <code>/slash</code> command are not counted: the
+    harness loads those directly and no <code>Skill</code> call is recorded.</p>
+  </aside>
+
+  <div class="controls">
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-gran="hour" aria-selected="false">Hourly</button>
+      <button role="tab" data-gran="day" aria-selected="true">Daily</button>
+      <button role="tab" data-gran="week" aria-selected="false">Weekly</button>
+    </div>
+    <div class="filters">
+      <label class="field">Profile
+        <select id="profile"><option value="">All profiles</option></select>
+      </label>
+      <label class="field">Window
+        <select id="buckets"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="n" id="stat-total">–</div><div class="k">Invocations</div></div>
+    <div class="card"><div class="n" id="stat-skills">–</div><div class="k">Distinct skills</div></div>
+    <div class="card"><div class="n" id="stat-plugins">–</div><div class="k">Plugins</div></div>
+    <div class="card"><div class="n" id="stat-sub">–</div><div class="k">By subagents</div></div>
+  </div>
+
+  <div class="panel">
+    <h2 id="chart-title">Invocations over time</h2>
+    <div class="chart-scroll"><svg id="chart" role="img" aria-label="Skill invocations over time"></svg></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Skills by plugin</h2>
+    <table>
+      <thead><tr>
+        <th>Plugin / skill</th>
+        <th class="num">Invocations</th>
+        <th class="num">By subagents</th>
+        <th class="num">Last used</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>No skill invocations in this window.</div>
+  </div>
+
+  <footer>
+    <button id="rescan">Rescan transcripts</button>
+    <span id="scan-info"></span>
+  </footer>
+</div>
+<div id="tip"></div>
+
+<script>
+"use strict";
+
+// Categorical hues chosen to stay distinguishable on both themes; plugins are
+// assigned a colour by their rank in the current window so the busiest groups
+// keep stable, high-contrast colours.
+const PALETTE = ["#4e79c7","#b4592a","#3f9e6d","#9a5fbd","#c2903a","#4aa3b8",
+                 "#c1567f","#6f8f3a","#8a6bd1","#c0714a","#4c9ac0","#a4553f"];
+
+const state = {
+  gran: "day",
+  buckets: 0,
+  profile: "",
+  isolated: null,      // plugin clicked in the legend; null shows all
+  expanded: new Set(), // plugin rows expanded in the table
+  stats: null,
+  defaults: {},
+};
+
+const WINDOWS = {
+  hour: [{n: 12, t: "Last 12 hours"}, {n: 24, t: "Last 24 hours"}, {n: 48, t: "Last 48 hours"}, {n: 72, t: "Last 72 hours"}],
+  day:  [{n: 7,  t: "Last 7 days"},   {n: 14, t: "Last 14 days"},  {n: 30, t: "Last 30 days"},  {n: 90, t: "Last 90 days"}],
+  week: [{n: 4,  t: "Last 4 weeks"},  {n: 8,  t: "Last 8 weeks"},  {n: 12, t: "Last 12 weeks"}, {n: 26, t: "Last 26 weeks"}],
+};
+
+const $ = (id) => document.getElementById(id);
+
+function colorFor(plugin) {
+  const list = (state.stats && state.stats.plugins) || [];
+  const i = list.findIndex((p) => p.plugin === plugin);
+  return PALETTE[(i < 0 ? list.length : i) % PALETTE.length];
+}
+
+// visiblePlugins narrows every derived view — chart, legend, table, stat cards —
+// to the isolated plugin, so a legend click reads as "show me only this one".
+function visiblePlugins() {
+  const all = (state.stats && state.stats.plugins) || [];
+  if (!state.isolated) return all;
+  return all.filter((p) => p.plugin === state.isolated);
+}
+
+async function loadMeta() {
+  const meta = await fetch("api/meta").then((r) => r.json());
+  const sel = $("profile");
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">All profiles</option>';
+  for (const p of meta.profiles || []) {
+    const opt = document.createElement("option");
+    opt.value = p; opt.textContent = p;
+    sel.appendChild(opt);
+  }
+  sel.value = keep;
+  for (const d of meta.defaults || []) state.defaults[d.gran] = d.buckets;
+  // Take the retention window from the server so the note always matches the
+  // value the store actually prunes at.
+  if (meta.retentionMonths) {
+    $("retention").textContent =
+      meta.retentionMonths + (meta.retentionMonths === 1 ? " month" : " months");
+  }
+  $("scan-info").textContent = meta.lastScan
+    ? `${meta.total} events recorded · last scan ${new Date(meta.lastScan).toLocaleTimeString()}`
+    : `${meta.total} events recorded`;
+}
+
+function renderWindowOptions() {
+  const sel = $("buckets");
+  const def = state.defaults[state.gran] || 0;
+  sel.innerHTML = "";
+  for (const opt of WINDOWS[state.gran]) {
+    const el = document.createElement("option");
+    el.value = String(opt.n);
+    el.textContent = opt.t + (opt.n === def ? " (default)" : "");
+    sel.appendChild(el);
+  }
+  sel.value = String(state.buckets || def);
+}
+
+async function load() {
+  const params = new URLSearchParams({gran: state.gran});
+  if (state.buckets) params.set("buckets", String(state.buckets));
+  if (state.profile) params.set("profile", state.profile);
+  state.stats = await fetch("api/stats?" + params).then((r) => r.json());
+  // An isolated plugin absent from the new window would filter everything away,
+  // leaving an empty dashboard with no visible cause — so drop the filter.
+  const live = new Set((state.stats.plugins || []).map((p) => p.plugin));
+  if (state.isolated && !live.has(state.isolated)) state.isolated = null;
+  render();
+}
+
+function render() {
+  const s = state.stats;
+  if (!s) return;
+  const plugins = s.plugins || [];
+  const shown = visiblePlugins();
+  const shownTotal = shown.reduce((a, p) => a + p.total, 0);
+  const shownSub = shown.reduce((a, p) => a + p.subagent, 0);
+  const skillCount = shown.reduce((a, p) => a + p.skills.length, 0);
+
+  $("stat-total").textContent = shownTotal.toLocaleString();
+  $("stat-skills").textContent = skillCount.toLocaleString();
+  $("stat-plugins").textContent = shown.length.toLocaleString();
+  $("stat-sub").textContent = shownSub.toLocaleString();
+
+  const from = new Date(s.from), to = new Date(s.to);
+  const fmt = (d) => d.toLocaleString([], {month: "short", day: "numeric",
+    hour: state.gran === "hour" ? "2-digit" : undefined,
+    minute: state.gran === "hour" ? "2-digit" : undefined});
+  $("window-sub").textContent = `${fmt(from)} → ${fmt(to)}${s.profile ? " · " + s.profile : ""}`;
+  // Name the filter in the heading: otherwise an isolated plugin's smaller
+  // numbers look like missing data rather than a filter the user applied.
+  $("chart-title").textContent = state.isolated
+    ? `Invocations per ${state.gran} · ${state.isolated} only`
+    : `Invocations per ${state.gran}`;
+
+  drawChart();
+  drawLegend(plugins);
+  drawTable(shown);
+  $("empty").hidden = shownTotal > 0;
+}
+
+function drawChart() {
+  const svg = $("chart");
+  const s = state.stats;
+  const buckets = s.buckets || [];
+  const shown = visiblePlugins().map((p) => p.plugin);
+
+  const padL = 34, padR = 8, padT = 10, padB = 26, height = 220;
+  const available = Math.max(320, svg.parentElement.clientWidth - 2);
+  const width = Math.max(available, buckets.length * 16 + padL + padR);
+  const plotW = width - padL - padR, plotH = height - padT - padB;
+
+  const totals = buckets.map((b) => shown.reduce((a, p) => a + (b.byPlugin[p] || 0), 0));
+  const peak = Math.max(1, ...totals);
+  const yMax = niceCeil(peak);
+  const slot = plotW / Math.max(1, buckets.length);
+  const barW = Math.max(3, Math.min(38, slot * 0.7));
+  const y = (v) => padT + plotH - (v / yMax) * plotH;
+
+  const parts = [];
+  // Horizontal gridlines with value ticks.
+  for (const frac of [0, 0.5, 1]) {
+    const v = Math.round(yMax * frac), yy = y(v);
+    parts.push(`<line class="grid" x1="${padL}" y1="${yy}" x2="${width - padR}" y2="${yy}"/>`);
+    parts.push(`<text class="tick" x="${padL - 6}" y="${yy + 3}" text-anchor="end">${v}</text>`);
+  }
+
+  const everyNth = Math.ceil(buckets.length / 14);
+  buckets.forEach((b, i) => {
+    const cx = padL + slot * i + slot / 2;
+    let acc = 0;
+    for (const plugin of shown) {
+      const v = b.byPlugin[plugin] || 0;
+      if (!v) continue;
+      const top = y(acc + v), bottom = y(acc);
+      parts.push(
+        `<rect class="seg" x="${(cx - barW / 2).toFixed(1)}" y="${top.toFixed(1)}" ` +
+        `width="${barW.toFixed(1)}" height="${Math.max(1, bottom - top).toFixed(1)}" ` +
+        `fill="${colorFor(plugin)}" data-b="${i}" data-p="${escapeAttr(plugin)}"/>`);
+      acc += v;
+    }
+    if (i % everyNth === 0 || i === buckets.length - 1) {
+      parts.push(`<text class="tick" x="${cx.toFixed(1)}" y="${height - 8}" text-anchor="middle">${escapeHTML(b.label)}</text>`);
+    }
+  });
+
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = parts.join("");
+}
+
+// niceCeil rounds an axis maximum up to a readable 1/2/5 × 10ⁿ step.
+function niceCeil(v) {
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 5, 10]) if (v <= m * mag) return m * mag;
+  return 10 * mag;
+}
+
+// drawLegend renders every plugin in the window, not just the visible ones —
+// an isolated plugin's siblings must stay clickable to switch to them or clear
+// the filter. Clicking a plugin isolates it; clicking it again shows all.
+function drawLegend(plugins) {
+  const el = $("legend");
+  el.innerHTML = "";
+  for (const p of plugins) {
+    const active = state.isolated === p.plugin;
+    const btn = document.createElement("button");
+    btn.className = state.isolated && !active ? "off" : "";
+    btn.title = active ? "Show all plugins" : "Show only " + p.plugin;
+    btn.setAttribute("aria-pressed", String(active));
+    btn.innerHTML = `<span class="sw" style="background:${colorFor(p.plugin)}"></span>` +
+      `${escapeHTML(p.plugin)} <span style="opacity:.6">${p.total}</span>`;
+    btn.onclick = () => {
+      state.isolated = active ? null : p.plugin;
+      render();
+    };
+    el.appendChild(btn);
+  }
+}
+
+// fmtLastUsed renders a timestamp for the Last used column. Go marshals a zero
+// time as year 1, so guard on that as well as on an absent value.
+function fmtLastUsed(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d) || d.getFullYear() < 2000) return "";
+  return d.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
+}
+
+function drawTable(plugins) {
+  const body = $("rows");
+  body.innerHTML = "";
+  for (const p of plugins) {
+    const open = state.expanded.has(p.plugin);
+    const tr = document.createElement("tr");
+    tr.className = "group";
+    tr.innerHTML =
+      `<td><span class="plugname"><span class="caret">${open ? "▾" : "▸"}</span>` +
+      `<span class="sw" style="background:${colorFor(p.plugin)}"></span>` +
+      `${escapeHTML(p.plugin)} <span style="color:var(--muted);font-weight:400">· ${p.skills.length} skill${p.skills.length === 1 ? "" : "s"}</span></span></td>` +
+      `<td class="num">${p.total}</td><td class="num">${p.subagent || ""}</td>` +
+      `<td class="num">${fmtLastUsed(p.last)}</td>`;
+    tr.onclick = () => {
+      state.expanded.has(p.plugin) ? state.expanded.delete(p.plugin) : state.expanded.add(p.plugin);
+      drawTable(visiblePlugins());
+    };
+    body.appendChild(tr);
+    if (!open) continue;
+    for (const sk of p.skills) {
+      const row = document.createElement("tr");
+      row.className = "skill";
+      row.innerHTML = `<td class="name">${escapeHTML(sk.skill)}</td>` +
+        `<td class="num">${sk.total}</td><td class="num">${sk.subagent || ""}</td>` +
+        `<td class="num">${fmtLastUsed(sk.last)}</td>`;
+      body.appendChild(row);
+    }
+  }
+}
+
+// Tooltip: a bar segment reports its bucket's plugin split and the skills behind it.
+const tip = $("tip");
+$("chart").addEventListener("mousemove", (ev) => {
+  const rect = ev.target.closest("rect.seg");
+  if (!rect) { tip.style.opacity = 0; return; }
+  const b = state.stats.buckets[+rect.dataset.b];
+  const plugin = rect.dataset.p;
+  // bySkill is keyed by qualified name, which for the bare-name groups
+  // (personal/project/built-in) carries no prefix — so membership comes from
+  // the plugin's own skill list rather than from parsing the key.
+  const owned = new Set((state.stats.plugins.find((p) => p.plugin === plugin) || {skills: []})
+    .skills.map((sk) => sk.qualified));
+  const skills = Object.entries(b.bySkill)
+    .filter(([q]) => owned.has(q))
+    .sort((a, c) => c[1] - a[1]).slice(0, 6);
+  const rows = skills.map(([q, n]) =>
+    `<div class="row"><span>${escapeHTML(q)}</span><b>${n}</b></div>`).join("");
+  tip.innerHTML = `<div class="th">${escapeHTML(b.label)} · ${escapeHTML(plugin)} ` +
+    `<span style="color:var(--muted)">${b.byPlugin[plugin]}</span></div>${rows}`;
+  tip.style.opacity = 1;
+  const pad = 14;
+  tip.style.left = Math.min(ev.clientX + pad, window.innerWidth - tip.offsetWidth - 8) + "px";
+  tip.style.top = Math.max(8, ev.clientY - tip.offsetHeight - pad) + "px";
+});
+$("chart").addEventListener("mouseleave", () => { tip.style.opacity = 0; });
+
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+function escapeAttr(s) { return escapeHTML(s); }
+
+$("tabs").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-gran]");
+  if (!btn) return;
+  for (const b of $("tabs").children) b.setAttribute("aria-selected", String(b === btn));
+  state.gran = btn.dataset.gran;
+  state.buckets = 0;            // Each granularity reverts to its own default window.
+  renderWindowOptions();
+  load();
+});
+$("profile").addEventListener("change", (ev) => { state.profile = ev.target.value; load(); });
+$("buckets").addEventListener("change", (ev) => { state.buckets = +ev.target.value; load(); });
+$("rescan").addEventListener("click", async () => {
+  const btn = $("rescan");
+  btn.disabled = true; btn.textContent = "Scanning…";
+  try {
+    const r = await fetch("api/scan", {method: "POST"}).then((x) => x.json());
+    await loadMeta();
+    await load();
+    $("scan-info").textContent =
+      `+${r.newEvents} new · read ${r.filesRead}/${r.filesConsidered} transcripts in ${Math.round(r.duration / 1e6)} ms`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Rescan transcripts";
+  }
+});
+window.addEventListener("resize", () => { if (state.stats) drawChart(); });
+
+(async function init() {
+  await loadMeta();
+  renderWindowOptions();
+  await load();
+  setInterval(async () => { await loadMeta(); await load(); }, 60000);
+})();
+</script>
+</body>
+</html>

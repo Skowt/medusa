@@ -183,6 +183,10 @@ type ShowWelcome struct{}
 // ToggleMonitor requests toggling monitor mode
 type ToggleMonitor struct{}
 
+// OpenSkillUsage requests opening the skill-usage dashboard in the browser.
+// The server starts on first request and stays up for the rest of the session.
+type OpenSkillUsage struct{}
+
 // ToggleHelp requests toggling the help overlay
 type ToggleHelp struct{}
 

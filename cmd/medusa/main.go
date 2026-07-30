@@ -65,6 +65,15 @@ func main() {
 		fmt.Printf("medusa %s (commit: %s, built: %s)\n", version, commit, date)
 		os.Exit(0)
 	}
+	// Subcommands run instead of the TUI and are dispatched before any TUI or
+	// logging setup, so they stay usable headlessly (scripts, CI, no terminal).
+	if len(os.Args) > 1 && os.Args[1] == skillsCommandName {
+		if err := runSkillsCommand(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "medusa "+skillsCommandName+":", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	// Initialize logging
 	medusaHome, _ := config.MedusaHome()
 	logDir := filepath.Join(medusaHome, "logs")

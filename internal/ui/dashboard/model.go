@@ -63,6 +63,7 @@ const (
 	toolbarHelp toolbarButtonKind = iota
 	toolbarMonitor
 	toolbarSettings
+	toolbarSkillUsage
 )
 
 // toolbarButton tracks a clickable button in the toolbar
