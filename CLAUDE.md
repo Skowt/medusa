@@ -120,6 +120,34 @@ clamps to an empty buffer and default-mode tabs cannot scroll at all.
 Regression cover: `internal/e2e/default_scroll_e2e_test.go` (default mode must
 scroll) and `internal/e2e/fullscreen_scroll_e2e_test.go` (fullscreen must not).
 
+### Key forwarding
+
+`common.KeyToBytes` (`internal/ui/common/keys.go`) is the single encoder from a
+decoded key event back to the bytes a real terminal would have sent; the center
+tabs, the monitor grid, and the sidebar terminal all go through it. Every
+modifier it drops is a shortcut the agent can never see, and the failure is
+silent — flattening `shift+enter` to a bare CR submits the prompt the user was
+trying to break onto a new line.
+
+Two properties are load-bearing:
+
+1. **Alt keys must be rebuilt from `Key.Code`.** Both decoders (legacy
+   ESC-prefix and Kitty) clear `Key.Text` whenever a modifier beyond shift is
+   held, so `alt+b` / `alt+f` (word motion) arrive with empty text and cannot be
+   forwarded as text. Requiring non-empty text dropped them outright.
+2. **Enter is the one key that does not use the CSI form.** Modified special
+   keys go out as `CSI 1;<mod><final>` (`ctrl+left` → `CSI 1;5D`), which tmux
+   forwards. `shift+enter` only reaches medusa as the Kitty `CSI 13;2u` form,
+   which tmux would strip since medusa never enables `extended-keys`, so
+   `shift+enter` and `alt+enter` both become **ESC CR** — the meta+enter
+   sequence Claude Code binds to "insert newline", and what its own
+   `/terminal-setup` installs for shift+enter.
+
+Regression cover: `internal/ui/common/keys_test.go`.
+
+Note that `ctrl+a` never reaches the agent: it is medusa's tmux-style prefix
+key. Press it twice to send a literal `ctrl+a` (`sendPrefixToTerminal`).
+
 ### OSC 8 hyperlinks
 
 Agents print links as shorthand text wrapped in an OSC 8 sequence carrying the

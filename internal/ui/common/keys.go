@@ -1,111 +1,91 @@
 package common
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"strconv"
+	"unicode"
 
-// KeyToBytes converts a key press message to bytes for the terminal.
+	tea "charm.land/bubbletea/v2"
+)
+
+// KeyToBytes converts a key press message to the bytes a real terminal would
+// have sent for it. Dropping a modifier here fails silently: flattening
+// shift+enter to a bare CR submits the prompt the user meant to break onto a
+// new line. See CLAUDE.md, "Key forwarding".
 func KeyToBytes(msg tea.KeyPressMsg) []byte {
 	key := msg.Key()
-
-	if key.Mod&tea.ModCtrl != 0 {
-		switch key.Code {
-		case 'a':
-			return []byte{0x01}
-		case 'b':
-			return []byte{0x02}
-		case 'c':
-			return []byte{0x03}
-		case 'd':
-			return []byte{0x04}
-		case 'e':
-			return []byte{0x05}
-		case 'f':
-			return []byte{0x06}
-		case 'g':
-			return []byte{0x07}
-		case 'h':
-			return []byte{0x08}
-		// ctrl+i is tab, ctrl+m is enter; handled below
-		case 'j':
-			return []byte{0x0a}
-		case 'k':
-			return []byte{0x0b}
-		case 'l':
-			return []byte{0x0c}
-		case 'n':
-			return []byte{0x0e}
-		case 'o':
-			return []byte{0x0f}
-		case 'p':
-			return []byte{0x10}
-		case 'r':
-			return []byte{0x12}
-		case 's':
-			return []byte{0x13}
-		case 't':
-			return []byte{0x14}
-		case 'u':
-			return []byte{0x15}
-		case 'v':
-			return []byte{0x16}
-		case 'w':
-			return []byte{0x17}
-		case 'x':
-			return []byte{0x18}
-		case 'y':
-			return []byte{0x19}
-		case 'z':
-			return []byte{0x1a}
-		}
-	}
+	alt := key.Mod&tea.ModAlt != 0
+	ctrl := key.Mod&tea.ModCtrl != 0
+	shift := key.Mod&tea.ModShift != 0
 
 	switch key.Code {
 	case tea.KeyEnter:
+		// ESC CR is meta+enter, which Claude Code inserts as a newline. The
+		// Kitty CSI 13;2u form shift+enter actually arrives as would be
+		// stripped by tmux, since medusa never enables extended-keys.
+		if alt || shift {
+			return []byte{0x1b, '\r'}
+		}
 		return []byte{'\r'}
 	case tea.KeyBackspace:
+		// ESC DEL is readline's delete-word-backwards.
+		if alt || ctrl {
+			return []byte{0x1b, 0x7f}
+		}
 		return []byte{0x7f}
 	case tea.KeyTab:
-		if key.Mod&tea.ModShift != 0 {
+		switch {
+		case shift:
 			return []byte{0x1b, '[', 'Z'}
+		case alt:
+			return []byte{0x1b, '\t'}
 		}
 		return []byte{'\t'}
 	case tea.KeySpace:
+		switch {
+		case ctrl:
+			return []byte{0x00}
+		case alt:
+			return []byte{0x1b, ' '}
+		}
 		return []byte{' '}
 	case tea.KeyEscape:
 		return []byte{0x1b}
 	case tea.KeyUp:
-		if key.Mod&tea.ModAlt != 0 {
-			return []byte{0x1b, '[', '1', ';', '3', 'A'}
-		}
-		return []byte{0x1b, '[', 'A'}
+		return cursorKey('A', key.Mod)
 	case tea.KeyDown:
-		if key.Mod&tea.ModAlt != 0 {
-			return []byte{0x1b, '[', '1', ';', '3', 'B'}
-		}
-		return []byte{0x1b, '[', 'B'}
+		return cursorKey('B', key.Mod)
 	case tea.KeyRight:
-		if key.Mod&tea.ModAlt != 0 {
-			return []byte{0x1b, '[', '1', ';', '3', 'C'}
-		}
-		return []byte{0x1b, '[', 'C'}
+		return cursorKey('C', key.Mod)
 	case tea.KeyLeft:
-		if key.Mod&tea.ModAlt != 0 {
-			return []byte{0x1b, '[', '1', ';', '3', 'D'}
-		}
-		return []byte{0x1b, '[', 'D'}
+		return cursorKey('D', key.Mod)
 	case tea.KeyHome:
-		return []byte{0x1b, '[', 'H'}
+		return cursorKey('H', key.Mod)
 	case tea.KeyEnd:
-		return []byte{0x1b, '[', 'F'}
+		return cursorKey('F', key.Mod)
+	case tea.KeyInsert:
+		return tildeKey(2, key.Mod)
 	case tea.KeyDelete:
-		return []byte{0x1b, '[', '3', '~'}
+		return tildeKey(3, key.Mod)
 	case tea.KeyPgUp:
-		return []byte{0x1b, '[', '5', '~'}
+		return tildeKey(5, key.Mod)
 	case tea.KeyPgDown:
-		return []byte{0x1b, '[', '6', '~'}
+		return tildeKey(6, key.Mod)
 	}
 
-	if key.Mod&tea.ModAlt != 0 && key.Text != "" {
-		return append([]byte{0x1b}, []byte(key.Text)...)
+	if ctrl {
+		if b, ok := ctrlByte(key.Code); ok {
+			if alt {
+				return []byte{0x1b, b}
+			}
+			return []byte{b}
+		}
+	}
+
+	if alt {
+		if r := typedRune(key); r != 0 {
+			return append([]byte{0x1b}, []byte(string(r))...)
+		}
+		return nil
 	}
 
 	if key.Text != "" {
@@ -117,4 +97,88 @@ func KeyToBytes(msg tea.KeyPressMsg) []byte {
 	}
 
 	return nil
+}
+
+// ctrlByte maps a key held with ctrl to its C0 control byte. Letters are
+// arithmetic rather than a table so none can be missing.
+func ctrlByte(code rune) (byte, bool) {
+	switch {
+	case code >= 'a' && code <= 'z':
+		return byte(code-'a') + 1, true
+	case code >= 'A' && code <= 'Z':
+		return byte(code-'A') + 1, true
+	case code == '@':
+		return 0x00, true
+	case code == '[':
+		return 0x1b, true
+	case code == '\\':
+		return 0x1c, true
+	case code == ']':
+		return 0x1d, true
+	case code == '^':
+		return 0x1e, true
+	case code == '_', code == '/':
+		return 0x1f, true
+	case code == '?':
+		return 0x7f, true
+	}
+	return 0, false
+}
+
+// typedRune returns the character a modified key would have typed. Both
+// decoders clear Key.Text for anything held with more than shift, so alt+<char>
+// has to be rebuilt from the key code or it never reaches the agent.
+func typedRune(key tea.Key) rune {
+	if key.Text != "" {
+		return []rune(key.Text)[0]
+	}
+	r := key.Code
+	if key.Mod&tea.ModShift != 0 {
+		if key.ShiftedCode != 0 {
+			r = key.ShiftedCode
+		} else {
+			r = unicode.ToUpper(r)
+		}
+	}
+	if r > unicode.MaxRune || !unicode.IsPrint(r) {
+		return 0
+	}
+	return r
+}
+
+// csiModifier returns the xterm modifier parameter for mod, or 0 when none
+// applies. Super/Meta are excluded: xterm has no encoding for them, and medusa
+// binds Cmd itself (Cmd+C copies the selection).
+func csiModifier(mod tea.KeyMod) int {
+	param := 0
+	if mod&tea.ModShift != 0 {
+		param |= 1
+	}
+	if mod&tea.ModAlt != 0 {
+		param |= 2
+	}
+	if mod&tea.ModCtrl != 0 {
+		param |= 4
+	}
+	if param == 0 {
+		return 0
+	}
+	return param + 1
+}
+
+// cursorKey encodes an arrow/Home/End key as CSI <final>, or CSI 1;<mod><final>
+// when modifiers apply.
+func cursorKey(final byte, mod tea.KeyMod) []byte {
+	if param := csiModifier(mod); param != 0 {
+		return append([]byte("\x1b[1;"+strconv.Itoa(param)), final)
+	}
+	return []byte{0x1b, '[', final}
+}
+
+// tildeKey encodes Insert/Delete/PgUp/PgDown as CSI <num>~ or CSI <num>;<mod>~.
+func tildeKey(num int, mod tea.KeyMod) []byte {
+	if param := csiModifier(mod); param != 0 {
+		return []byte("\x1b[" + strconv.Itoa(num) + ";" + strconv.Itoa(param) + "~")
+	}
+	return []byte("\x1b[" + strconv.Itoa(num) + "~")
 }
