@@ -85,12 +85,7 @@ func (p *IDEPicker) Update(msg tea.Msg) (*IDEPicker, tea.Cmd) {
 			return p, func() tea.Msg { return IDEPickerResult{Confirmed: false} }
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("enter", " "))):
-			p.visible = false
-			sel := p.installs[p.cursor]
-			root := p.root
-			return p, func() tea.Msg {
-				return IDEPickerResult{Confirmed: true, Install: sel, Root: root}
-			}
+			return p, p.confirm()
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
 			p.cursor = (p.cursor + 1) % len(p.installs)
@@ -126,13 +121,28 @@ func (p *IDEPicker) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 
+	// Clicking an install both selects and opens it — a click is the mouse
+	// equivalent of moving the cursor there and pressing enter.
 	for _, hit := range p.hitRegions {
 		if hit.region.Contains(localX, localY) {
 			p.cursor = hit.index
-			return nil
+			return p.confirm()
 		}
 	}
 	return nil
+}
+
+// confirm closes the picker and reports the install under the cursor.
+func (p *IDEPicker) confirm() tea.Cmd {
+	if p.cursor < 0 || p.cursor >= len(p.installs) {
+		return nil
+	}
+	p.visible = false
+	sel := p.installs[p.cursor]
+	root := p.root
+	return func() tea.Msg {
+		return IDEPickerResult{Confirmed: true, Install: sel, Root: root}
+	}
 }
 
 func (p *IDEPicker) View() string {
