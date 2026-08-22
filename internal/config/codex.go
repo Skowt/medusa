@@ -15,6 +15,22 @@ import (
 // way CLAUDE_CONFIG_DIR makes Claude tabs profile-scoped.
 const CodexHomeSubdir = "codex"
 
+// codexHookShimName is the launcher every Codex hook rule points at, inside the
+// profile's CODEX_HOME.
+//
+// The indirection exists because Codex hashes each hook's command string and
+// re-asks for trust whenever it changes. Naming medusa-hook-emit directly put
+// its absolute path in that string, so the prompt came back for every medusa
+// that lived somewhere new — a `make run` build, an `air` rebuild, an upgrade,
+// or a PATH lookup that missed and fell back to the shell pipeline. Pointing at
+// a fixed path inside CODEX_HOME instead makes the string constant, and the
+// shim (which Medusa rewrites on every launch) carries what actually varies.
+//
+// The trust boundary is unchanged by this: Medusa owns CODEX_HOME outright, so
+// trusting a rule that names medusa-hook-emit and trusting one that names
+// Medusa's own shim are the same act of trusting Medusa.
+const codexHookShimName = "medusa-hook.sh"
+
 // codexHookTimeoutSec bounds one hook invocation. Codex reads `timeout` in
 // seconds (Claude Code's settings.json reads milliseconds), so the two must not
 // share a constant: 5000 here would be an eighty-three minute timeout.
@@ -61,13 +77,81 @@ func EnsureCodexHome(codexHome string) error {
 // hook_event_name), so medusa-hook-emit parses them unchanged.
 //
 // Codex has no Notification event, so a Codex tab has no idle_prompt or
-// permission_prompt ping; PermissionRequest is the one needs-input signal it
-// offers. Its Stop payload carries no background_tasks list either, so the
-// outstanding count stays unknown and a Stop reads as plain ready — the same
-// degradation as a Claude Code older than v2.1.145.
+// permission_prompt ping. Its Stop payload carries no background_tasks list
+// either, so the outstanding count stays unknown and a Stop reads as plain
+// ready — the same degradation as a Claude Code older than v2.1.145.
 var codexHookEvents = []string{
 	"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-	"PermissionRequest", "SubagentStart", "SubagentStop", "Stop",
+	"SubagentStart", "SubagentStop", "Stop",
+}
+
+// codexHookShimPath returns where the launcher lives for a CODEX_HOME.
+func codexHookShimPath(codexHome string) string {
+	return filepath.Join(codexHome, codexHookShimName)
+}
+
+// writeCodexHookShim writes the launcher every Codex hook rule invokes, and
+// returns its path — or "" when there is no emit binary to launch, which leaves
+// the caller on the legacy shell commands.
+//
+// The shim holds everything that can change between Medusa builds: the emit
+// binary's path and the socket. It also holds the two guards the command string
+// used to carry, so a non-Medusa session and a missing binary are both silent
+// no-ops.
+func writeCodexHookShim(codexHome, sock, emitBin string) string {
+	if codexHome == "" || emitBin == "" {
+		return ""
+	}
+	script := "#!/bin/sh\n" +
+		"# Managed by Medusa — rewritten on every launch. Edits will be lost.\n" +
+		"# Pointed at by CODEX_HOME/hooks.json so the hook command Codex hashes\n" +
+		"# for trust stays the same across Medusa builds and upgrades.\n" +
+		"[ -n \"$MEDUSA_SESSION_NAME\" ] || exit 0\n" +
+		"BIN=" + shellQuote(emitBin) + "\n" +
+		"SOCK=" + shellQuote(sock) + "\n" +
+		"[ -x \"$BIN\" ] || exit 0\n" +
+		"exec \"$BIN\" -socket \"$SOCK\" \"$@\"\n"
+	path := codexHookShimPath(codexHome)
+	if err := atomicWriteFile(path, []byte(script), 0700); err != nil {
+		return ""
+	}
+	return path
+}
+
+// shellQuote wraps a value in single quotes for the shim.
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+// codexShimCommand is the stable command string a hook rule carries.
+func codexShimCommand(shim, eventName string) string {
+	return shellQuote(shim) + " -event " + eventName
+}
+
+// stripMedusaCodexHookRules removes the rules Medusa injected, in either form:
+// the current shim-based ones and the older ones that named medusa-hook-emit
+// directly. Without the second, an upgrade would leave the old rule behind and
+// every event would fire twice.
+func stripMedusaCodexHookRules(hooks map[string]any) {
+	stripMedusaHookRules(hooks) // legacy: commands opening with the env guard
+	for event, v := range hooks {
+		arr, ok := v.([]any)
+		if !ok {
+			continue
+		}
+		var kept []any
+		for _, entry := range arr {
+			if m, ok := entry.(map[string]any); ok && hookRuleHasCommandContaining(m, codexHookShimName) {
+				continue
+			}
+			kept = append(kept, entry)
+		}
+		if len(kept) == 0 {
+			delete(hooks, event)
+		} else {
+			hooks[event] = kept
+		}
+	}
 }
 
 // InjectCodexHooks merges Medusa's lifecycle hooks into a profile's
@@ -85,23 +169,40 @@ var codexHookEvents = []string{
 // and continue". The hash covers the command string, which is stable per
 // install, so it is a one-time gesture per profile.
 func InjectCodexHooks(codexHome, hooksDir, emitBin string) error {
-	builder := hookCommandBuilder{sock: hookspkg.SocketPath(hooksDir), emitBin: emitBin}
+	sock := hookspkg.SocketPath(hooksDir)
+	builder := hookCommandBuilder{sock: sock, emitBin: emitBin}
+	shim := writeCodexHookShim(codexHome, sock, emitBin)
 	return readModifyWriteJSON(filepath.Join(codexHome, "hooks.json"), func(root map[string]any) {
 		hooks := getOrCreateMap(root, "hooks")
-		stripMedusaHookRules(hooks)
+		stripMedusaCodexHookRules(hooks)
 
-		for _, event := range codexHookEvents {
-			existing, _ := hooks[event].([]any)
-			hooks[event] = append(existing, map[string]any{
+		rule := func(command string, timeoutSec int) map[string]any {
+			return map[string]any{
 				"hooks": []any{
 					map[string]any{
 						"type":    "command",
-						"command": builder.command(event),
-						"timeout": codexHookTimeoutSec,
+						"command": command,
+						"timeout": timeoutSec,
 					},
 				},
-			})
+			}
 		}
+
+		// Without the shim there is no emit binary, so the rules fall back to
+		// the legacy shell pipeline. It carries no binary path either, so it is
+		// just as stable.
+		eventCommand := func(event string) string {
+			if shim == "" {
+				return builder.command(event)
+			}
+			return codexShimCommand(shim, event)
+		}
+
+		for _, event := range codexHookEvents {
+			existing, _ := hooks[event].([]any)
+			hooks[event] = append(existing, rule(eventCommand(event), codexHookTimeoutSec))
+		}
+
 		root["hooks"] = hooks
 	})
 }

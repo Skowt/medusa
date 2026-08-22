@@ -99,9 +99,8 @@ type Tab struct {
 	Fullscreen               bool // Claude fullscreen TUI mode: mouse is forwarded to Claude.
 	// Codex per-tab policies, persisted so a restart relaunches the tab the
 	// way it was started. Empty for every other assistant.
-	CodexSandbox  string
-	CodexApproval string
-	CodexSearch   bool
+	CodexSandbox string
+	CodexAuto    bool
 
 	// Script tabs retain the full shell command (env-prefixed) so Restart
 	// can relaunch the same process in a fresh tmux session.

@@ -78,8 +78,7 @@ type TabInfo struct {
 	PermissionMode           string `json:"permission_mode,omitempty"`
 	Fullscreen               bool   `json:"fullscreen,omitempty"` // Claude launched in fullscreen TUI mode.
 	CodexSandbox             string `json:"codex_sandbox,omitempty"`
-	CodexApproval            string `json:"codex_approval,omitempty"`
-	CodexSearch              bool   `json:"codex_search,omitempty"`
+	CodexAuto                bool   `json:"codex_auto,omitempty"`
 	// ScriptFullCmd is the env-prefixed shell command for script tabs,
 	// persisted so Restart can rerun the same command after a medusa restart.
 	ScriptFullCmd string `json:"script_full_cmd,omitempty"`

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -102,20 +101,6 @@ func getOrCreatePerms(settings map[string]any) map[string]any {
 	return perms
 }
 
-// InjectGlobalPermissions merges global permissions into a profile's settings.json.
-// Creates the file if it does not exist.
-func InjectGlobalPermissions(profileDir string, global *GlobalPermissions) error {
-	if global == nil || (len(global.Allow) == 0 && len(global.Deny) == 0) {
-		return nil
-	}
-	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
-		perms := getOrCreatePerms(settings)
-		perms["allow"] = mergeUnique(toStringSlice(perms["allow"]), global.Allow)
-		perms["deny"] = mergeUnique(toStringSlice(perms["deny"]), global.Deny)
-		settings["permissions"] = perms
-	})
-}
-
 // InjectAdditionalDirectories writes additionalDirectories into
 // {primaryRoot}/.claude/settings.local.json → permissions.additionalDirectories.
 func InjectAdditionalDirectories(primaryRoot string, additionalRoots []string) error {
@@ -130,15 +115,6 @@ func InjectAdditionalDirectories(primaryRoot string, additionalRoots []string) e
 		}
 		perms["additionalDirectories"] = dirs
 		settings["permissions"] = perms
-	})
-}
-
-// InjectSkipPermissionPrompt sets skipDangerousModePermissionPrompt=true
-// in the profile's settings.json so Claude Code doesn't show the bypass
-// permissions confirmation dialog when --dangerously-skip-permissions is used.
-func InjectSkipPermissionPrompt(profileDir string) error {
-	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
-		settings["skipDangerousModePermissionPrompt"] = true
 	})
 }
 
@@ -219,17 +195,6 @@ func InjectTrustedDirectory(workspaceRoot string, configDir string) error {
 	return atomicWriteFile(claudeConfigPath, data, 0600)
 }
 
-// InjectIntoAllProfiles iterates all profile directories and merges global
-// permissions into each one's settings.json.
-func InjectIntoAllProfiles(profilesRoot string, global *GlobalPermissions) error {
-	if global == nil || (len(global.Allow) == 0 && len(global.Deny) == 0) {
-		return nil
-	}
-	return forEachProfile(profilesRoot, func(profileDir string) error {
-		return InjectGlobalPermissions(profileDir, global)
-	})
-}
-
 // getOrCreateMap extracts or initializes a sub-map from settings.
 func getOrCreateMap(settings map[string]any, key string) map[string]any {
 	m, _ := settings[key].(map[string]any)
@@ -237,86 +202,6 @@ func getOrCreateMap(settings map[string]any, key string) map[string]any {
 		m = make(map[string]any)
 	}
 	return m
-}
-
-// InjectCompoundApproveHook adds the medusa-approve-compound PreToolUse hook
-// to a profile's settings.json. The hook auto-approves compound Bash commands
-// when every sub-command is individually allowed.
-func InjectCompoundApproveHook(profileDir string, hookBinaryPath string) error {
-	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
-		hooks := getOrCreateMap(settings, "hooks")
-
-		hookEntry := map[string]any{
-			"matcher": "Bash",
-			"hooks": []any{
-				map[string]any{
-					"type":    "command",
-					"command": hookBinaryPath,
-					"timeout": 3000,
-				},
-			},
-		}
-
-		// Replace any existing medusa-approve-compound entry (path may have
-		// changed between builds/branches) and dedup by binary name.
-		existing, _ := hooks["PreToolUse"].([]any)
-		var kept []any
-		for _, entry := range existing {
-			if m, ok := entry.(map[string]any); ok && hookRuleHasCommandSuffix(m, "medusa-approve-compound") {
-				continue // Remove stale entry; will be replaced below
-			}
-			kept = append(kept, entry)
-		}
-		hooks["PreToolUse"] = append(kept, hookEntry)
-		settings["hooks"] = hooks
-	})
-}
-
-// RemoveCompoundApproveHook removes the medusa-approve-compound PreToolUse hook
-// from a profile's settings.json.
-func RemoveCompoundApproveHook(profileDir string, hookBinaryPath string) error {
-	settingsPath := filepath.Join(profileDir, "settings.json")
-	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
-		return nil
-	}
-	return readModifyWriteJSON(settingsPath, func(settings map[string]any) {
-		hooks, _ := settings["hooks"].(map[string]any)
-		if hooks == nil {
-			return
-		}
-		existing, _ := hooks["PreToolUse"].([]any)
-		var kept []any
-		for _, entry := range existing {
-			m, ok := entry.(map[string]any)
-			if !ok || !hookRuleHasCommand(m, hookBinaryPath) {
-				kept = append(kept, entry)
-			}
-		}
-		if len(kept) > 0 {
-			hooks["PreToolUse"] = kept
-		} else {
-			delete(hooks, "PreToolUse")
-		}
-		if len(hooks) == 0 {
-			delete(settings, "hooks")
-		} else {
-			settings["hooks"] = hooks
-		}
-	})
-}
-
-// InjectCompoundApproveHookAllProfiles adds the hook to all profiles.
-func InjectCompoundApproveHookAllProfiles(profilesRoot, hookBinaryPath string) error {
-	return forEachProfile(profilesRoot, func(profileDir string) error {
-		return InjectCompoundApproveHook(profileDir, hookBinaryPath)
-	})
-}
-
-// RemoveCompoundApproveHookAllProfiles removes the hook from all profiles.
-func RemoveCompoundApproveHookAllProfiles(profilesRoot, hookBinaryPath string) error {
-	return forEachProfile(profilesRoot, func(profileDir string) error {
-		return RemoveCompoundApproveHook(profileDir, hookBinaryPath)
-	})
 }
 
 func forEachProfile(profilesRoot string, fn func(string) error) error {
@@ -336,45 +221,4 @@ func forEachProfile(profilesRoot string, fn func(string) error) error {
 		}
 	}
 	return nil
-}
-
-func toStringSlice(v any) []string {
-	arr, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	result := make([]string, 0, len(arr))
-	for _, item := range arr {
-		if s, ok := item.(string); ok {
-			result = append(result, s)
-		}
-	}
-	return result
-}
-
-// mergeUnique merges two string slices, returning a deduplicated result.
-// Preserves order: existing entries first, then new entries not in existing.
-func mergeUnique(existing, additions []string) []string {
-	seen := make(map[string]bool)
-	result := make([]string, 0, len(existing)+len(additions))
-
-	// Add existing entries (deduplicated)
-	for _, s := range existing {
-		trimmed := strings.TrimSpace(s)
-		if trimmed != "" && !seen[trimmed] {
-			seen[trimmed] = true
-			result = append(result, trimmed)
-		}
-	}
-
-	// Add new entries not already present
-	for _, s := range additions {
-		trimmed := strings.TrimSpace(s)
-		if trimmed != "" && !seen[trimmed] {
-			seen[trimmed] = true
-			result = append(result, trimmed)
-		}
-	}
-
-	return result
 }

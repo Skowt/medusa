@@ -405,6 +405,9 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		AllowUnsandboxedCommands: info.AllowUnsandboxedCommands,
 		PermissionMode:           info.PermissionMode,
 		Fullscreen:               info.Fullscreen,
+		FrameRendering:           frameRendering,
+		CodexSandbox:             info.CodexSandbox,
+		CodexAuto:                info.CodexAuto,
 		ScriptFullCmd:            info.ScriptFullCmd,
 	}
 	wsID := string(ws.ID())

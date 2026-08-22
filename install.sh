@@ -147,7 +147,6 @@ install_binary() {
 }
 
 install_binary "medusa" required
-install_binary "medusa-approve-compound"
 install_binary "medusa-hook-emit"
 
 echo ""

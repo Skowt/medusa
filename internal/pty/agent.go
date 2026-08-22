@@ -33,12 +33,10 @@ type AgentOptions struct {
 	// any conversation to continue when the recorded session id has none;
 	// CreateAgentWithTags fills it in.
 	Cwd string
-	// CodexSandbox and CodexApproval are codex's --sandbox and
-	// --ask-for-approval policies; CodexSearch is its --search flag. All three
-	// are ignored for other agent types.
-	CodexSandbox  string
-	CodexApproval string
-	CodexSearch   bool
+	// CodexSandbox is codex's --sandbox policy. CodexAuto enables automatic
+	// approval review. Web search is always enabled for Codex launches.
+	CodexSandbox string
+	CodexAuto    bool
 }
 
 // buildAgentCommand assembles the env-prefixed shell command for an agent.
@@ -177,26 +175,6 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		if m.config.UI.SyncProfilePlugins {
 			_ = config.SyncProfileSharedDirs(m.config.Paths.ProfilesRoot, ws.Profile)
 		}
-		// Inject global permissions into the profile if enabled
-		if m.config.UI.GlobalPermissions {
-			global, err := config.LoadGlobalPermissions(m.config.Paths.GlobalPermissionsPath)
-			if err == nil && (len(global.Allow) > 0 || len(global.Deny) > 0) {
-				_ = config.InjectGlobalPermissions(profileDir, global)
-			}
-		}
-		// Strip any leftover Edit(**) from a previous agent run so users
-		// aren't silently still operating with the (now-removed) "allow edits"
-		// pre-grant. See config.StripAllowEdits.
-		_ = config.StripAllowEdits(ws.Root())
-		// Inject compound command approval hook if enabled
-		if m.config.UI.CompoundApprove {
-			if exe, err := os.Executable(); err == nil {
-				hookBin := filepath.Join(filepath.Dir(exe), "medusa-approve-compound")
-				if _, err := os.Stat(hookBin); err == nil {
-					_ = config.InjectCompoundApproveHook(profileDir, hookBin)
-				}
-			}
-		}
 	}
 
 	// A Codex tab's profileDir is its CODEX_HOME, which also carries the
@@ -210,13 +188,6 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// Use profile config dir if set, otherwise default ~/.claude.json
 	if agentType == AgentClaude {
 		_ = config.InjectTrustedDirectory(ws.Root(), profileDir)
-	}
-
-	// bypassPermissions still triggers Claude's confirmation dialog the first
-	// time it's used; suppress it for users who explicitly chose it from our
-	// launcher dropdown.
-	if agentType == AgentClaude && opts.PermissionMode == "bypassPermissions" {
-		_ = config.InjectSkipPermissionPrompt(profileDir)
 	}
 
 	// The pane starts in ws.Root() (see ClientCommandWithTags below), which is

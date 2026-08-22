@@ -29,20 +29,10 @@ func (s *SettingsDialog) build() *LineBuilder {
 	// ── Shared Config ────────────────────────────────────────
 	b.Append("", label.Render("Shared Config"))
 	s.appendCheckbox(b, settingsItemSyncPlugins, s.syncProfilePlugins, "Sync plugins & skills across profiles")
-	s.appendCheckbox(b, settingsItemGlobalPerms, s.globalPerms, "Global allow/deny list")
-	b.Append("", muted.Render("  Share permissions across sessions"))
-	if s.globalPerms {
-		s.appendLink(b, settingsItemEditPermissions, muted, "  [Edit Global Allow/Deny List]")
-	} else {
-		disabled := lipgloss.NewStyle().Foreground(ColorMuted)
-		b.Append("", disabled.Render("  [Edit Global Allow/Deny List]"))
-	}
 	b.Blank()
 
 	// ── Agents ───────────────────────────────────────────────
 	b.Append("", label.Render("Agents"))
-	s.appendCheckbox(b, settingsItemCompoundApprove, s.compoundApprove, "Auto-split compound commands for permission checks")
-
 	soundLabel := "None"
 	if s.notificationSound != "" {
 		soundLabel = s.notificationSound

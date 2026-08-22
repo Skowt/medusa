@@ -111,7 +111,7 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	// Show a toast for notification events that carry a message.
 	if msg.Message != "" {
 		switch msg.Event {
-		case hooks.EventNotificationPermission, hooks.EventNotificationElicitation:
+		case hooks.EventNotificationElicitation:
 			wsName := wsID
 			if ws := a.findWorkspaceByID(wsID); ws != nil {
 				wsName = ws.Name
@@ -186,10 +186,10 @@ func (a *App) restoreHookOutstanding() {
 }
 
 // isNeedsInputState reports whether a stored state means the agent is blocked
-// on the user (permission dialog, question, MCP elicitation).
+// on the user (question or MCP elicitation).
 func isNeedsInputState(evt hooks.EventType) bool {
 	switch evt {
-	case hooks.EventPermissionRequest, hooks.EventNotificationPermission, hooks.EventNotificationElicitation:
+	case hooks.EventNotificationElicitation:
 		return true
 	}
 	return false
@@ -238,7 +238,7 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 		// done; the auto-resumed turn's final Stop delivers the real ping.
 		// With nothing outstanding it is the self-healing clear for any
 		// wedged busy state (missed Stop, lost event). It must never wipe a
-		// pending '!': the permission dialog is still on screen.
+		// pending '!': the question dialog is still on screen.
 		if hadPrev && isNeedsInputState(prev) {
 			return hookTransitionNone
 		}
@@ -255,10 +255,10 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 	case isNeedsInputState(evt),
 		evt == hooks.EventPreToolUse && msg.Tool == "AskUserQuestion":
 		// AskUserQuestion is a question dialog, not work: it arrives as
-		// PreToolUse (plus PermissionRequest) but blocks on the user.
+		// PreToolUse but blocks on the user.
 		state := evt
 		if evt == hooks.EventPreToolUse {
-			state = hooks.EventPermissionRequest
+			state = hooks.EventNotificationElicitation
 		}
 		a.hookWorkspaceStates[wsID] = state
 		if hadPrev && isNeedsInputState(prev) {

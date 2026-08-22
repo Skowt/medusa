@@ -23,8 +23,7 @@ func (m *Model) updateLaunchAgent(msg messages.LaunchAgent) (*Model, tea.Cmd) {
 		PermissionMode:           msg.PermissionMode,
 		Fullscreen:               msg.Fullscreen,
 		CodexSandbox:             msg.CodexSandbox,
-		CodexApproval:            msg.CodexApproval,
-		CodexSearch:              msg.CodexSearch,
+		CodexAuto:                msg.CodexAuto,
 	})
 }
 

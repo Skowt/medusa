@@ -15,14 +15,9 @@ type SettingsResult struct {
 	HideTerminal       bool
 	AutoStartAgent     bool
 	SyncProfilePlugins bool
-	GlobalPermissions  bool
-	CompoundApprove    bool
 	NotificationSound  string
 	TmuxPersistence    bool
 }
-
-// ShowPermissionsEditor is sent when the user clicks "Edit Global Allow/Deny List".
-type ShowPermissionsEditor struct{}
 
 // TriggerUpgradeRequest is sent when the user clicks "Install update" in settings.
 // The app handler translates this into messages.TriggerUpgrade{}.
@@ -40,9 +35,6 @@ const (
 	settingsItemHideSidebar
 	settingsItemHideTerminal
 	settingsItemSyncPlugins // Shared Config section
-	settingsItemGlobalPerms
-	settingsItemEditPermissions
-	settingsItemCompoundApprove // Agents section
 	settingsItemNotificationSound
 	settingsItemAutoStart // Tmux section
 	settingsItemTmuxPersistence
@@ -71,8 +63,6 @@ type SettingsDialog struct {
 	hideTerminal       bool
 	autoStartAgent     bool
 	syncProfilePlugins bool
-	globalPerms        bool
-	compoundApprove    bool
 	notificationSound  string
 	tmuxPersistence    bool
 
@@ -101,7 +91,7 @@ type settingsHitRegion struct {
 }
 
 // NewSettingsDialog creates a new settings dialog with current values.
-func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent, syncProfilePlugins, globalPerms, compoundApprove bool, notificationSound string, tmuxPersistence bool) *SettingsDialog {
+func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent, syncProfilePlugins bool, notificationSound string, tmuxPersistence bool) *SettingsDialog {
 	return &SettingsDialog{
 		theme:              currentTheme,
 		showKeymapHints:    showKeymapHints,
@@ -109,8 +99,6 @@ func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideT
 		hideTerminal:       hideTerminal,
 		autoStartAgent:     autoStartAgent,
 		syncProfilePlugins: syncProfilePlugins,
-		globalPerms:        globalPerms,
-		compoundApprove:    compoundApprove,
 		notificationSound:  notificationSound,
 		tmuxPersistence:    tmuxPersistence,
 		focusedItem:        settingsItemKeymap,
@@ -217,21 +205,6 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		s.visible = false
 		return s, func() tea.Msg { return ShowProfileManager{} }
 
-	case settingsItemGlobalPerms:
-		s.globalPerms = !s.globalPerms
-		return s, nil
-
-	case settingsItemEditPermissions:
-		if s.globalPerms {
-			s.visible = false
-			return s, func() tea.Msg { return ShowPermissionsEditor{} }
-		}
-		return s, nil
-
-	case settingsItemCompoundApprove:
-		s.compoundApprove = !s.compoundApprove
-		return s, nil
-
 	case settingsItemReleases:
 		if !s.updateAvailable {
 			return s, nil
@@ -260,8 +233,6 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 				HideTerminal:       s.hideTerminal,
 				AutoStartAgent:     s.autoStartAgent,
 				SyncProfilePlugins: s.syncProfilePlugins,
-				GlobalPermissions:  s.globalPerms,
-				CompoundApprove:    s.compoundApprove,
 				NotificationSound:  s.notificationSound,
 				TmuxPersistence:    s.tmuxPersistence,
 			}
@@ -295,10 +266,6 @@ func (s *SettingsDialog) handlePrevSection() (*SettingsDialog, tea.Cmd) {
 }
 
 func (s *SettingsDialog) skipDisabledForward() {
-	// Skip edit permissions when global perms is off
-	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
-		s.focusedItem = settingsItemNotificationSound
-	}
 	// Skip [View changes] when no update is available, then [Install update]
 	// when it is absent too — a blocked install keeps the changelog reachable.
 	if !s.updateAvailable && s.focusedItem == settingsItemReleases {
@@ -310,10 +277,6 @@ func (s *SettingsDialog) skipDisabledForward() {
 }
 
 func (s *SettingsDialog) skipDisabledBackward() {
-	// Skip edit permissions when global perms is off
-	if !s.globalPerms && s.focusedItem == settingsItemEditPermissions {
-		s.focusedItem = settingsItemGlobalPerms
-	}
 	// Mirror of skipDisabledForward, walking the About items in reverse.
 	if !s.canInstallUpdate() && s.focusedItem == settingsItemUpgrade {
 		s.focusedItem = settingsItemReleases

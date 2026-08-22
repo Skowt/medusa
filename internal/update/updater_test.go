@@ -302,7 +302,7 @@ func TestInstallBinaryCrossDir(t *testing.T) {
 // of the upgrade set — a release adding a helper must also be picked up by the
 // in-app updater, not only by install.sh.
 func TestSecondaryBinariesList(t *testing.T) {
-	want := []string{"medusa-approve-compound", "medusa-hook-emit"}
+	want := []string{"medusa-hook-emit"}
 	if len(secondaryBinaries) != len(want) {
 		t.Fatalf("secondaryBinaries = %v, want %v", secondaryBinaries, want)
 	}

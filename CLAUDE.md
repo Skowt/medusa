@@ -17,7 +17,7 @@ Don't batch these up for a later cleanup pass — fix as you go.
 ## Common commands
 
 ```bash
-make build            # builds `medusa`, `medusa-approve-compound`, `medusa-hook-emit`
+make build            # builds `medusa` and `medusa-hook-emit`
 make run              # build + run the TUI
 make dev              # hot-reload via air
 make test             # go test -v ./...
@@ -229,9 +229,20 @@ Four properties are load-bearing:
    discovers alongside `config.toml`. But Codex hashes each hook and **skips
    untrusted ones silently**, so the first Codex tab in a profile opens on
    "Hooks need review" and has no activity detection until the user picks
-   "Trust all and continue". The hash covers the command string (stable per
-   install), so it is asked once. Note `timeout` there is **seconds**, where
-   Claude Code's `settings.json` reads milliseconds.
+   "Trust all and continue".
+
+   That hash covers the **command string**, which is why every rule points at
+   `<CODEX_HOME>/medusa-hook.sh` instead of naming `medusa-hook-emit` directly.
+   Naming the binary put its absolute path in the hashed string, so the trust
+   prompt came back for every medusa that lived somewhere new — a `make run`
+   build, an `air` rebuild, an upgrade, or a PATH lookup that missed and fell
+   back to the shell pipeline. The shim is rewritten on every launch and holds
+   everything that varies (binary path, socket) plus both guards, so the hashed
+   string is constant and trust is asked once per profile. This does mean an
+   upgrade changes what runs without re-asking; medusa owns `CODEX_HOME`
+   outright, so trusting a rule that names its shim is the same act as trusting
+   one that names its binary. Note `timeout` there is **seconds**, where Claude
+   Code's `settings.json` reads milliseconds.
 4. **Codex mints its own session ids.** There is no `--session-id` to
    pre-assign one, so a tab only learns its id from the SessionStart hook —
    another reason the trust prompt matters. Restart resumes with
@@ -240,17 +251,14 @@ Four properties are load-bearing:
    1 rather than degrading, which would drop the tab to a shell.
 
 Degradations to expect: Codex has no Notification event, so no idle_prompt or
-permission_prompt ping (PermissionRequest is its one needs-input signal), and
-its Stop payload carries no `background_tasks`, so the outstanding count stays
-unknown and every Stop reads as ready.
+permission_prompt ping, and its Stop payload carries no `background_tasks`, so
+the outstanding count stays unknown and every Stop reads as ready.
 
-`--sandbox` and `--ask-for-approval` are the two controls the dialog exposes;
-`--dangerously-bypass-approvals-and-sandbox` is deliberately never emitted,
-since full access with approvals off reaches the same place. **Fullscreen is
-forced off for Codex** — it is Claude's renderer, and Codex reports no mouse
-and does not take the pane's alternate screen, so marking a Codex tab
-fullscreen would forward the mouse into an app that ignores it and disable
-medusa's own scrollback (see `tabAppOwnsScreen`).
+Medusa does not intercept or share either assistant's permission decisions.
+The Codex New Agent dialog exposes a Starting Mode: Auto adds
+`--approve-for-me`, while Default leaves approvals to Codex. Web search is
+always enabled with `--search`; the selected Codex sandbox is passed through
+with `--sandbox`.
 
 ### Workspace / worktree model: `internal/data`
 
@@ -258,12 +266,11 @@ A `Workspace` can span multiple repos (each with its own worktree) but shares a 
 
 ### Messages: `internal/messages`
 
-Pure type declarations; no package may import app/ui code. Split into several files by concern (`messages_permissions.go`, `messages_actionbar.go`, `messages_sidebar.go`). When adding a message, check whether a concern-scoped file already exists before adding to `messages.go`.
+Pure type declarations; no package may import app/ui code. Split into several files by concern. When adding a message, check whether a concern-scoped file already exists before adding to `messages.go`.
 
 ### Entry points
 
 - `cmd/medusa` — the TUI binary.
-- `cmd/medusa-approve-compound` — standalone helper invoked as a Claude Code hook for permission prompts.
 - `cmd/medusa-hook-emit` — standalone helper invoked as a Claude Code hook to forward lifecycle events to the activity socket.
 - `cmd/medusa-harness` — headless render driver used by `make release-check` and benchmarks.
 

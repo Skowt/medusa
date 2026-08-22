@@ -110,6 +110,23 @@ func TestNotifyOnlyFiresOnAnActualChange(t *testing.T) {
 	}
 }
 
+func TestDisabledSelectCannotFocusOrCycle(t *testing.T) {
+	d := twoSelectDialog()
+	d.SetSelectDisabled(1, true)
+	want := d.Select2Value()
+
+	d.FocusSelect(1)
+	if d.focusedSelectSlot() == 1 {
+		t.Fatal("disabled select received focus")
+	}
+	if cmd := d.cycleSelect(1, 1); cmd != nil {
+		t.Fatalf("disabled select emitted %T", cmd)
+	}
+	if got := d.Select2Value(); got != want {
+		t.Errorf("disabled select changed from %q to %q", want, got)
+	}
+}
+
 // The focus ring reaches both cyclers and the checkboxes alongside them.
 func TestFocusRingCoversBothSelects(t *testing.T) {
 	d := twoSelectDialog()
@@ -123,6 +140,17 @@ func TestFocusRingCoversBothSelects(t *testing.T) {
 	for _, slot := range []int{1, 4, 5} { // checkbox 1, select 0, select 1
 		if !seen[slot] {
 			t.Errorf("focus ring never reached slot %d (seen %v)", slot, seen)
+		}
+	}
+}
+
+func TestFocusRingSkipsDisabledSelect(t *testing.T) {
+	d := twoSelectDialog()
+	d.SetSelectDisabled(1, true)
+	for i := 0; i < focusSlotCount*2; i++ {
+		d.advanceFocus(+1)
+		if d.currentFocusIdx() == 5 {
+			t.Fatal("focus ring reached disabled select")
 		}
 	}
 }

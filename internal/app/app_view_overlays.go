@@ -68,24 +68,6 @@ func (a *App) composeOverlays(canvas *lipgloss.Canvas) {
 		canvas.Compose(themeDrawable)
 	}
 
-	// Permissions dialog overlay
-	if a.permissionsDialog != nil && a.permissionsDialog.Visible() {
-		permView := a.permissionsDialog.View()
-		permWidth, permHeight := viewDimensions(permView)
-		x, y := a.centeredPosition(permWidth, permHeight)
-		permDrawable := compositor.NewStringDrawable(permView, x, y)
-		canvas.Compose(permDrawable)
-	}
-
-	// Permissions editor overlay
-	if a.permissionsEditor != nil && a.permissionsEditor.Visible() {
-		editorView := a.permissionsEditor.View()
-		editorWidth, editorHeight := viewDimensions(editorView)
-		x, y := a.centeredPosition(editorWidth, editorHeight)
-		editorDrawable := compositor.NewStringDrawable(editorView, x, y)
-		canvas.Compose(editorDrawable)
-	}
-
 	// Creation progress overlay
 	if a.creationOverlay != nil && a.creationOverlay.Visible() {
 		overlayView := a.creationOverlay.View()

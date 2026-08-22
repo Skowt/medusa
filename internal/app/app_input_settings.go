@@ -1,9 +1,7 @@
 package app
 
 import (
-	"os"
 	"os/exec"
-	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -21,8 +19,6 @@ func (a *App) handleShowSettingsDialog() {
 		a.config.UI.HideTerminal,
 		a.config.UI.AutoStartAgent,
 		a.config.UI.SyncProfilePlugins,
-		a.config.UI.GlobalPermissions,
-		a.config.UI.CompoundApprove,
 		a.config.UI.NotificationSound,
 		a.config.UI.TmuxPersistence,
 	)
@@ -163,9 +159,6 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 		}
 
 		a.config.UI.NotificationSound = msg.NotificationSound
-		oldGlobalPerms := a.config.UI.GlobalPermissions
-		a.config.UI.GlobalPermissions = msg.GlobalPermissions
-
 		wasHidden := a.config.UI.HideSidebar
 		a.config.UI.HideSidebar = msg.HideSidebar
 		a.layout.SetSidebarHidden(msg.HideSidebar)
@@ -202,35 +195,8 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 			}
 		}
 
-		oldCompoundApprove := a.config.UI.CompoundApprove
-		a.config.UI.CompoundApprove = msg.CompoundApprove
-		if msg.CompoundApprove != oldCompoundApprove {
-			if exe, err := os.Executable(); err == nil {
-				hookBin := filepath.Join(filepath.Dir(exe), "medusa-approve-compound")
-				if msg.CompoundApprove {
-					_ = config.InjectCompoundApproveHookAllProfiles(a.config.Paths.ProfilesRoot, hookBin)
-				} else {
-					_ = config.RemoveCompoundApproveHookAllProfiles(a.config.Paths.ProfilesRoot, hookBin)
-				}
-			}
-		}
-
 		tmuxPersistenceChanged := a.config.UI.TmuxPersistence != msg.TmuxPersistence
 		a.config.UI.TmuxPersistence = msg.TmuxPersistence
-
-		if msg.GlobalPermissions && !oldGlobalPerms {
-			if a.permissionWatcher == nil {
-				a.initPermissionWatcher()
-			}
-			sidebarCmds = append(sidebarCmds, a.startPermissionWatcher())
-			a.watchAllWorkspacePermissions()
-			global, err := config.LoadGlobalPermissions(a.config.Paths.GlobalPermissionsPath)
-			if err == nil {
-				_ = config.InjectIntoAllProfiles(a.config.Paths.ProfilesRoot, global)
-			}
-		} else if !msg.GlobalPermissions && oldGlobalPerms {
-			a.unwatchAllWorkspacePermissions()
-		}
 
 		if err := a.config.SaveUISettings(); err != nil {
 			return a.toast.ShowWarning("Failed to save settings")

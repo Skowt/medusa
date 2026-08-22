@@ -147,7 +147,7 @@ func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, cont
 		case hooks.IsActiveEvent(hooks.EventType(hookState)):
 			indicator = common.SpinnerFrame(m.spinnerFrame)
 			indicatorFg = common.ColorSuccess
-		case hookState == "NotificationPermission" || hookState == "NotificationElicitation" || hookState == "PermissionRequest":
+		case hookState == "NotificationElicitation":
 			indicator = "!"
 			indicatorFg = common.ColorWarning
 		}

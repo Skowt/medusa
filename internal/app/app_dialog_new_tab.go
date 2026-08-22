@@ -18,6 +18,10 @@ func (a *App) handleShowCustomizeTabDialog() {
 // policies share no values — so cycling the assistant rebuilds the dialog
 // rather than reinterpreting the fields already on screen.
 func (a *App) showNewTabDialog(assistant string) {
+	a.showNewTabDialogWithCodexValues(assistant, a.config.UI.LastCodexStartingMode, a.config.UI.LastCodexSandbox)
+}
+
+func (a *App) showNewTabDialogWithCodexValues(assistant, codexMode, codexSandbox string) {
 	if a.activeWorkspace == nil {
 		return
 	}
@@ -32,7 +36,7 @@ func (a *App) showNewTabDialog(assistant string) {
 	a.dialog.SetSelectNotifiesChange(0)
 
 	if assistant == assistantCodex {
-		a.configureCodexTabFields()
+		a.configureCodexTabFields(codexMode, codexSandbox)
 	} else {
 		a.configureClaudeTabFields()
 	}
@@ -62,21 +66,29 @@ func (a *App) configureClaudeTabFields() {
 // configureCodexTabFields adds the Codex-only fields. Codex sandboxes natively
 // rather than through a settings file, so its sandbox is a policy select rather
 // than Claude's checkbox pair, and it has no fullscreen renderer to choose.
-func (a *App) configureCodexTabFields() {
-	a.dialog.SetSelect2("Sandbox:", codexSandboxOptions(), defaultCodexSandbox(a.config.UI.LastCodexSandbox))
-	a.dialog.SetCheckbox("Ask for approval", codexApprovalAsks(a.config.UI.LastCodexApproval))
-	a.dialog.SetCheckboxDescription(1, "Codex asks before running a command the sandbox would block. Unchecked, it never asks and a blocked command just fails.")
-	a.dialog.SetCheckbox2("Enable web search", a.config.UI.LastCodexSearch)
-	a.dialog.SetCheckboxDescription(2, "Gives Codex its live web-search tool, which it may use without asking.")
+func (a *App) configureCodexTabFields(mode, sandbox string) {
+	mode = defaultCodexStartingMode(mode)
+	a.dialog.SetSelect2("Starting Mode:", codexStartingModeOptions(), mode)
+	a.dialog.SetSelectNotifiesChange(1)
+	a.dialog.SetSelect3("Sandbox:", codexSandboxOptions(), defaultCodexSandbox(sandbox))
+	a.dialog.SetSelectDisabled(2, mode == "auto")
 }
 
 // handleDialogSelectChanged rebuilds the New Tab dialog when its assistant
 // cycler moves. Nothing else uses the notification.
 func (a *App) handleDialogSelectChanged(msg common.DialogSelectChanged) {
-	if msg.ID != DialogCustomizeTab || msg.Slot != 0 {
+	if msg.ID != DialogCustomizeTab {
 		return
 	}
-	a.showNewTabDialog(defaultAssistant(msg.Value))
+	if msg.Slot == 0 {
+		a.showNewTabDialog(defaultAssistant(msg.Value))
+		return
+	}
+	if msg.Slot == 1 && a.dialog.SelectValue() == assistantCodex {
+		sandbox := a.dialog.Select3Value()
+		a.showNewTabDialogWithCodexValues(assistantCodex, msg.Value, sandbox)
+		a.dialog.FocusSelect(1)
+	}
 }
 
 // newTabLaunchFromDialog turns a New Tab dialog result into a launch request,
@@ -87,12 +99,11 @@ func (a *App) newTabLaunchFromDialog(ws *data.Workspace, result common.DialogRes
 
 	launch := messages.LaunchAgent{Assistant: assistant, Workspace: ws}
 	if assistant == assistantCodex {
-		launch.CodexSandbox = defaultCodexSandbox(result.Select2Value)
-		launch.CodexApproval = codexApprovalValue(result.CheckboxValue)
-		launch.CodexSearch = result.Checkbox2Value
+		mode := defaultCodexStartingMode(result.Select2Value)
+		launch.CodexSandbox = defaultCodexSandbox(result.Select3Value)
+		launch.CodexAuto = mode == "auto"
 		a.config.UI.LastCodexSandbox = launch.CodexSandbox
-		a.config.UI.LastCodexApproval = launch.CodexApproval
-		a.config.UI.LastCodexSearch = launch.CodexSearch
+		a.config.UI.LastCodexStartingMode = mode
 	} else {
 		launch.Isolated = result.CheckboxValue
 		launch.AllowUnsandboxedCommands = result.Checkbox2Value
@@ -114,8 +125,7 @@ func (a *App) lastUsedLaunch(ws *data.Workspace, assistant string) messages.Laun
 	launch := messages.LaunchAgent{Assistant: defaultAssistant(assistant), Workspace: ws}
 	if launch.Assistant == assistantCodex {
 		launch.CodexSandbox = defaultCodexSandbox(a.config.UI.LastCodexSandbox)
-		launch.CodexApproval = codexApprovalValue(codexApprovalAsks(a.config.UI.LastCodexApproval))
-		launch.CodexSearch = a.config.UI.LastCodexSearch
+		launch.CodexAuto = defaultCodexStartingMode(a.config.UI.LastCodexStartingMode) == "auto"
 		return launch
 	}
 	launch.Isolated = a.config.UI.LastIsolated

@@ -27,8 +27,6 @@ func TestSettingsDialog_ClickHitsIntendedRow(t *testing.T) {
 		false, // hideTerminal
 		false, // autoStartAgent
 		false, // syncPlugins
-		true,  // globalPerms — so "Edit" link is clickable
-		false, // compoundApprove
 		"",    // sound
 		false, // tmuxPersistence
 	)
@@ -78,9 +76,6 @@ func TestSettingsDialog_ClickHitsIntendedRow(t *testing.T) {
 			func() bool { return false }},
 		{"syncPlugins", settingsItemSyncPlugins,
 			func() bool { return d.syncProfilePlugins },
-			func() bool { return false }},
-		{"compoundApprove", settingsItemCompoundApprove,
-			func() bool { return d.compoundApprove },
 			func() bool { return false }},
 		{"autoStart", settingsItemAutoStart,
 			func() bool { return d.autoStartAgent },

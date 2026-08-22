@@ -151,8 +151,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 		permMode := tab.PermissionMode
 		fullscreen := tab.Fullscreen
 		codexSandbox := tab.CodexSandbox
-		codexApproval := tab.CodexApproval
-		codexSearch := tab.CodexSearch
+		codexAuto := tab.CodexAuto
 		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
@@ -172,8 +171,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			PermissionMode:           permMode,
 			Fullscreen:               fullscreen,
 			CodexSandbox:             codexSandbox,
-			CodexApproval:            codexApproval,
-			CodexSearch:              codexSearch,
+			CodexAuto:                codexAuto,
 			ScriptFullCmd:            scriptFullCmd,
 		})
 	}
@@ -201,8 +199,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 		permMode := tab.PermissionMode
 		fullscreen := tab.Fullscreen
 		codexSandbox := tab.CodexSandbox
-		codexApproval := tab.CodexApproval
-		codexSearch := tab.CodexSearch
+		codexAuto := tab.CodexAuto
 		scriptFullCmd := tab.ScriptFullCmd
 		tab.mu.Unlock()
 		status := "stopped"
@@ -222,8 +219,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			PermissionMode:           permMode,
 			Fullscreen:               fullscreen,
 			CodexSandbox:             codexSandbox,
-			CodexApproval:            codexApproval,
-			CodexSearch:              codexSearch,
+			CodexAuto:                codexAuto,
 			ScriptFullCmd:            scriptFullCmd,
 		})
 	}

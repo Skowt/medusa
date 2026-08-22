@@ -44,9 +44,9 @@ func TestHookActiveIDs(t *testing.T) {
 	a := &App{hookWorkspaceStates: map[string]hooks.EventType{
 		"ws-pretool":  hooks.EventPreToolUse,
 		"ws-wait":     hooks.EventSubagentWait,
-		"ws-perm":     hooks.EventNotificationPermission,
+		"ws-perm":     hooks.EventNotificationElicitation,
 		"ws-legacy":   hooks.EventSubagentStop,
-		"ws-permreq":  hooks.EventPermissionRequest,
+		"ws-permreq":  hooks.EventNotificationElicitation,
 		"ws-substart": hooks.EventSubagentStart,
 	}}
 
@@ -162,11 +162,11 @@ func TestNeedsInputTransitions(t *testing.T) {
 	t.Run("permission pings once", func(t *testing.T) {
 		a := newHookTestApp()
 		applyEvent(a, "ws", ev(hooks.EventPreToolUse, hooks.OutstandingUnknown, stamp(0)))
-		if tr := applyEvent(a, "ws", ev(hooks.EventPermissionRequest, hooks.OutstandingUnknown, stamp(1))); tr != hookTransitionNeedsInput {
+		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(1))); tr != hookTransitionNeedsInput {
 			t.Fatalf("PermissionRequest transition = %v, want needsInput", tr)
 		}
 		// The matching Notification(permission_prompt) follows — no second ping.
-		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationPermission, hooks.OutstandingUnknown, stamp(2))); tr != hookTransitionNone {
+		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(2))); tr != hookTransitionNone {
 			t.Fatalf("second needs-input event must not re-ping, got %v", tr)
 		}
 		if a.hookActiveIDs()["ws"] {
@@ -176,7 +176,7 @@ func TestNeedsInputTransitions(t *testing.T) {
 
 	t.Run("approval resumes work silently", func(t *testing.T) {
 		a := newHookTestApp()
-		applyEvent(a, "ws", ev(hooks.EventPermissionRequest, hooks.OutstandingUnknown, stamp(0)))
+		applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(0)))
 		if tr := applyEvent(a, "ws", ev(hooks.EventPostToolUse, hooks.OutstandingUnknown, stamp(1))); tr != hookTransitionNone {
 			t.Fatalf("resumed tool use must not ping, got %v", tr)
 		}
@@ -187,7 +187,7 @@ func TestNeedsInputTransitions(t *testing.T) {
 
 	t.Run("denial ending the turn clears without a second ping", func(t *testing.T) {
 		a := newHookTestApp()
-		applyEvent(a, "ws", ev(hooks.EventPermissionRequest, hooks.OutstandingUnknown, stamp(0)))
+		applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(0)))
 		if tr := applyEvent(a, "ws", ev(hooks.EventStop, 0, stamp(1))); tr != hookTransitionNone {
 			t.Fatalf("Stop after needs-input must clear silently, got %v", tr)
 		}
@@ -307,11 +307,11 @@ func TestIdleNotification(t *testing.T) {
 
 	t.Run("does not clear needs-input", func(t *testing.T) {
 		a := newHookTestApp()
-		applyEvent(a, "ws", ev(hooks.EventPermissionRequest, hooks.OutstandingUnknown, stamp(0)))
+		applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(0)))
 		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationIdle, hooks.OutstandingUnknown, stamp(60))); tr != hookTransitionNone {
 			t.Fatalf("idle over needs-input must be silent, got %v", tr)
 		}
-		if a.hookWorkspaceStates["ws"] != hooks.EventPermissionRequest {
+		if a.hookWorkspaceStates["ws"] != hooks.EventNotificationElicitation {
 			t.Fatal("idle must not wipe the pending '!' indicator")
 		}
 	})
@@ -414,7 +414,7 @@ func TestReconcileStaleHookStates(t *testing.T) {
 
 	t.Run("needs-input state is never reconciled away", func(t *testing.T) {
 		a := newHookTestApp()
-		a.hookWorkspaceStates["ws"] = hooks.EventPermissionRequest
+		a.hookWorkspaceStates["ws"] = hooks.EventNotificationElicitation
 		a.hookLastStamp["ws"] = hookEventStamp{at: time.Now().Add(-2 * staleBusyTimeout)}
 		if cleared := a.staleBusyWorkspaces(); len(cleared) != 0 {
 			t.Fatalf("needs-input must never be reconciled away, got %v", cleared)

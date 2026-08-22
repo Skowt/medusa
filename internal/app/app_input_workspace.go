@@ -219,10 +219,6 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 		a.fileWatcher.Unwatch(oldPrimaryRoot)
 		_ = a.fileWatcher.Watch(newWs.PrimaryWorktreeRoot())
 	}
-	if a.permissionWatcher != nil {
-		a.permissionWatcher.Unwatch(oldRoot)
-		_ = a.permissionWatcher.Watch(newWs.Root())
-	}
 	if a.statusManager != nil {
 		a.statusManager.Invalidate(oldPrimaryRoot)
 	}

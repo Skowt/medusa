@@ -227,11 +227,17 @@ func (d *Dialog) appendCheckbox(b *LineBuilder, id, label string, value, focused
 func (d *Dialog) appendSelectField(b *LineBuilder, slot int) {
 	field := &d.sel[slot]
 	labelStyle := lipgloss.NewStyle().Foreground(ColorForeground)
-	if field.focused {
+	if field.disabled {
+		labelStyle = labelStyle.Foreground(ColorMuted)
+	} else if field.focused {
 		labelStyle = labelStyle.Foreground(ColorPrimary)
 	}
 	arrowStyle := lipgloss.NewStyle().Foreground(ColorPrimary)
 	valueStyle := lipgloss.NewStyle().Foreground(ColorForeground).Bold(field.focused)
+	if field.disabled {
+		arrowStyle = arrowStyle.Foreground(ColorMuted)
+		valueStyle = valueStyle.Foreground(ColorMuted).Bold(false)
+	}
 
 	current := field.current()
 	left := arrowStyle.Render("<")
@@ -244,9 +250,11 @@ func (d *Dialog) appendSelectField(b *LineBuilder, slot int) {
 
 	labelW := lipgloss.Width(field.label) + 2 // label + "  "
 	leftW := lipgloss.Width(left)
-	b.AddRegion(selectRegionID(dialogIDSelectLeft, slot), labelW, rowY, leftW, 1)
-	rightX := labelW + leftW + 1 + lipgloss.Width(value) + 1
-	b.AddRegion(selectRegionID(dialogIDSelectRight, slot), rightX, rowY, lipgloss.Width(right), 1)
+	if !field.disabled {
+		b.AddRegion(selectRegionID(dialogIDSelectLeft, slot), labelW, rowY, leftW, 1)
+		rightX := labelW + leftW + 1 + lipgloss.Width(value) + 1
+		b.AddRegion(selectRegionID(dialogIDSelectRight, slot), rightX, rowY, lipgloss.Width(right), 1)
+	}
 
 	if current.Description != "" {
 		descStyle := lipgloss.NewStyle().Foreground(ColorMuted)

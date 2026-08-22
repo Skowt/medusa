@@ -38,7 +38,8 @@ func ResolveHookEmitBinary() string {
 // stripMedusaHookRules removes every Medusa-injected rule from all hook event
 // arrays so re-injection replaces rules instead of accumulating duplicates —
 // including rules written by older versions with a different command format.
-// Foreign rules (e.g. compound approve, user-defined hooks) are preserved.
+// User-defined hooks are preserved. The retired compound-approval hook is
+// removed as part of the migration away from Medusa-managed permissions.
 func stripMedusaHookRules(hooks map[string]any) {
 	for event, v := range hooks {
 		arr, ok := v.([]any)
@@ -47,8 +48,11 @@ func stripMedusaHookRules(hooks map[string]any) {
 		}
 		var kept []any
 		for _, entry := range arr {
-			if m, ok := entry.(map[string]any); ok && hookRuleHasCommandPrefix(m, medusaHookCommandPrefix) {
-				continue
+			if m, ok := entry.(map[string]any); ok {
+				if hookRuleHasCommandPrefix(m, medusaHookCommandPrefix) ||
+					hookRuleHasCommandContaining(m, "medusa-approve-compound") {
+					continue
+				}
 			}
 			kept = append(kept, entry)
 		}
@@ -99,6 +103,20 @@ func hookRuleHasCommandSuffix(rule map[string]any, suffix string) bool {
 	return false
 }
 
+// hookRuleHasCommandContaining returns true if any command in the rule contains
+// substr.
+func hookRuleHasCommandContaining(rule map[string]any, substr string) bool {
+	innerHooks, _ := rule["hooks"].([]any)
+	for _, h := range innerHooks {
+		if hm, ok := h.(map[string]any); ok {
+			if c, _ := hm["command"].(string); strings.Contains(c, substr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // hookCommandBuilder builds the shell command for one hook event, in either
 // binary mode (medusa-hook-emit) or legacy shell fallback mode.
 type hookCommandBuilder struct {
@@ -122,7 +140,7 @@ func (b hookCommandBuilder) command(eventName string) string {
 	switch eventName {
 	case "SessionStart":
 		return b.legacySessionStartCommand()
-	case "NotificationIdle", "NotificationPermission", "NotificationElicitation":
+	case "NotificationIdle", "NotificationElicitation":
 		return b.legacyNotificationCommand(eventName)
 	default:
 		return b.legacyCommand(eventName)
@@ -172,10 +190,12 @@ func (b hookCommandBuilder) legacySessionStartCommand() string {
 // payload, so concurrent hooks (parallel tool calls, subagents) can never
 // overwrite each other, and the shell guard ensures non-Medusa sessions are
 // no-ops. All previously injected Medusa rules (any format, any version) are
-// replaced; foreign hook entries (e.g. compound approve) are preserved.
+// replaced; user hook entries are preserved. Retired Medusa permission hooks
+// are removed during the same pass.
 func InjectHooks(profileDir, hooksDir, emitBin string) error {
 	builder := hookCommandBuilder{sock: hookspkg.SocketPath(hooksDir), emitBin: emitBin}
 	return readModifyWriteJSON(filepath.Join(profileDir, "settings.json"), func(settings map[string]any) {
+		delete(settings, "skipDangerousModePermissionPrompt")
 		hooks := getOrCreateMap(settings, "hooks")
 		stripMedusaHookRules(hooks)
 
@@ -197,7 +217,7 @@ func InjectHooks(profileDir, hooksDir, emitBin string) error {
 
 		for _, event := range []string{
 			"Stop", "StopFailure", "SubagentStart", "SubagentStop",
-			"SessionStart", "PreToolUse", "PostToolUse", "PermissionRequest",
+			"SessionStart", "PreToolUse", "PostToolUse",
 			"UserPromptSubmit",
 		} {
 			existing, _ := hooks[event].([]any)
@@ -205,12 +225,11 @@ func InjectHooks(profileDir, hooksDir, emitBin string) error {
 		}
 
 		// Split Notification into sub-matchers so written JSON distinguishes
-		// idle_prompt from permission_prompt. Non-medusa notification entries
+		// idle_prompt from elicitation_dialog. Non-medusa notification entries
 		// survived stripMedusaHookRules.
 		notificationRules, _ := hooks["Notification"].([]any)
 		for _, def := range []struct{ event, matcher string }{
 			{"NotificationIdle", "idle_prompt"},
-			{"NotificationPermission", "permission_prompt"},
 			{"NotificationElicitation", "elicitation_dialog"},
 		} {
 			notificationRules = append(notificationRules, makeRule(def.event, def.matcher))

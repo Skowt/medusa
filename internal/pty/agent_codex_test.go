@@ -65,23 +65,19 @@ func TestCodexPolicyArgs(t *testing.T) {
 		want string
 	}{
 		{"defaults are left to codex's own config", AgentOptions{}, ""},
+		{"auto owns its workspace sandbox", AgentOptions{CodexAuto: true, CodexSandbox: CodexSandboxReadOnly}, ""},
+		{"workspace sandbox", AgentOptions{CodexSandbox: CodexSandboxWorkspace}, " --sandbox workspace-write"},
 		{
-			"sandbox and approval",
-			AgentOptions{CodexSandbox: CodexSandboxWorkspace, CodexApproval: CodexApprovalOnRequest},
-			" --sandbox workspace-write --ask-for-approval on-request",
+			"full access",
+			AgentOptions{CodexSandbox: CodexSandboxFullAccess},
+			" --sandbox danger-full-access",
 		},
-		{
-			"full access with no approvals needs no bypass flag",
-			AgentOptions{CodexSandbox: CodexSandboxFullAccess, CodexApproval: CodexApprovalNever},
-			" --sandbox danger-full-access --ask-for-approval never",
-		},
-		{"web search", AgentOptions{CodexSearch: true}, " --search"},
 		{
 			// Codex exits on an unrecognised policy rather than ignoring it, and
 			// these values come from persisted settings a Medusa upgrade may
 			// have renamed.
 			"unknown values are dropped, not forwarded",
-			AgentOptions{CodexSandbox: "bypassPermissions", CodexApproval: "acceptEdits"},
+			AgentOptions{CodexSandbox: "bypassPermissions"},
 			"",
 		},
 	}
@@ -101,16 +97,20 @@ func TestBuildAgentCommandCodex(t *testing.T) {
 	home := t.TempDir()
 	cmd := buildAgentCommand(AgentCodex, "codex", "medusa-ws-1", home, AgentOptions{
 		CodexSandbox: CodexSandboxReadOnly,
+		CodexAuto:    true,
 	})
 
 	for _, want := range []string{
 		"CODEX_HOME='" + home + "'",
 		"MEDUSA_SESSION_NAME='medusa-ws-1'",
-		"codex --sandbox read-only",
+		`codex -c 'tui.alternate_screen="always"' --search --approve-for-me`,
 	} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("codex command missing %q: %s", want, cmd)
 		}
+	}
+	if strings.Contains(cmd, " --sandbox ") {
+		t.Errorf("Codex Auto cannot be combined with an explicit sandbox: %s", cmd)
 	}
 	// Every Claude-only flag must stay out: codex rejects unknown flags and the
 	// tab would drop straight to a shell.
@@ -118,6 +118,18 @@ func TestBuildAgentCommandCodex(t *testing.T) {
 		if strings.Contains(cmd, unwanted) {
 			t.Errorf("codex command carries Claude-only %q: %s", unwanted, cmd)
 		}
+	}
+}
+
+func TestBuildAgentCommandCodexAlwaysUsesAutomaticApproval(t *testing.T) {
+	cmd := buildAgentCommand(AgentCodex, "codex", "medusa-ws-1", t.TempDir(), AgentOptions{
+		CodexAuto: true,
+	})
+	if !strings.Contains(cmd, " --approve-for-me") {
+		t.Errorf("Codex command must enable automatic approval: %s", cmd)
+	}
+	if strings.Contains(cmd, "--ask-for-approval") {
+		t.Errorf("Codex command must not combine automatic and manual approval policies: %s", cmd)
 	}
 }
 
@@ -131,14 +143,19 @@ func TestBuildAgentCommandCodexResumeOrder(t *testing.T) {
 		Resume:          true,
 		ClaudeSessionID: testCodexSessionID,
 		CodexSandbox:    CodexSandboxWorkspace,
+		CodexAuto:       true,
 	})
+	configAt := strings.Index(cmd, ` -c 'tui.alternate_screen="always"'`)
+	autoAt := strings.Index(cmd, " --approve-for-me")
 	resumeAt := strings.Index(cmd, " resume ")
-	sandboxAt := strings.Index(cmd, " --sandbox ")
-	if resumeAt < 0 || sandboxAt < 0 {
-		t.Fatalf("want both resume and sandbox in: %s", cmd)
+	if configAt < 0 || autoAt < 0 || resumeAt < 0 {
+		t.Fatalf("want config, automatic approval, and resume in: %s", cmd)
 	}
-	if resumeAt > sandboxAt {
-		t.Errorf("resume must come before the flags: %s", cmd)
+	if configAt > autoAt || autoAt > resumeAt {
+		t.Errorf("global flags must precede resume: %s", cmd)
+	}
+	if strings.Contains(cmd, " --sandbox ") {
+		t.Errorf("Codex Auto cannot be combined with an explicit sandbox: %s", cmd)
 	}
 }
 
@@ -146,7 +163,7 @@ func TestBuildAgentCommandCodexResumeOrder(t *testing.T) {
 func TestBuildAgentCommandClaudeUnaffectedByCodexOptions(t *testing.T) {
 	cmd := buildAgentCommand(AgentClaude, "claude", "medusa-ws-1", t.TempDir(), AgentOptions{
 		CodexSandbox: CodexSandboxFullAccess,
-		CodexSearch:  true,
+		CodexAuto:    true,
 	})
 	for _, unwanted := range []string{"--sandbox danger-full-access", "--search", "CODEX_HOME"} {
 		if strings.Contains(cmd, unwanted) {

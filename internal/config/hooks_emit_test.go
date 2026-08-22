@@ -28,7 +28,7 @@ func TestInjectHooksEmitBinaryCommands(t *testing.T) {
 	}
 
 	cmds := collectMedusaCommands(t, profileDir)
-	events := []string{"Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionStart", "PreToolUse", "PostToolUse", "PermissionRequest", "UserPromptSubmit", "Notification"}
+	events := []string{"Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit", "Notification"}
 	for _, event := range events {
 		if len(cmds[event]) == 0 {
 			t.Errorf("no medusa hook command for event %s", event)
@@ -52,9 +52,9 @@ func TestInjectHooksEmitBinaryCommands(t *testing.T) {
 	}
 
 	// Notification rules keep per-matcher event names so the app can tell an
-	// idle prompt from a permission prompt.
+	// idle prompt from an elicitation prompt.
 	joined := strings.Join(cmds["Notification"], "\n")
-	for _, name := range []string{"NotificationIdle", "NotificationPermission", "NotificationElicitation"} {
+	for _, name := range []string{"NotificationIdle", "NotificationElicitation"} {
 		if !strings.Contains(joined, "-event "+name) {
 			t.Errorf("Notification rules missing event %s:\n%s", name, joined)
 		}
@@ -84,8 +84,8 @@ func TestInjectHooksReplacesAcrossModes(t *testing.T) {
 	if n := len(cmds["Stop"]); n != 1 {
 		t.Errorf("expected exactly 1 medusa Stop rule after mode switches, got %d", n)
 	}
-	if n := len(cmds["Notification"]); n != 3 {
-		t.Errorf("expected exactly 3 medusa Notification rules after mode switches, got %d", n)
+	if n := len(cmds["Notification"]); n != 2 {
+		t.Errorf("expected exactly 2 medusa Notification rules after mode switches, got %d", n)
 	}
 	for event, list := range cmds {
 		for _, cmd := range list {

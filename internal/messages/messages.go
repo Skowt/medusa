@@ -377,8 +377,7 @@ type LaunchAgent struct {
 	PermissionMode           string // claude --permission-mode value (acceptEdits, plan, auto, bypassPermissions)
 	Fullscreen               bool   // run Claude's fullscreen renderer (CLAUDE_CODE_NO_FLICKER=1)
 	CodexSandbox             string // codex --sandbox policy
-	CodexApproval            string // codex --ask-for-approval policy
-	CodexSearch              bool   // codex --search (live web search)
+	CodexAuto                bool   // codex --approve-for-me
 }
 
 // LaunchScript requests running a shell command in a new visible tab

@@ -56,16 +56,6 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 		}
 	}
 
-	// Start watching workspace permissions if enabled
-	if a.config.UI.GlobalPermissions && a.permissionWatcher != nil {
-		for _, ws := range a.allWorkspaces {
-			if ws.IsOrphaned() {
-				continue
-			}
-			_ = a.permissionWatcher.Watch(ws.Root())
-		}
-	}
-
 	// Auto-activate a newly created workspace for auto-launch.
 	if a.pendingAutoLaunch != "" {
 		for _, ws := range a.allWorkspaces {
@@ -185,10 +175,6 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 		if a.fileWatcher != nil {
 			_ = a.fileWatcher.Watch(msg.Workspace.PrimaryWorktreeRoot())
 		}
-	}
-	// Watch workspace permissions if enabled
-	if msg.Workspace != nil && a.config.UI.GlobalPermissions && a.permissionWatcher != nil {
-		_ = a.permissionWatcher.Watch(msg.Workspace.Root())
 	}
 	// Ensure spinner starts if needed after sync
 	if startCmd := a.dashboard.StartSpinnerIfNeeded(); startCmd != nil {

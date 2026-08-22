@@ -54,8 +54,7 @@ type agentTabOptions struct {
 	PermissionMode           string
 	Fullscreen               bool
 	CodexSandbox             string
-	CodexApproval            string
-	CodexSearch              bool
+	CodexAuto                bool
 }
 
 // agentTabOptionsFromTab rebuilds the launch settings of an existing tab, for
@@ -67,8 +66,7 @@ func agentTabOptionsFromTab(tab *Tab) agentTabOptions {
 		PermissionMode:           tab.PermissionMode,
 		Fullscreen:               tab.Fullscreen,
 		CodexSandbox:             tab.CodexSandbox,
-		CodexApproval:            tab.CodexApproval,
-		CodexSearch:              tab.CodexSearch,
+		CodexAuto:                tab.CodexAuto,
 	}
 }
 
@@ -80,8 +78,7 @@ func agentTabOptionsFromTabInfo(info data.TabInfo) agentTabOptions {
 		PermissionMode:           info.PermissionMode,
 		Fullscreen:               info.Fullscreen,
 		CodexSandbox:             info.CodexSandbox,
-		CodexApproval:            info.CodexApproval,
-		CodexSearch:              info.CodexSearch,
+		CodexAuto:                info.CodexAuto,
 	}
 }
 
@@ -94,9 +91,8 @@ func agentTabOptionsFromTabInfo(info data.TabInfo) agentTabOptions {
 func (o agentTabOptions) forAssistant(assistant string) agentTabOptions {
 	if appPty.AgentType(assistant) == appPty.AgentCodex {
 		return agentTabOptions{
-			CodexSandbox:  o.CodexSandbox,
-			CodexApproval: o.CodexApproval,
-			CodexSearch:   o.CodexSearch,
+			CodexSandbox: o.CodexSandbox,
+			CodexAuto:    o.CodexAuto,
 		}
 	}
 	return agentTabOptions{
@@ -116,8 +112,7 @@ func (o agentTabOptions) agentOptions() appPty.AgentOptions {
 		PermissionMode:           o.PermissionMode,
 		Fullscreen:               o.Fullscreen,
 		CodexSandbox:             o.CodexSandbox,
-		CodexApproval:            o.CodexApproval,
-		CodexSearch:              o.CodexSearch,
+		CodexAuto:                o.CodexAuto,
 	}
 }
 
@@ -299,8 +294,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		PermissionMode:           msg.Options.PermissionMode,
 		Fullscreen:               msg.Options.Fullscreen,
 		CodexSandbox:             msg.Options.CodexSandbox,
-		CodexApproval:            msg.Options.CodexApproval,
-		CodexSearch:              msg.Options.CodexSearch,
+		CodexAuto:                msg.Options.CodexAuto,
 		ScriptFullCmd:            msg.ScriptFullCmd,
 	}
 

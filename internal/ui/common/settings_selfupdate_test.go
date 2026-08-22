@@ -27,7 +27,7 @@ func flatten(view string) string {
 func newUpdateDialog(t *testing.T, blocked bool) *SettingsDialog {
 	t.Helper()
 	d := NewSettingsDialog(ThemeTokyoNight,
-		false, false, false, false, false, false, false, "", false,
+		false, false, false, false, false, "", false,
 	)
 	d.SetSize(120, 60)
 	d.SetUpdateInfo("0.0.4", "0.0.5", true)
@@ -135,7 +135,7 @@ func TestSettingsNavigationReachesUpgradeWhenWritable(t *testing.T) {
 // is stuck — that is the only place the message is discoverable on demand.
 func TestSettingsShowsBlockedHintWithoutPendingUpdate(t *testing.T) {
 	d := NewSettingsDialog(ThemeTokyoNight,
-		false, false, false, false, false, false, false, "", false,
+		false, false, false, false, false, "", false,
 	)
 	d.SetSize(120, 60)
 	d.SetUpdateInfo("0.0.4", "", false)

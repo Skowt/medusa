@@ -15,7 +15,6 @@ import (
 	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
-	"github.com/Skowt/medusa/internal/permissions"
 	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/skillstats"
 	"github.com/Skowt/medusa/internal/supervisor"
@@ -153,13 +152,6 @@ type App struct {
 	fileWatcher    *git.FileWatcher
 	fileWatcherCh  chan messages.FileWatcherEvent
 	fileWatcherErr error
-
-	// Permission watcher
-	permissionWatcher  *permissions.PermissionWatcher
-	permWatcherCh      chan messages.PermissionWatcherEvent
-	pendingPermissions []common.PendingPermission
-	permissionsDialog  *common.PermissionsDialog
-	permissionsEditor  *common.PermissionsEditor
 
 	// Layout
 	width, height int
@@ -346,9 +338,6 @@ func New(version, commit, date string) (*App, error) {
 		fileWatcher = nil
 	}
 
-	// Create permission watcher event channel
-	permWatcherCh := make(chan messages.PermissionWatcherEvent, 10)
-
 	ctx := context.Background()
 	app := &App{
 		config:              cfg,
@@ -361,7 +350,6 @@ func New(version, commit, date string) (*App, error) {
 		fileWatcher:         fileWatcher,
 		fileWatcherCh:       fileWatcherCh,
 		fileWatcherErr:      fileWatcherErr,
-		permWatcherCh:       permWatcherCh,
 		layout:              layout.NewManager(),
 		dashboard:           dashboard.New(),
 		center:              center.New(cfg),
@@ -421,11 +409,6 @@ func New(version, commit, date string) (*App, error) {
 		app.supervisor.Start("git.file_watcher", fileWatcher.Run, supervisor.WithBackoff(500*time.Millisecond))
 	}
 
-	// Create permission watcher if global permissions is enabled
-	if cfg.UI.GlobalPermissions {
-		app.initPermissionWatcher()
-	}
-
 	// Inject hooks into all profiles and start the hooks socket server. The
 	// emit binary is resolved once; when missing (e.g. `go run` dev builds
 	// without `make build`), legacy shell hooks are injected instead.
@@ -451,45 +434,10 @@ func (a *App) Init() tea.Cmd {
 		a.startTmuxSyncTicker(),
 		a.checkTmuxAvailable(),
 		a.startFileWatcher(),
-		a.startPermissionWatcher(),
 		a.checkForUpdates(),
 	}
 	if a.fileWatcherErr != nil {
 		cmds = append(cmds, a.toast.ShowWarning("File watching disabled; git status may be stale"))
 	}
 	return a.safeBatch(cmds...)
-}
-
-// Shutdown releases resources that may outlive the Bubble Tea program.
-func (a *App) Shutdown() {
-	a.shutdownOnce.Do(func() {
-		// Close terminals and scripts first. The supervisor's tab actor
-		// may be blocked on a PTY write (a raw syscall that ignores
-		// context cancellation). Closing the PTY file descriptors here
-		// unblocks those writes so the supervisor can stop cleanly.
-		if a.center != nil {
-			a.center.Close()
-		}
-		if a.sidebarTerminal != nil {
-			a.sidebarTerminal.CloseAll()
-		}
-		if a.scripts != nil {
-			a.scripts.StopAll()
-		}
-		if a.supervisor != nil {
-			a.supervisor.Stop()
-		}
-		if a.fileWatcher != nil {
-			_ = a.fileWatcher.Close()
-		}
-		if a.permissionWatcher != nil {
-			_ = a.permissionWatcher.Close()
-		}
-		if a.hooksServer != nil {
-			_ = a.hooksServer.Close()
-		}
-		if a.skillUsage != nil {
-			_ = a.skillUsage.Close()
-		}
-	})
 }

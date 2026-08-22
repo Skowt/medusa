@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/data"
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
@@ -30,9 +31,8 @@ func TestNewTabLaunchFromDialogCodex(t *testing.T) {
 		ID:             DialogCustomizeTab,
 		Confirmed:      true,
 		SelectValue:    assistantCodex,
-		Select2Value:   appPty.CodexSandboxReadOnly,
-		CheckboxValue:  true, // Ask for approval
-		Checkbox2Value: true, // Enable web search
+		Select2Value:   "auto",
+		Select3Value:   appPty.CodexSandboxReadOnly,
 		Checkbox3Value: true, // Claude's fullscreen box — absent from this dialog
 	})
 
@@ -42,11 +42,8 @@ func TestNewTabLaunchFromDialogCodex(t *testing.T) {
 	if launch.CodexSandbox != appPty.CodexSandboxReadOnly {
 		t.Errorf("sandbox = %q, want read-only", launch.CodexSandbox)
 	}
-	if launch.CodexApproval != appPty.CodexApprovalOnRequest {
-		t.Errorf("approval = %q, want on-request", launch.CodexApproval)
-	}
-	if !launch.CodexSearch {
-		t.Error("web search checkbox did not reach the launch")
+	if !launch.CodexAuto {
+		t.Error("auto starting mode did not reach the launch")
 	}
 	// Claude's own fields must stay zero: a Codex tab launched with
 	// PermissionMode or Fullscreen set would pass flags codex rejects.
@@ -55,18 +52,30 @@ func TestNewTabLaunchFromDialogCodex(t *testing.T) {
 	}
 }
 
-// Unchecking "Ask for approval" is what turns approvals off, and it has to
-// reach codex as an explicit policy rather than an omission.
-func TestNewTabLaunchFromDialogCodexWithoutApproval(t *testing.T) {
+func TestNewTabLaunchFromDialogCodexDefaultMode(t *testing.T) {
 	a := &App{config: testConfig(t)}
 
 	launch := a.newTabLaunchFromDialog(nil, common.DialogResult{
 		ID:           DialogCustomizeTab,
 		SelectValue:  assistantCodex,
-		Select2Value: appPty.CodexSandboxFullAccess,
+		Select2Value: "default",
+		Select3Value: appPty.CodexSandboxFullAccess,
 	})
-	if launch.CodexApproval != appPty.CodexApprovalNever {
-		t.Errorf("approval = %q, want never", launch.CodexApproval)
+	if launch.CodexAuto {
+		t.Error("default starting mode unexpectedly enabled automatic approval")
+	}
+}
+
+func TestCodexStartingModeRebuildPreservesSandbox(t *testing.T) {
+	a := &App{config: testConfig(t), activeWorkspace: &data.Workspace{}}
+	a.showNewTabDialogWithCodexValues(assistantCodex, "default", appPty.CodexSandboxFullAccess)
+	a.handleDialogSelectChanged(common.DialogSelectChanged{ID: DialogCustomizeTab, Slot: 1, Value: "auto"})
+
+	if got := a.dialog.Select2Value(); got != "auto" {
+		t.Errorf("starting mode = %q, want auto", got)
+	}
+	if got := a.dialog.Select3Value(); got != appPty.CodexSandboxFullAccess {
+		t.Errorf("sandbox changed during mode rebuild: %q", got)
 	}
 }
 
@@ -91,7 +100,7 @@ func TestNewTabLaunchFromDialogClaude(t *testing.T) {
 	if !launch.Isolated || !launch.AllowUnsandboxedCommands || !launch.Fullscreen {
 		t.Errorf("Claude checkboxes did not reach the launch: %+v", launch)
 	}
-	if launch.CodexSandbox != "" || launch.CodexApproval != "" || launch.CodexSearch {
+	if launch.CodexSandbox != "" || launch.CodexAuto {
 		t.Errorf("Codex settings leaked into a Claude launch: %+v", launch)
 	}
 }
@@ -105,7 +114,8 @@ func TestNewTabLaunchPersistsAndReplays(t *testing.T) {
 	a.newTabLaunchFromDialog(nil, common.DialogResult{
 		ID:           DialogCustomizeTab,
 		SelectValue:  assistantCodex,
-		Select2Value: appPty.CodexSandboxReadOnly,
+		Select2Value: "auto",
+		Select3Value: appPty.CodexSandboxReadOnly,
 	})
 
 	if cfg.UI.LastAssistant != assistantCodex {
@@ -115,8 +125,8 @@ func TestNewTabLaunchPersistsAndReplays(t *testing.T) {
 	if replay.Assistant != assistantCodex || replay.CodexSandbox != appPty.CodexSandboxReadOnly {
 		t.Errorf("replayed launch = %+v, want the Codex settings just saved", replay)
 	}
-	if replay.CodexApproval != appPty.CodexApprovalNever {
-		t.Errorf("replayed approval = %q, want the saved never", replay.CodexApproval)
+	if !replay.CodexAuto {
+		t.Error("replayed launch lost auto starting mode")
 	}
 }
 

@@ -171,7 +171,7 @@ Medusa was heavily inspired by [amux](https://github.com/andyrewlee/amux) by [@a
 The install script puts medusa in `~/.local/bin` by default. To remove it and its two helper binaries:
 
 ```bash
-rm -f ~/.local/bin/medusa ~/.local/bin/medusa-approve-compound ~/.local/bin/medusa-hook-emit
+rm -f ~/.local/bin/medusa ~/.local/bin/medusa-hook-emit
 ```
 
 If you installed somewhere else, `command -v medusa` will tell you where.

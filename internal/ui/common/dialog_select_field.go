@@ -18,9 +18,8 @@ type SelectOption struct {
 }
 
 // selectSlotCount is how many inline select fields a DialogInput can carry.
-// Two is what the New Tab dialog needs: one to pick the assistant, one for
-// that assistant's own mode.
-const selectSlotCount = 2
+// The New Tab dialog uses up to three: assistant, starting mode, and sandbox.
+const selectSlotCount = 3
 
 // selectField is one inline cycler. Slots render in order, so slot 0 is the
 // dialog's primary control.
@@ -32,6 +31,9 @@ type selectField struct {
 	// notify makes a change to this field emit DialogSelectChanged, for
 	// callers that rebuild the dialog around the new value.
 	notify bool
+	// disabled keeps the value visible for context but removes the field from
+	// keyboard/mouse interaction and the focus ring.
+	disabled bool
 }
 
 func (f *selectField) present() bool {
@@ -58,6 +60,11 @@ func (d *Dialog) SetSelect(label string, options []SelectOption, defaultValue st
 // SetSelect2 adds a second cycler, rendered below the first.
 func (d *Dialog) SetSelect2(label string, options []SelectOption, defaultValue string) *Dialog {
 	return d.setSelectSlot(1, label, options, defaultValue)
+}
+
+// SetSelect3 adds a third cycler, rendered below the second.
+func (d *Dialog) SetSelect3(label string, options []SelectOption, defaultValue string) *Dialog {
+	return d.setSelectSlot(2, label, options, defaultValue)
 }
 
 func (d *Dialog) setSelectSlot(slot int, label string, options []SelectOption, defaultValue string) *Dialog {
@@ -88,6 +95,15 @@ func (d *Dialog) SetSelectNotifiesChange(slot int) *Dialog {
 	return d
 }
 
+// SetSelectDisabled renders a select slot muted and prevents it from being
+// focused or cycled. Its current value is still returned on submit.
+func (d *Dialog) SetSelectDisabled(slot int, disabled bool) *Dialog {
+	if slot >= 0 && slot < selectSlotCount {
+		d.sel[slot].disabled = disabled
+	}
+	return d
+}
+
 // SelectValue returns slot 0's selected Value, or "" if it has none.
 func (d *Dialog) SelectValue() string {
 	return d.sel[0].value()
@@ -98,11 +114,16 @@ func (d *Dialog) Select2Value() string {
 	return d.sel[1].value()
 }
 
+// Select3Value returns slot 2's selected Value, or "" if it has none.
+func (d *Dialog) Select3Value() string {
+	return d.sel[2].value()
+}
+
 // FocusSelect puts the focus ring on a select slot, so the arrow keys act on it
 // straight away. Callers that rebuild a dialog around a select use it to land
 // the user back on the cycler they just moved.
 func (d *Dialog) FocusSelect(slot int) *Dialog {
-	if slot >= 0 && slot < selectSlotCount && d.sel[slot].present() {
+	if slot >= 0 && slot < selectSlotCount && d.sel[slot].present() && !d.sel[slot].disabled {
 		d.setFocus(4 + slot)
 	}
 	return d
@@ -184,6 +205,9 @@ func (d *Dialog) cycleSelect(slot, step int) tea.Cmd {
 		return nil
 	}
 	field := &d.sel[slot]
+	if field.disabled {
+		return nil
+	}
 	n := len(field.options)
 	if n == 0 {
 		return nil
@@ -212,10 +236,10 @@ func (d *Dialog) focusedSelectSlot() int {
 // Focus management for DialogInput. Slots are numbered:
 //
 //	0 = input, 1 = checkbox1, 2 = checkbox2, 3 = checkbox3,
-//	4 = select 0, 5 = select 1.
+//	4 = select 0, 5 = select 1, 6 = select 2.
 //
 // advanceFocus walks the slot ring, skipping slots whose field is absent.
-const focusSlotCount = 6
+const focusSlotCount = 4 + selectSlotCount
 
 // selectSlotForFocus maps a focus slot to its select slot, or -1.
 func selectSlotForFocus(idx int) int {
@@ -256,7 +280,7 @@ func (d *Dialog) fieldExists(idx int) bool {
 		return d.checkbox3Label != ""
 	}
 	if slot := selectSlotForFocus(idx); slot >= 0 {
-		return d.sel[slot].present()
+		return d.sel[slot].present() && !d.sel[slot].disabled
 	}
 	return false
 }

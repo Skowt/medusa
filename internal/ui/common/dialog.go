@@ -40,6 +40,7 @@ type DialogResult struct {
 	Checkbox3Value bool   // Value of third checkbox if dialog had one
 	SelectValue    string // Value of select slot 0 if the dialog had one (DialogInput)
 	Select2Value   string // Value of select slot 1 if the dialog had one (DialogInput)
+	Select3Value   string // Value of select slot 2 if the dialog had one (DialogInput)
 }
 
 // DialogSelectChanged is emitted when a select field marked with
@@ -244,6 +245,10 @@ func (d *Dialog) applyFilter() {
 }
 
 // Hide hides the dialog
+// ID returns the dialog's identifier, so an owner handling a result can tell
+// whether the modal still on screen is its own.
+func (d *Dialog) ID() string { return d.id }
+
 func (d *Dialog) Hide() {
 	d.visible = false
 }
@@ -276,7 +281,8 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 	checkbox3Val := d.checkbox3Value
 	selectVal := d.SelectValue()
 	select2Val := d.Select2Value()
-	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v select=%s select2=%s", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val, selectVal, select2Val)
+	select3Val := d.Select3Value()
+	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v select=%s select2=%s select3=%s", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val, selectVal, select2Val, select3Val)
 	return func() tea.Msg {
 		return DialogResult{
 			ID:             id,
@@ -287,6 +293,7 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 			Checkbox3Value: checkbox3Val,
 			SelectValue:    selectVal,
 			Select2Value:   select2Val,
+			Select3Value:   select3Val,
 		}
 	}
 }

@@ -5,7 +5,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
@@ -15,27 +14,6 @@ import (
 // handlers. Returns handled=true when the message was consumed here.
 func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 	switch msg := msg.(type) {
-	case messages.PermissionWatcherEvent:
-		*cmds = append(*cmds, a.handlePermissionWatcherEvent(msg)...)
-	case messages.PermissionDetected:
-		if cmd := a.handlePermissionDetected(msg); cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
-	case messages.ShowPermissionsDialog:
-		if len(a.pendingPermissions) > 0 {
-			a.permissionsDialog = common.NewPermissionsDialog(a.pendingPermissions)
-			a.permissionsDialog.SetSize(a.width, a.height)
-			a.permissionsDialog.Show()
-		}
-	case common.ShowPermissionsEditor:
-		global, err := config.LoadGlobalPermissions(a.config.Paths.GlobalPermissionsPath)
-		if err != nil {
-			*cmds = append(*cmds, a.toast.ShowError("Failed to load global permissions"))
-		} else {
-			a.permissionsEditor = common.NewPermissionsEditor(global.Allow, global.Deny)
-			a.permissionsEditor.SetSize(a.width, a.height)
-			a.permissionsEditor.Show()
-		}
 	case common.ShowProfileManager:
 		profiles := a.listProfiles()
 		a.profileManager = common.NewProfileManager(profiles)
@@ -46,14 +24,6 @@ func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		a.profileManager = nil
 		// Re-show settings dialog after closing profile manager
 		a.handleShowSettingsDialog()
-	case messages.PermissionsDialogResult:
-		if cmd := a.handlePermissionsDialogResult(msg); cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
-	case messages.PermissionsEditorResult:
-		if cmd := a.handlePermissionsEditorResult(msg); cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
 	case messages.FileWatcherEvent:
 		*cmds = append(*cmds, a.handleFileWatcherEvent(msg)...)
 	case messages.WorkspaceDeleted:

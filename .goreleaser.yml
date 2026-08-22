@@ -22,20 +22,6 @@ builds:
       - -X main.commit={{.ShortCommit}}
       - -X main.date={{.Date}}
 
-  - id: medusa-approve-compound
-    main: ./cmd/medusa-approve-compound
-    binary: medusa-approve-compound
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - darwin
-      - linux
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
-
   - id: medusa-hook-emit
     main: ./cmd/medusa-hook-emit
     binary: medusa-hook-emit

@@ -71,18 +71,24 @@ func defaultCodexSandbox(last string) string {
 	return appPty.CodexSandboxWorkspace
 }
 
-// codexApprovalValue maps the dialog's "Ask for approval" checkbox onto the
-// policy codex --ask-for-approval takes.
-func codexApprovalValue(ask bool) string {
-	if ask {
-		return appPty.CodexApprovalOnRequest
+func codexStartingModeOptions() []common.SelectOption {
+	return []common.SelectOption{
+		{
+			Value:       "default",
+			Label:       "Default",
+			Description: "Codex uses its own approval settings and asks when needed.",
+		},
+		{
+			Value:       "auto",
+			Label:       "Auto",
+			Description: "Codex automatically reviews approvals and uses its required workspace-write sandbox. The Sandbox setting below applies to Default mode.",
+		},
 	}
-	return appPty.CodexApprovalNever
 }
 
-// codexApprovalAsks is codexApprovalValue's inverse, for restoring the
-// checkbox from a persisted policy. Anything but an explicit "never" reads as
-// asking, so an unknown value errs toward prompting.
-func codexApprovalAsks(policy string) bool {
-	return policy != appPty.CodexApprovalNever
+func defaultCodexStartingMode(last string) string {
+	if last == "default" {
+		return "default"
+	}
+	return "auto"
 }

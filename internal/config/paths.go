@@ -7,16 +7,15 @@ import (
 
 // Paths holds all the file system paths used by the application
 type Paths struct {
-	Home                  string // ~/.medusa
-	WorkspacesRoot        string // ~/.medusa/workspaces
-	RegistryPath          string // ~/.medusa/workspaces.json
-	MetadataRoot          string // ~/.medusa/workspaces-metadata
-	RecentsPath           string // ~/.medusa/recents.json
-	ConfigPath            string // ~/.medusa/config.json
-	ProfilesRoot          string // ~/.medusa/profiles
-	SharedProfileRoot     string // ~/.medusa/profiles/shared
-	GlobalPermissionsPath string // ~/.medusa/global_permissions.json
-	HooksDir              string // ~/.medusa/hooks
+	Home              string // ~/.medusa
+	WorkspacesRoot    string // ~/.medusa/workspaces
+	RegistryPath      string // ~/.medusa/workspaces.json
+	MetadataRoot      string // ~/.medusa/workspaces-metadata
+	RecentsPath       string // ~/.medusa/recents.json
+	ConfigPath        string // ~/.medusa/config.json
+	ProfilesRoot      string // ~/.medusa/profiles
+	SharedProfileRoot string // ~/.medusa/profiles/shared
+	HooksDir          string // ~/.medusa/hooks
 }
 
 // MedusaHome returns the base medusa directory. It respects the MEDUSA_HOME
@@ -42,16 +41,15 @@ func DefaultPaths() (*Paths, error) {
 	profilesRoot := filepath.Join(medusaHome, "profiles")
 	workspacesRoot := filepath.Join(medusaHome, "workspaces")
 	return &Paths{
-		Home:                  medusaHome,
-		WorkspacesRoot:        workspacesRoot,
-		RegistryPath:          filepath.Join(medusaHome, "workspaces.json"),
-		MetadataRoot:          filepath.Join(medusaHome, "workspaces-metadata"),
-		RecentsPath:           filepath.Join(medusaHome, "recents.json"),
-		ConfigPath:            filepath.Join(medusaHome, "config.json"),
-		ProfilesRoot:          profilesRoot,
-		SharedProfileRoot:     filepath.Join(profilesRoot, "shared"),
-		GlobalPermissionsPath: filepath.Join(medusaHome, "global_permissions.json"),
-		HooksDir:              filepath.Join(medusaHome, "hooks"),
+		Home:              medusaHome,
+		WorkspacesRoot:    workspacesRoot,
+		RegistryPath:      filepath.Join(medusaHome, "workspaces.json"),
+		MetadataRoot:      filepath.Join(medusaHome, "workspaces-metadata"),
+		RecentsPath:       filepath.Join(medusaHome, "recents.json"),
+		ConfigPath:        filepath.Join(medusaHome, "config.json"),
+		ProfilesRoot:      profilesRoot,
+		SharedProfileRoot: filepath.Join(profilesRoot, "shared"),
+		HooksDir:          filepath.Join(medusaHome, "hooks"),
 	}, nil
 }
 

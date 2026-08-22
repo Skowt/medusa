@@ -16,27 +16,15 @@ const (
 	CodexSandboxFullAccess = "danger-full-access"
 )
 
-// Codex approval policies, the values codex --ask-for-approval accepts.
-const (
-	CodexApprovalOnRequest = "on-request"
-	CodexApprovalNever     = "never"
-)
-
-// codexSandboxModes and codexApprovalModes gate what reaches the command line.
+// codexSandboxModes gates what reaches the command line.
 // Both values ride in from persisted UI settings, and Codex exits on an
 // unrecognised one instead of ignoring it — which would drop the tab to a bare
 // shell — so an unknown value is dropped rather than forwarded.
-var (
-	codexSandboxModes = map[string]bool{
-		CodexSandboxReadOnly:   true,
-		CodexSandboxWorkspace:  true,
-		CodexSandboxFullAccess: true,
-	}
-	codexApprovalModes = map[string]bool{
-		CodexApprovalOnRequest: true,
-		CodexApprovalNever:     true,
-	}
-)
+var codexSandboxModes = map[string]bool{
+	CodexSandboxReadOnly:   true,
+	CodexSandboxWorkspace:  true,
+	CodexSandboxFullAccess: true,
+}
 
 // codexSessionExists reports whether CODEX_HOME holds a rollout transcript for
 // sessionID. Codex files them as
@@ -72,28 +60,24 @@ func codexSessionArgs(codexHome string, opts AgentOptions) string {
 	return " resume " + shellutil.Quote(opts.ClaudeSessionID)
 }
 
-// codexPolicyArgs returns the --sandbox / --ask-for-approval / --search flags
-// for a Codex launch. Empty policy values are omitted so Codex falls back to
-// whatever the profile's own config.toml sets.
+// codexPolicyArgs returns the optional --sandbox flag for a Codex launch.
 //
 // Note what is absent: --dangerously-bypass-approvals-and-sandbox. The two
 // orthogonal controls reach the same place — danger-full-access with approvals
 // set to never is a session with no sandbox and no prompts — so Medusa never
 // has to emit the blanket flag to offer that.
 func codexPolicyArgs(opts AgentOptions) string {
+	// --approve-for-me is itself a complete policy bundle: Codex couples its
+	// automatic reviewer to workspace-write and rejects a simultaneous
+	// --sandbox flag. Keep the user's sandbox choice for Default mode only.
+	if opts.CodexAuto {
+		return ""
+	}
 	var b strings.Builder
 	if codexSandboxModes[opts.CodexSandbox] {
 		b.WriteString(" --sandbox " + opts.CodexSandbox)
 	} else if opts.CodexSandbox != "" {
 		logging.Warn("Ignoring unknown Codex sandbox mode %q", opts.CodexSandbox)
-	}
-	if codexApprovalModes[opts.CodexApproval] {
-		b.WriteString(" --ask-for-approval " + opts.CodexApproval)
-	} else if opts.CodexApproval != "" {
-		logging.Warn("Ignoring unknown Codex approval mode %q", opts.CodexApproval)
-	}
-	if opts.CodexSearch {
-		b.WriteString(" --search")
 	}
 	return b.String()
 }
@@ -108,7 +92,15 @@ func buildCodexCommand(command, sessionName, codexHome string, opts AgentOptions
 	if codexHome != "" {
 		cmd = "CODEX_HOME=" + shellutil.Quote(codexHome) + " " + cmd
 	}
-	cmd += " " + command + codexSessionArgs(codexHome, opts) + codexPolicyArgs(opts)
+	// Codex otherwise chooses its screen mode from the profile config and its
+	// terminal heuristics. Medusa needs deterministic fullscreen behavior so
+	// Codex owns its transcript instead of painting an inline TUI into Medusa's
+	// line-oriented scrollback buffer.
+	cmd += " " + command + " -c " + shellutil.Quote(`tui.alternate_screen="always"`) + " --search"
+	if opts.CodexAuto {
+		cmd += " --approve-for-me"
+	}
+	cmd += codexSessionArgs(codexHome, opts) + codexPolicyArgs(opts)
 	return cmd
 }
 

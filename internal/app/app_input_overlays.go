@@ -123,36 +123,6 @@ func (a *App) routeOverlayInput(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		}
 	}
 
-	// Handle permissions dialog if visible
-	if a.permissionsDialog != nil && a.permissionsDialog.Visible() {
-		newDialog, cmd := a.permissionsDialog.Update(msg)
-		a.permissionsDialog = newDialog
-		if cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
-		if _, ok := msg.(tea.KeyPressMsg); ok {
-			return true
-		}
-		if _, ok := msg.(tea.MouseClickMsg); ok {
-			return true
-		}
-	}
-
-	// Handle permissions editor if visible
-	if a.permissionsEditor != nil && a.permissionsEditor.Visible() {
-		newEditor, cmd := a.permissionsEditor.Update(msg)
-		a.permissionsEditor = newEditor
-		if cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
-		if _, ok := msg.(tea.KeyPressMsg); ok {
-			return true
-		}
-		if _, ok := msg.(tea.MouseClickMsg); ok {
-			return true
-		}
-	}
-
 	// Handle profile manager if visible
 	if a.profileManager != nil && a.profileManager.Visible() {
 		newManager, cmd := a.profileManager.Update(msg)

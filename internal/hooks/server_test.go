@@ -55,17 +55,17 @@ func TestServerDeliversEvent(t *testing.T) {
 	sock := filepath.Join(shortTempDir(t), SocketName)
 	events := startTestServer(t, sock)
 
-	sendLine(t, sock, `{"event":"NotificationPermission","ts":1700000000,"session":"medusa-ws1-tab1","message":"needs approval"}`)
+	sendLine(t, sock, `{"event":"NotificationElicitation","ts":1700000000,"session":"medusa-ws1-tab1","message":"needs input"}`)
 
 	select {
 	case he := <-events:
 		if he.SessionName != "medusa-ws1-tab1" {
 			t.Errorf("SessionName = %q", he.SessionName)
 		}
-		if he.Event != EventNotificationPermission {
+		if he.Event != EventNotificationElicitation {
 			t.Errorf("Event = %q", he.Event)
 		}
-		if he.Message != "needs approval" {
+		if he.Message != "needs input" {
 			t.Errorf("Message = %q", he.Message)
 		}
 		if he.Outstanding != OutstandingUnknown {

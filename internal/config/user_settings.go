@@ -13,8 +13,6 @@ type UISettings struct {
 	HideTerminal                 bool
 	AutoStartAgent               bool
 	SyncProfilePlugins           bool
-	GlobalPermissions            bool
-	AutoAddPermissions           bool
 	LastProfile                  string // Most recently selected profile name
 	LastWorkspace                string // ID of the workspace active when medusa last exited
 	LastIsolated                 bool   // Last state of "run isolated" checkbox for new workspaces
@@ -23,8 +21,7 @@ type UISettings struct {
 	LastFullscreen               bool   // Last state of "Fullscreen TUI" checkbox (default on)
 	LastAssistant                string // Assistant the New Tab dialog opens on (claude, codex)
 	LastCodexSandbox             string // Last codex --sandbox policy
-	LastCodexApproval            string // Last codex --ask-for-approval policy
-	LastCodexSearch              bool   // Last state of the Codex "web search" checkbox
+	LastCodexStartingMode        string // Last Codex starting mode (default, auto)
 	Theme                        string // Theme ID, defaults to "gruvbox"
 	TmuxServer                   string
 	TmuxConfigPath               string
@@ -32,31 +29,27 @@ type UISettings struct {
 	TmuxPersistence              bool
 	NotificationSound            string          // Sound name from /System/Library/Sounds (empty = none)
 	IDE                          string          // Remembered IDE install launch path (.app bundle on macOS, binary on Linux)
-	CompoundApprove              bool            // Auto-approve compound Bash commands via hook
 	CollapsedGroups              map[string]bool // Dashboard group collapse state, keyed by group label ("" = Ungrouped)
 }
 
 func defaultUISettings() UISettings {
 	return UISettings{
-		ShowKeymapHints:    false,
-		HideTerminal:       true,
-		AutoStartAgent:     true,
-		SyncProfilePlugins: true,
-		GlobalPermissions:  true,
-		AutoAddPermissions: false,
-		LastPermissionMode: "auto",
-		LastFullscreen:     true,
-		LastAssistant:      "claude",
-		LastCodexSandbox:   "workspace-write",
-		LastCodexApproval:  "on-request",
-		Theme:              "gruvbox",
-		TmuxServer:         "",
-		TmuxConfigPath:     "",
-		TmuxSyncInterval:   "",
-		TmuxPersistence:    true,
-		NotificationSound:  "",
-		CompoundApprove:    true,
-		CollapsedGroups:    nil,
+		ShowKeymapHints:       false,
+		HideTerminal:          true,
+		AutoStartAgent:        true,
+		SyncProfilePlugins:    true,
+		LastPermissionMode:    "auto",
+		LastFullscreen:        true,
+		LastAssistant:         "claude",
+		LastCodexSandbox:      "workspace-write",
+		LastCodexStartingMode: "auto",
+		Theme:                 "gruvbox",
+		TmuxServer:            "",
+		TmuxConfigPath:        "",
+		TmuxSyncInterval:      "",
+		TmuxPersistence:       true,
+		NotificationSound:     "",
+		CollapsedGroups:       nil,
 	}
 }
 
@@ -74,8 +67,6 @@ func loadUISettings(path string) UISettings {
 			HideTerminal                 *bool           `json:"hide_terminal"`
 			AutoStartAgent               *bool           `json:"auto_start_agent"`
 			SyncProfilePlugins           *bool           `json:"sync_profile_plugins"`
-			GlobalPermissions            *bool           `json:"global_permissions"`
-			AutoAddPermissions           *bool           `json:"auto_add_permissions"`
 			LastProfile                  *string         `json:"last_profile"`
 			LastWorkspace                *string         `json:"last_workspace"`
 			LastIsolated                 *bool           `json:"last_isolated"`
@@ -85,8 +76,7 @@ func loadUISettings(path string) UISettings {
 			LastFullscreen               *bool           `json:"last_fullscreen"`
 			LastAssistant                *string         `json:"last_assistant"`
 			LastCodexSandbox             *string         `json:"last_codex_sandbox"`
-			LastCodexApproval            *string         `json:"last_codex_approval"`
-			LastCodexSearch              *bool           `json:"last_codex_search"`
+			LastCodexStartingMode        *string         `json:"last_codex_starting_mode"`
 			Theme                        *string         `json:"theme"`
 			TmuxServer                   *string         `json:"tmux_server"`
 			TmuxConfigPath               *string         `json:"tmux_config"`
@@ -94,7 +84,6 @@ func loadUISettings(path string) UISettings {
 			TmuxPersistence              *bool           `json:"tmux_persistence"`
 			NotificationSound            *string         `json:"notification_sound"`
 			IDE                          *string         `json:"ide"`
-			CompoundApprove              *bool           `json:"compound_approve"`
 			CollapsedGroups              map[string]bool `json:"collapsed_groups"`
 		} `json:"ui"`
 	}
@@ -115,12 +104,6 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.SyncProfilePlugins != nil {
 		settings.SyncProfilePlugins = *raw.UI.SyncProfilePlugins
-	}
-	if raw.UI.GlobalPermissions != nil {
-		settings.GlobalPermissions = *raw.UI.GlobalPermissions
-	}
-	if raw.UI.AutoAddPermissions != nil {
-		settings.AutoAddPermissions = *raw.UI.AutoAddPermissions
 	}
 	if raw.UI.LastProfile != nil {
 		settings.LastProfile = *raw.UI.LastProfile
@@ -149,11 +132,8 @@ func loadUISettings(path string) UISettings {
 	if raw.UI.LastCodexSandbox != nil && *raw.UI.LastCodexSandbox != "" {
 		settings.LastCodexSandbox = *raw.UI.LastCodexSandbox
 	}
-	if raw.UI.LastCodexApproval != nil && *raw.UI.LastCodexApproval != "" {
-		settings.LastCodexApproval = *raw.UI.LastCodexApproval
-	}
-	if raw.UI.LastCodexSearch != nil {
-		settings.LastCodexSearch = *raw.UI.LastCodexSearch
+	if raw.UI.LastCodexStartingMode != nil && *raw.UI.LastCodexStartingMode != "" {
+		settings.LastCodexStartingMode = *raw.UI.LastCodexStartingMode
 	}
 	if raw.UI.Theme != nil {
 		settings.Theme = *raw.UI.Theme
@@ -175,9 +155,6 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.IDE != nil {
 		settings.IDE = *raw.UI.IDE
-	}
-	if raw.UI.CompoundApprove != nil {
-		settings.CompoundApprove = *raw.UI.CompoundApprove
 	}
 	if raw.UI.CollapsedGroups != nil {
 		settings.CollapsedGroups = raw.UI.CollapsedGroups
@@ -204,8 +181,8 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["hide_terminal"] = settings.HideTerminal
 	ui["auto_start_agent"] = settings.AutoStartAgent
 	ui["sync_profile_plugins"] = settings.SyncProfilePlugins
-	ui["global_permissions"] = settings.GlobalPermissions
-	ui["auto_add_permissions"] = settings.AutoAddPermissions
+	delete(ui, "global_permissions")
+	delete(ui, "auto_add_permissions")
 	ui["last_profile"] = settings.LastProfile
 	ui["last_workspace"] = settings.LastWorkspace
 	delete(ui, "last_allow_edits")      // legacy field, removed in favor of per-tab settings
@@ -216,8 +193,9 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["last_fullscreen"] = settings.LastFullscreen
 	ui["last_assistant"] = settings.LastAssistant
 	ui["last_codex_sandbox"] = settings.LastCodexSandbox
-	ui["last_codex_approval"] = settings.LastCodexApproval
-	ui["last_codex_search"] = settings.LastCodexSearch
+	delete(ui, "last_codex_approval")
+	delete(ui, "last_codex_search")
+	ui["last_codex_starting_mode"] = settings.LastCodexStartingMode
 	ui["theme"] = settings.Theme
 	ui["tmux_server"] = settings.TmuxServer
 	ui["tmux_config"] = settings.TmuxConfigPath
@@ -225,7 +203,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["tmux_persistence"] = settings.TmuxPersistence
 	ui["notification_sound"] = settings.NotificationSound
 	ui["ide"] = settings.IDE
-	ui["compound_approve"] = settings.CompoundApprove
+	delete(ui, "compound_approve")
 	ui["collapsed_groups"] = settings.CollapsedGroups
 	payload["ui"] = ui
 

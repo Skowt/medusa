@@ -168,10 +168,9 @@ func (u *Updater) Upgrade(release *Release) error {
 }
 
 // secondaryBinaries are the helper binaries shipped alongside medusa in
-// release archives: the compound-approve permission hook and the hook-emit
-// activity forwarder. Both are upgraded with the primary binary so the hooks
+// release archives. It is upgraded with the primary binary so the hooks
 // injected into Claude profiles always match the running medusa.
-var secondaryBinaries = []string{"medusa-approve-compound", "medusa-hook-emit"}
+var secondaryBinaries = []string{"medusa-hook-emit"}
 
 // installSecondaryBinaries installs each extracted helper next to medusa
 // (best-effort). A failure doesn't roll back the primary update; we log and

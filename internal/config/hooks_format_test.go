@@ -12,6 +12,19 @@ import (
 	"time"
 )
 
+func readSettings(t *testing.T, profileDir string) map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(profileDir, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(b, &settings); err != nil {
+		t.Fatal(err)
+	}
+	return settings
+}
+
 // collectMedusaCommands returns every hook command guarded by the Medusa
 // session check, keyed by event name.
 func collectMedusaCommands(t *testing.T, profileDir string) map[string][]string {
@@ -57,7 +70,7 @@ func TestInjectHooksSocketCommands(t *testing.T) {
 	}
 
 	cmds := collectMedusaCommands(t, profileDir)
-	for _, event := range []string{"Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionStart", "PreToolUse", "PostToolUse", "PermissionRequest", "UserPromptSubmit", "Notification"} {
+	for _, event := range []string{"Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit", "Notification"} {
 		if len(cmds[event]) == 0 {
 			t.Errorf("no medusa hook command for event %s", event)
 		}
@@ -178,19 +191,19 @@ func TestInjectedHookCommandSendsToSocket(t *testing.T) {
 		t.Errorf("unexpected payload: %v", evt)
 	}
 
-	// Notification event with message extraction from stdin.
-	var permCmd string
+	// Elicitation notification with message extraction from stdin.
+	var elicitationCmd string
 	for _, cmd := range cmds["Notification"] {
-		if strings.Contains(cmd, `"event":"NotificationPermission"`) {
-			permCmd = cmd
+		if strings.Contains(cmd, `"event":"NotificationElicitation"`) {
+			elicitationCmd = cmd
 		}
 	}
-	if permCmd == "" {
-		t.Fatal("no NotificationPermission command injected")
+	if elicitationCmd == "" {
+		t.Fatal("no NotificationElicitation command injected")
 	}
-	runHookCommand(t, permCmd, `{"hook_event_name":"Notification","message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}`)
+	runHookCommand(t, elicitationCmd, `{"hook_event_name":"Notification","message":"Claude needs input","notification_type":"elicitation_dialog"}`)
 	evt = recv()
-	if evt["event"] != "NotificationPermission" || evt["message"] != "Claude needs your permission to use Bash" {
+	if evt["event"] != "NotificationElicitation" || evt["message"] != "Claude needs input" {
 		t.Errorf("unexpected payload: %v", evt)
 	}
 
