@@ -33,6 +33,26 @@ const (
 	StatusArchived WorkspaceStatus = "archived"
 )
 
+// NextStatus returns the status the manual status toggle moves to from the
+// given one. Review comes before Blocked: a workspace normally reaches review
+// on its way to merged, and blocked is the exception, so the common path is
+// the shorter one. Both the dashboard and the center info tab cycle through
+// here so the two can never disagree on the order.
+func NextStatus(current WorkspaceStatus) WorkspaceStatus {
+	switch current {
+	case StatusNone, StatusStarted:
+		return StatusReview
+	case StatusReview:
+		return StatusBlocked
+	case StatusBlocked:
+		return StatusMerged
+	case StatusMerged, StatusArchived:
+		return StatusNone
+	default:
+		return StatusStarted
+	}
+}
+
 // RepoRef identifies a source git repository
 type RepoRef struct {
 	Path string `json:"path"` // Absolute path to the source repo

@@ -46,21 +46,7 @@ func (m *Model) infoTabActivateSetting() tea.Cmd {
 	ws := m.workspace
 	switch m.infoCursor {
 	case InfoCursorStatus:
-		var next data.WorkspaceStatus
-		switch ws.Status {
-		case data.StatusNone, data.StatusStarted:
-			next = data.StatusBlocked
-		case data.StatusBlocked:
-			next = data.StatusReview
-		case data.StatusReview:
-			next = data.StatusMerged
-		case data.StatusMerged:
-			next = data.StatusNone
-		case data.StatusArchived:
-			next = data.StatusNone
-		default:
-			next = data.StatusStarted
-		}
+		next := data.NextStatus(ws.Status)
 		return func() tea.Msg {
 			return messages.SetWorkspaceStatus{Workspace: ws, Status: next}
 		}
