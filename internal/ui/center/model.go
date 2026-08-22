@@ -392,9 +392,12 @@ func (m *Model) SetStyles(styles common.Styles) {
 	for _, tabs := range m.tabsByWorkspace {
 		for _, tab := range tabs {
 			if tab != nil {
+				tab.mu.Lock()
+				applyTerminalTheme(tab.Terminal)
 				if tab.DiffViewer != nil {
 					tab.DiffViewer.SetStyles(styles)
 				}
+				tab.mu.Unlock()
 			}
 		}
 	}

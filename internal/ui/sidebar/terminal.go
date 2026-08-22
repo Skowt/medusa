@@ -144,6 +144,16 @@ func (m *TerminalModel) SetShowKeymapHints(show bool) {
 // SetStyles updates the component's styles (for theme changes).
 func (m *TerminalModel) SetStyles(styles common.Styles) {
 	m.styles = styles
+	for _, tabs := range m.tabsByWorkspace {
+		for _, tab := range tabs {
+			if tab == nil || tab.State == nil {
+				continue
+			}
+			tab.State.mu.Lock()
+			applyTerminalTheme(tab.State.VTerm)
+			tab.State.mu.Unlock()
+		}
+	}
 }
 
 // SetMsgSink sets a callback for PTY messages.
@@ -162,7 +172,7 @@ func (m *TerminalModel) AddTerminalForHarness(ws *data.Workspace) {
 		return
 	}
 	termWidth, termHeight := m.TerminalSize()
-	vt := vterm.New(termWidth, termHeight)
+	vt := newThemedVTerm(termWidth, termHeight)
 	vt.AllowAltScreenScrollback = true
 	tab := &TerminalTab{
 		ID:   generateTerminalTabID(),

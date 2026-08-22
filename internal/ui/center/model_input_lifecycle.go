@@ -12,7 +12,6 @@ import (
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/tmux"
 	"github.com/Skowt/medusa/internal/ui/common"
-	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // updateLaunchAgent handles messages.LaunchAgent.
@@ -59,7 +58,7 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 	frameRendering := agentPaintsFrames(tab.Assistant, msg.Fullscreen)
 	createdTerminal := false
 	if tab.Terminal == nil {
-		tab.Terminal = vterm.New(cols, rows)
+		tab.Terminal = newThemedVTerm(cols, rows)
 		createdTerminal = true
 	}
 	if tab.Terminal != nil {

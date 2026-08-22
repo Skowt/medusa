@@ -1,5 +1,7 @@
 package vterm
 
+import "image/color"
+
 // Color represents a terminal color
 type Color struct {
 	Type  ColorType
@@ -13,6 +15,15 @@ const (
 	ColorIndexed
 	ColorRGB
 )
+
+// ColorFromGoColor converts a host UI color into a terminal RGB color.
+func ColorFromGoColor(c color.Color) Color {
+	if c == nil {
+		return Color{}
+	}
+	r, g, b, _ := c.RGBA()
+	return Color{Type: ColorRGB, Value: uint32(r>>8)<<16 | uint32(g>>8)<<8 | uint32(b>>8)}
+}
 
 // Style holds text styling attributes
 type Style struct {

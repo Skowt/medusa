@@ -29,7 +29,8 @@ type Parser struct {
 	csiIntermediate byte
 
 	// OSC sequence building
-	oscBuf strings.Builder
+	oscBuf      strings.Builder
+	oscOverflow bool
 
 	// UTF-8 decoding state
 	utf8Buf [4]byte
@@ -195,7 +196,12 @@ func (p *Parser) parseEscape(b byte) {
 
 func (p *Parser) parseOSC(b byte) {
 	if b == 0x07 || b == 0x1b { // BEL or ST (ESC \) terminates
-		p.executeOSC()
+		if !p.oscOverflow {
+			p.executeOSC(b == 0x1b)
+		} else {
+			p.oscBuf.Reset()
+			p.oscOverflow = false
+		}
 		if b == 0x1b {
 			// ST: hand the trailing backslash to parseEscape, which drops it.
 			p.state = stateEscape
@@ -204,27 +210,11 @@ func (p *Parser) parseOSC(b byte) {
 		}
 		return
 	}
-	p.oscBuf.WriteByte(b)
-}
-
-// executeOSC dispatches a completed OSC sequence. Everything except hyperlinks
-// is ignored (window title, palette queries), but it must still be consumed so
-// the payload never reaches the screen as text.
-func (p *Parser) executeOSC() {
-	data := p.oscBuf.String()
-	p.oscBuf.Reset()
-
-	code, rest, ok := strings.Cut(data, ";")
-	if !ok || code != "8" {
-		return
+	if p.oscBuf.Len() < maxOSCPayload {
+		p.oscBuf.WriteByte(b)
+	} else {
+		p.oscOverflow = true
 	}
-
-	// OSC 8 ; params ; URI — an empty URI closes the current hyperlink.
-	params, uri, ok := strings.Cut(rest, ";")
-	if !ok {
-		return
-	}
-	p.vt.setHyperlink(uri, params)
 }
 
 func (p *Parser) parseDCS(b byte) {

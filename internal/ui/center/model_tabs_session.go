@@ -11,7 +11,6 @@ import (
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/tmux"
 	"github.com/Skowt/medusa/internal/ui/common"
-	"github.com/Skowt/medusa/internal/vterm"
 )
 
 // detachTab is the core implementation for detaching a tab (closes PTY, keeps tmux session).
@@ -392,7 +391,7 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 	if displayName == "" {
 		displayName = "Terminal"
 	}
-	term := vterm.New(termWidth, termHeight)
+	term := newThemedVTerm(termWidth, termHeight)
 	// The tmux client this vterm reads from enters the alt screen at attach
 	// whatever the agent does, so scrollback must not be gated on AltScreen.
 	// Frame-painting agents are excluded by AppFullscreen/mouse reporting.

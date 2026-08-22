@@ -69,6 +69,21 @@ type VTerm struct {
 	// SGR (including a full reset) must not end a hyperlink.
 	CurrentLink uint32
 
+	// OSC-managed terminal metadata and colors. Applications query these to
+	// adapt their UI to the terminal and may update them for their session.
+	IconName                  string
+	Title                     string
+	WorkingDirectory          string
+	DefaultForeground         Color
+	DefaultBackground         Color
+	CursorColor               Color
+	defaultForegroundModified bool
+	defaultBackgroundModified bool
+	cursorColorModified       bool
+	Palette                   [256]Color
+	PaletteModified           [256]bool
+	ShellMarker               ShellMarker
+
 	// links interns hyperlink targets; a cell stores the 1-based ID of its entry.
 	links   []Link
 	linkIDs map[string]uint32
@@ -129,11 +144,25 @@ func New(width, height int) *VTerm {
 		ScrollBottom: height,
 	}
 	v.Screen = v.makeScreen(width, height)
+	v.initOSCPalette()
 	v.Scrollback = make([][]Cell, 0, MaxScrollback)
 	v.parser = NewParser(v)
 	// Initialize dirty tracking for layer-based rendering
 	v.ensureRenderCache(height)
 	return v
+}
+
+// SetDefaultColors supplies the host UI colors reported by OSC 10/11/12.
+func (v *VTerm) SetDefaultColors(fg, bg, cursor Color) {
+	if !v.defaultForegroundModified {
+		v.DefaultForeground = fg
+	}
+	if !v.defaultBackgroundModified {
+		v.DefaultBackground = bg
+	}
+	if !v.cursorColorModified {
+		v.CursorColor = cursor
+	}
 }
 
 func (v *VTerm) scrollbackEnabled() bool {

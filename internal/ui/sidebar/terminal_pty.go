@@ -12,7 +12,6 @@ import (
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/safego"
-	"github.com/Skowt/medusa/internal/vterm"
 )
 
 const (
@@ -138,7 +137,7 @@ func (m *TerminalModel) HandleTerminalCreated(wsID string, tabID TerminalTabID, 
 		lastHeight: termHeight,
 	}
 
-	vt := vterm.New(termWidth, termHeight)
+	vt := newThemedVTerm(termWidth, termHeight)
 	vt.AllowAltScreenScrollback = true
 	vt.SetResponseWriter(func(data []byte) {
 		if term != nil {

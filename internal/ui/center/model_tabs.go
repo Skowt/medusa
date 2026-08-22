@@ -12,7 +12,6 @@ import (
 	"github.com/Skowt/medusa/internal/messages"
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/tmux"
-	"github.com/Skowt/medusa/internal/vterm"
 )
 
 func nextAssistantName(assistant string, tabs []*Tab) string {
@@ -270,7 +269,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 	}
 
 	// Create virtual terminal emulator with scrollback
-	term := vterm.New(cols, rows)
+	term := newThemedVTerm(cols, rows)
 	// The tmux client this vterm reads from enters the alt screen at attach
 	// whatever the agent does, so scrollback must not be gated on AltScreen.
 	// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
