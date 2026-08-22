@@ -37,30 +37,10 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Handle dialog result first (arrives after dialog is hidden)
-	if result, ok := msg.(common.DialogResult); ok {
-		logging.Info("Received DialogResult: id=%s confirmed=%v", result.ID, result.Confirmed)
-		switch result.ID {
-		case DialogAddRepos, DialogAddReposToWorkspace, DialogCreateWorkspace, DialogDeleteWorkspace, DialogCustomizeTab, DialogQuit, DialogCleanupTmux, DialogSetProfile, DialogRenameWorkspace, DialogRenameProfile, DialogCreateProfile, DialogDeleteProfile, DialogCommit,
-			DialogSelectBranchMode, DialogCustomBranch, DialogSelectRecentRepos, DialogCloseTab, DialogSetProfileForCreate, DialogQuickDuplicate,
-			DialogArchiveWorkspace, DialogArchivedWorkspace, DialogSetNote,
-			DialogSetWorkspaceGroup, DialogSetGroupForCreate, DialogRenameGroup, DialogDeleteGroup:
-			return a, a.safeCmd(a.handleDialogResult(result))
-		}
-		// If not an App-level dialog, let it fall through to components
-		// Currently only Center uses custom dialogs
-		newCenter, cmd := a.center.Update(msg)
-		a.center = newCenter
-		return a, a.safeCmd(cmd)
-	}
-
-	// A select field asked its owner to rebuild the dialog around a new value
-	// (the New Tab dialog swapping in the chosen assistant's fields). It rides
-	// beside DialogResult because it comes from the same widget, and it must be
-	// handled before the overlay chain: the dialog is still visible.
-	if changed, ok := msg.(common.DialogSelectChanged); ok {
-		a.handleDialogSelectChanged(changed)
-		return a, nil
+	// Dialog messages first: a result arrives after the dialog hid itself, and
+	// a select change arrives while it is still open (see routeDialogMsg).
+	if model, cmd, handled := a.routeDialogMsg(msg); handled {
+		return model, cmd
 	}
 
 	// Handle help overlay input (highest priority when visible)

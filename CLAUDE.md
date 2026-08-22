@@ -196,6 +196,62 @@ with no hook event for 3 minutes. Background-task awareness
 needs **Claude Code v2.1.145+** (`background_tasks` in Stop payloads); older
 versions degrade to ping-on-Stop.
 
+### Codex tabs
+
+A tab's assistant is picked in the New Tab dialog's "Assistant" cycler, which
+is **sticky** (`config.UI.LastAssistant`) and drives every no-dialog launch
+path too. Cycling it rebuilds the dialog: Claude's permission modes and Codex's
+sandbox policies share no values, so the fields below the assistant belong to
+one of them and to no other (`app_dialog_new_tab.go`). Per-tab Codex policies
+persist in `data.TabInfo`, and `agentTabOptions.forAssistant` strips the other
+assistant's settings on every create, restore, and restart — `codex` exits on
+an unknown flag rather than ignoring it, which drops the tab to a bare shell.
+
+Four properties are load-bearing:
+
+1. **`CODEX_HOME` is the profile boundary.** Codex keeps auth, config, hooks
+   and session rollouts under it, so each profile gets
+   `~/.medusa/profiles/<name>/codex` — the role `CLAUDE_CONFIG_DIR` plays for
+   Claude. A new home is seeded from `~/.codex/auth.json` (copy, never
+   overwrite) or the profile's first Codex tab opens on a login prompt.
+2. **The worktree must be pre-trusted.** Codex refuses to start in an
+   untrusted directory ("Not inside a trusted directory and
+   --skip-git-repo-check was not specified"), which is every fresh worktree, so
+   `InjectCodexTrustedDirectory` appends `[projects."<root>"] trust_level =
+   "trusted"` to the home's `config.toml`. The append is text, not a TOML
+   round-trip: Codex writes its own state into that file — hook trust hashes
+   among it — and reserializing would reformat a file it owns.
+3. **Hooks work unchanged, behind a one-time trust gesture.** Codex's payloads
+   use the same field names Claude Code's do (`session_id`, `cwd`,
+   `hook_event_name`) and it runs `type = "command"` hooks through `$SHELL -lc`,
+   so `medusa-hook-emit` and its session-name guard need no Codex branch;
+   `InjectCodexHooks` writes them to `<CODEX_HOME>/hooks.json`, which Codex
+   discovers alongside `config.toml`. But Codex hashes each hook and **skips
+   untrusted ones silently**, so the first Codex tab in a profile opens on
+   "Hooks need review" and has no activity detection until the user picks
+   "Trust all and continue". The hash covers the command string (stable per
+   install), so it is asked once. Note `timeout` there is **seconds**, where
+   Claude Code's `settings.json` reads milliseconds.
+4. **Codex mints its own session ids.** There is no `--session-id` to
+   pre-assign one, so a tab only learns its id from the SessionStart hook —
+   another reason the trust prompt matters. Restart resumes with
+   `codex resume <id>`, guarded by a rollout-file existence check
+   (`sessions/<y>/<m>/<d>/rollout-*-<id>.jsonl`): resuming an unknown id exits
+   1 rather than degrading, which would drop the tab to a shell.
+
+Degradations to expect: Codex has no Notification event, so no idle_prompt or
+permission_prompt ping (PermissionRequest is its one needs-input signal), and
+its Stop payload carries no `background_tasks`, so the outstanding count stays
+unknown and every Stop reads as ready.
+
+`--sandbox` and `--ask-for-approval` are the two controls the dialog exposes;
+`--dangerously-bypass-approvals-and-sandbox` is deliberately never emitted,
+since full access with approvals off reaches the same place. **Fullscreen is
+forced off for Codex** — it is Claude's renderer, and Codex reports no mouse
+and does not take the pane's alternate screen, so marking a Codex tab
+fullscreen would forward the mouse into an app that ignores it and disable
+medusa's own scrollback (see `tabAppOwnsScreen`).
+
 ### Workspace / worktree model: `internal/data`
 
 A `Workspace` can span multiple repos (each with its own worktree) but shares a single branch. `Workspace.Root()` is the primary worktree root; `AllRoots()` / `PrimaryWorktreeRoot()` account for multi-repo layouts. Registry at `~/.medusa/workspaces.json` is the source of truth; `data.Registry` and `data.WorkspaceStore` are both guarded by `sync.Mutex` (saveLocked/deleteLocked pattern). Orphan handling has two flavors: `OrphanMetadata` (registry knows about a dir that's gone) and `OrphanDirectory` (dir on disk with no registry entry).
