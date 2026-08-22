@@ -16,6 +16,7 @@ type UISettings struct {
 	GlobalPermissions            bool
 	AutoAddPermissions           bool
 	LastProfile                  string // Most recently selected profile name
+	LastWorkspace                string // ID of the workspace active when medusa last exited
 	LastIsolated                 bool   // Last state of "run isolated" checkbox for new workspaces
 	LastAllowUnsandboxedCommands bool   // Last state of "allow unsandboxed commands" checkbox
 	LastPermissionMode           string // Last selected starting mode (default "auto")
@@ -69,6 +70,7 @@ func loadUISettings(path string) UISettings {
 			GlobalPermissions            *bool           `json:"global_permissions"`
 			AutoAddPermissions           *bool           `json:"auto_add_permissions"`
 			LastProfile                  *string         `json:"last_profile"`
+			LastWorkspace                *string         `json:"last_workspace"`
 			LastIsolated                 *bool           `json:"last_isolated"`
 			LastSkipPermissions          *bool           `json:"last_skip_permissions"` // legacy → coalesced into LastPermissionMode
 			LastAllowUnsandboxedCommands *bool           `json:"last_allow_unsandboxed_commands"`
@@ -111,6 +113,9 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.LastProfile != nil {
 		settings.LastProfile = *raw.UI.LastProfile
+	}
+	if raw.UI.LastWorkspace != nil {
+		settings.LastWorkspace = *raw.UI.LastWorkspace
 	}
 	if raw.UI.LastIsolated != nil {
 		settings.LastIsolated = *raw.UI.LastIsolated
@@ -179,6 +184,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["global_permissions"] = settings.GlobalPermissions
 	ui["auto_add_permissions"] = settings.AutoAddPermissions
 	ui["last_profile"] = settings.LastProfile
+	ui["last_workspace"] = settings.LastWorkspace
 	delete(ui, "last_allow_edits")      // legacy field, removed in favor of per-tab settings
 	delete(ui, "last_skip_permissions") // legacy field, replaced by last_permission_mode
 	ui["last_isolated"] = settings.LastIsolated

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/tmux"
 )
@@ -35,12 +36,7 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	if a.pendingAutoLaunch != "" {
 		autoActivateRoot = a.pendingAutoLaunch
 	} else if a.showWelcome && a.activeWorkspace == nil && len(a.allWorkspaces) > 0 {
-		for _, ws := range a.allWorkspaces {
-			if !ws.IsOrphaned() && !ws.Archived() {
-				autoActivateRoot = ws.Root()
-				break
-			}
-		}
+		autoActivateRoot = a.startupWorkspaceRoot()
 	}
 
 	// Eagerly restore agent tabs for all workspaces on startup.
@@ -103,12 +99,51 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	return cmds
 }
 
+// startupWorkspaceRoot picks the workspace to open on a cold start: the one
+// that was active when medusa last exited, falling back to the first eligible
+// workspace in the list when that one is gone, archived, orphaned, or belongs
+// to another profile.
+func (a *App) startupWorkspaceRoot() string {
+	var first string
+	for _, ws := range a.allWorkspaces {
+		if ws.IsOrphaned() || ws.Archived() {
+			continue
+		}
+		if a.config != nil && a.config.UI.LastWorkspace != "" &&
+			string(ws.ID()) == a.config.UI.LastWorkspace {
+			return ws.Root()
+		}
+		if first == "" {
+			first = ws.Root()
+		}
+	}
+	return first
+}
+
+// rememberLastWorkspace persists ws as the workspace to reopen next time.
+// Writes only on a real change: activation happens every time the user moves
+// between workspaces, and the config file is rewritten in full on each save.
+func (a *App) rememberLastWorkspace(ws *data.Workspace) {
+	if ws == nil || a.config == nil {
+		return
+	}
+	wsID := string(ws.ID())
+	if a.config.UI.LastWorkspace == wsID {
+		return
+	}
+	a.config.UI.LastWorkspace = wsID
+	if err := a.config.SaveUISettings(); err != nil {
+		logging.Warn("Failed to save last workspace: %v", err)
+	}
+}
+
 // handleWorkspaceActivated processes the WorkspaceActivated message.
 func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cmd {
 	var cmds []tea.Cmd
 	alreadyActive := a.activeWorkspace != nil && msg.Workspace != nil &&
 		a.activeWorkspace.ID() == msg.Workspace.ID()
 	a.activeWorkspace = msg.Workspace
+	a.rememberLastWorkspace(msg.Workspace)
 	a.showWelcome = false
 	a.centerBtnFocused = false
 	a.centerBtnIndex = 0

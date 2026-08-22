@@ -111,3 +111,19 @@ func TestUISettingsIDERoundTrip(t *testing.T) {
 		t.Errorf("IDE = %q, want %q", got.IDE, "/Applications/Cursor.app")
 	}
 }
+
+func TestUISettingsLastWorkspaceRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	const wsID = "a1b2c3d4e5f6"
+	in := defaultUISettings()
+	in.LastWorkspace = wsID
+	if err := saveUISettings(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got := loadUISettings(path)
+	if got.LastWorkspace != wsID {
+		t.Errorf("LastWorkspace = %q, want %q", got.LastWorkspace, wsID)
+	}
+}
