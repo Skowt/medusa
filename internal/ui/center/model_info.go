@@ -153,6 +153,10 @@ func (m *Model) MigrateWorkspaceTabs(oldID, newID string, ws *data.Workspace, ol
 		m.restoredWorkspaces[newID] = struct{}{}
 		delete(m.restoredWorkspaces, oldID)
 	}
+	// A rename rewrites every tmux session name, so the recorded order is
+	// re-keyed from the tabs themselves rather than carried across.
+	m.forgetTabRestoreOrder(oldID)
+	m.recordTabRestoreOrderFromTabs(newID, m.tabsByWorkspace[newID])
 	// Redirect old workspace ID → new so PTY reader messages are routed correctly.
 	// Also update any existing redirects that pointed to oldID (handles chained renames).
 	for k, v := range m.wsIDRedirects {

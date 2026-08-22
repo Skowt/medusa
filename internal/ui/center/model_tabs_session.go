@@ -205,6 +205,9 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 	if _, ok := m.restoredWorkspaces[wsID]; ok {
 		return nil
 	}
+	// Note the saved order before anything is created: the tabs come back
+	// asynchronously, so their positions cannot be inferred from arrival.
+	m.recordTabRestoreOrder(wsID, ws.OpenTabs)
 
 	activeIdx := ws.ActiveTabIndex
 	// Pre-scan to pick the persisted index of the tab that should receive
@@ -329,6 +332,10 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 			existing[sessionName] = struct{}{}
 		}
 	}
+
+	// Tabs added later rank after the ones already restored, so a late
+	// discovery cannot reorder the bar.
+	m.recordTabRestoreOrder(wsID, tabs)
 
 	var cmds []tea.Cmd
 	for _, tab := range tabs {

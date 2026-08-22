@@ -1,6 +1,7 @@
 package center
 
 import (
+	"math"
 	"path/filepath"
 	"strings"
 
@@ -190,10 +191,15 @@ func (m *Model) removeTab(idx int) {
 	}
 }
 
-// appendTabOrdered adds tab to the workspace's tab list, maintaining the
-// invariant that script tabs are always last so the bar always reads
-// Info → agents → scripts. Non-script tabs inserted while script tabs are
-// already present shift those scripts right and bump the active-tab pointer
+// tabRankUnordered is the rank of a tab with no recorded position — one the
+// user just created rather than one being restored. It sorts after every
+// restored tab, so a fresh tab still lands at the end of the bar.
+const tabRankUnordered = math.MaxInt
+
+// appendTabOrdered adds tab to the workspace's tab list, maintaining two
+// invariants: restored tabs keep the order they were created in, and script
+// tabs are always last so the bar reads Info → agents → scripts. Inserting
+// before existing tabs shifts them right and bumps the active-tab pointer
 // accordingly. Returns the index at which the new tab was placed.
 func (m *Model) appendTabOrdered(wsID string, tab *Tab) int {
 	tabs := m.tabsByWorkspace[wsID]
@@ -201,26 +207,128 @@ func (m *Model) appendTabOrdered(wsID string, tab *Tab) int {
 		m.tabsByWorkspace[wsID] = append(tabs, tab)
 		return len(m.tabsByWorkspace[wsID]) - 1
 	}
-	firstScriptIdx := -1
-	for i, t := range tabs {
-		if t != nil && t.Assistant == "script" {
-			firstScriptIdx = i
-			break
-		}
-	}
-	if firstScriptIdx < 0 {
+	pos := m.orderedInsertIdx(wsID, tabs, tab)
+	if pos >= len(tabs) {
 		m.tabsByWorkspace[wsID] = append(tabs, tab)
 		return len(m.tabsByWorkspace[wsID]) - 1
 	}
-	if idx, ok := m.activeTabByWorkspace[wsID]; ok && idx >= firstScriptIdx {
+	if idx, ok := m.activeTabByWorkspace[wsID]; ok && idx >= pos {
 		m.activeTabByWorkspace[wsID] = idx + 1
 	}
-	newTabs := make([]*Tab, len(tabs)+1)
-	copy(newTabs, tabs[:firstScriptIdx])
-	newTabs[firstScriptIdx] = tab
-	copy(newTabs[firstScriptIdx+1:], tabs[firstScriptIdx:])
+	newTabs := make([]*Tab, 0, len(tabs)+1)
+	newTabs = append(newTabs, tabs[:pos]...)
+	newTabs = append(newTabs, tab)
+	newTabs = append(newTabs, tabs[pos:]...)
 	m.tabsByWorkspace[wsID] = newTabs
-	return firstScriptIdx
+	return pos
+}
+
+// orderedInsertIdx returns the index tab belongs at: after every tab that was
+// created before it, and before the first script tab.
+func (m *Model) orderedInsertIdx(wsID string, tabs []*Tab, tab *Tab) int {
+	rank := m.tabRestoreRank(wsID, tab)
+	for i, t := range tabs {
+		if t == nil {
+			continue
+		}
+		if t.Assistant == "script" {
+			return i
+		}
+		if m.tabRestoreRank(wsID, t) > rank {
+			return i
+		}
+	}
+	return len(tabs)
+}
+
+// tabRestoreRank reports the position a tab held when its workspace was saved,
+// or tabRankUnordered for a tab that is not being restored. The tmux session
+// name is the key; a persisted tab that never got one falls back to its display
+// name, which is unique within a workspace.
+func (m *Model) tabRestoreRank(wsID string, tab *Tab) int {
+	order := m.restoreOrder[wsID]
+	if tab == nil || len(order) == 0 {
+		return tabRankUnordered
+	}
+	if tab.SessionName != "" {
+		if rank, ok := order[tab.SessionName]; ok {
+			return rank
+		}
+	}
+	if tab.Name != "" {
+		if rank, ok := order[tab.Name]; ok {
+			return rank
+		}
+	}
+	return tabRankUnordered
+}
+
+// recordTabRestoreOrder notes the order a workspace's persisted tabs were in,
+// so the tabs can be put back that way however their attaches interleave.
+// Keys already known keep their rank, and new ones are appended after the
+// highest, so tabs discovered later cannot displace restored ones.
+func (m *Model) recordTabRestoreOrder(wsID string, tabs []data.TabInfo) {
+	if len(tabs) == 0 {
+		return
+	}
+	order := m.restoreOrder[wsID]
+	if order == nil {
+		order = make(map[string]int, len(tabs))
+		m.restoreOrder[wsID] = order
+	}
+	next := 0
+	for _, rank := range order {
+		if rank >= next {
+			next = rank + 1
+		}
+	}
+	for _, info := range tabs {
+		keys := []string{strings.TrimSpace(info.SessionName), strings.TrimSpace(info.Name)}
+		rank := -1
+		for _, key := range keys {
+			if key == "" {
+				continue
+			}
+			if known, ok := order[key]; ok {
+				rank = known
+				break
+			}
+		}
+		if rank < 0 {
+			rank = next
+			next++
+		}
+		for _, key := range keys {
+			if key == "" {
+				continue
+			}
+			if _, ok := order[key]; !ok {
+				order[key] = rank
+			}
+		}
+	}
+}
+
+// recordTabRestoreOrderFromTabs records the order of the tabs currently on
+// screen, for the paths that re-key a workspace rather than restore it.
+func (m *Model) recordTabRestoreOrderFromTabs(wsID string, tabs []*Tab) {
+	infos := make([]data.TabInfo, 0, len(tabs))
+	for _, tab := range tabs {
+		if tab == nil {
+			continue
+		}
+		sessionName := tab.SessionName
+		if sessionName == "" && tab.Agent != nil {
+			sessionName = tab.Agent.Session
+		}
+		infos = append(infos, data.TabInfo{SessionName: sessionName, Name: tab.Name})
+	}
+	m.recordTabRestoreOrder(wsID, infos)
+}
+
+// forgetTabRestoreOrder drops a workspace's recorded order.
+func (m *Model) forgetTabRestoreOrder(wsID string) {
+	delete(m.restoreOrder, wsID)
 }
 
 // CleanupWorkspace removes all tabs and state for a deleted workspace
@@ -253,6 +361,7 @@ func (m *Model) CleanupWorkspace(ws *data.Workspace) {
 	delete(m.tabsByWorkspace, wsID)
 	delete(m.activeTabByWorkspace, wsID)
 	delete(m.restoredWorkspaces, wsID)
+	m.forgetTabRestoreOrder(wsID)
 	// Clean up any rename redirects pointing to this workspace.
 	for oldID, newID := range m.wsIDRedirects {
 		if newID == wsID {

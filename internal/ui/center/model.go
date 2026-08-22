@@ -150,7 +150,14 @@ type Model struct {
 	// recreated asynchronously, so tabsByWorkspace alone can't guard against a
 	// second restore arriving before creation lands (e.g. WorkspacesLoaded
 	// racing WorkspaceActivated after an unarchive).
-	restoredWorkspaces   map[string]struct{}
+	restoredWorkspaces map[string]struct{}
+	// restoreOrder remembers, per workspace, the position each tab held when
+	// the workspace was last saved, keyed by tmux session name (or display
+	// name for a persisted tab that never got a session). Restoring is
+	// asynchronous — a tab lands when its agent finishes attaching, and Codex
+	// and Claude take different amounts of time — so without this the tab bar
+	// came back in completion order rather than creation order.
+	restoreOrder         map[string]map[string]int
 	wsIDRedirects        map[string]string // old workspace ID → new workspace ID (after rename)
 	focused              bool
 	canFocusRight        bool
@@ -346,6 +353,7 @@ func New(cfg *config.Config) *Model {
 		tabsByWorkspace:      make(map[string][]*Tab),
 		activeTabByWorkspace: make(map[string]int),
 		restoredWorkspaces:   make(map[string]struct{}),
+		restoreOrder:         make(map[string]map[string]int),
 		wsIDRedirects:        make(map[string]string),
 		config:               cfg,
 		agentManager:         appPty.NewAgentManager(cfg),
