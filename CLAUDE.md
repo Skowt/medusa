@@ -212,8 +212,8 @@ Four properties are load-bearing:
 1. **`CODEX_HOME` is the profile boundary.** Codex keeps auth, config, hooks
    and session rollouts under it, so each profile gets
    `~/.medusa/profiles/<name>/codex` — the role `CLAUDE_CONFIG_DIR` plays for
-   Claude. A new home is seeded from `~/.codex/auth.json` (copy, never
-   overwrite) or the profile's first Codex tab opens on a login prompt.
+   Claude. Credentials are not copied from `~/.codex`: the profile's first
+   Codex tab opens on a login prompt so every profile authenticates independently.
 2. **The worktree must be pre-trusted.** Codex refuses to start in an
    untrusted directory ("Not inside a trusted directory and
    --skip-git-repo-check was not specified"), which is every fresh worktree, so

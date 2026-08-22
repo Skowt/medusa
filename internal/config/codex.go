@@ -44,32 +44,14 @@ func CodexHomeDir(profilesRoot, profile string) string {
 	return filepath.Join(profilesRoot, profile, CodexHomeSubdir)
 }
 
-// EnsureCodexHome creates a profile's CODEX_HOME and seeds it with the user's
-// existing ~/.codex/auth.json when it has none of its own. Without the seed
-// every new profile would open its first Codex tab at a login prompt, since
-// credentials live under CODEX_HOME like everything else. The copy is
-// one-directional and never overwrites: once a profile has its own auth.json,
-// re-logins there stay local to it.
+// EnsureCodexHome creates a profile's CODEX_HOME. Credentials are deliberately
+// not copied from the user's global ~/.codex directory: each profile must log
+// in independently so profiles remain separate authentication boundaries.
 func EnsureCodexHome(codexHome string) error {
 	if codexHome == "" {
 		return fmt.Errorf("codex home is required")
 	}
-	if err := os.MkdirAll(codexHome, 0700); err != nil {
-		return err
-	}
-	target := filepath.Join(codexHome, "auth.json")
-	if _, err := os.Stat(target); err == nil {
-		return nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil // no home to seed from; Codex will prompt for login
-	}
-	auth, err := os.ReadFile(filepath.Join(home, ".codex", "auth.json"))
-	if err != nil {
-		return nil // nothing to seed; not an error
-	}
-	return atomicWriteFile(target, auth, 0600)
+	return os.MkdirAll(codexHome, 0700)
 }
 
 // codexHookEvents are the Codex lifecycle events Medusa listens to. Codex's

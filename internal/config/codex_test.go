@@ -181,9 +181,9 @@ func TestInjectCodexTrustedDirectoryKeepsEarlierRoots(t *testing.T) {
 	}
 }
 
-// A profile's first Codex tab must not land on a login prompt when the user is
-// already logged in under ~/.codex.
-func TestEnsureCodexHomeSeedsCredentials(t *testing.T) {
+// Each profile is its own authentication boundary. A global Codex login must
+// not silently authenticate a newly created Medusa profile.
+func TestEnsureCodexHomeDoesNotCopyGlobalCredentials(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	if err := os.MkdirAll(filepath.Join(fakeHome, ".codex"), 0700); err != nil {
@@ -197,12 +197,8 @@ func TestEnsureCodexHomeSeedsCredentials(t *testing.T) {
 	if err := EnsureCodexHome(codexHome); err != nil {
 		t.Fatal(err)
 	}
-	seeded, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
-	if err != nil {
-		t.Fatalf("auth.json was not seeded: %v", err)
-	}
-	if string(seeded) != `{"token":"real"}` {
-		t.Errorf("seeded auth.json = %s", seeded)
+	if _, err := os.Stat(filepath.Join(codexHome, "auth.json")); !os.IsNotExist(err) {
+		t.Errorf("profile auth.json exists after setup; want no copied credentials (err = %v)", err)
 	}
 }
 
@@ -234,14 +230,13 @@ func TestEnsureCodexHomeNeverOverwritesCredentials(t *testing.T) {
 	}
 }
 
-// Nothing to seed is not a failure — Codex simply prompts for login.
-func TestEnsureCodexHomeWithoutGlobalLogin(t *testing.T) {
+func TestEnsureCodexHomeCreatesDirectory(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 
 	codexHome := filepath.Join(fakeHome, "profiles", "Work", CodexHomeSubdir)
 	if err := EnsureCodexHome(codexHome); err != nil {
-		t.Fatalf("EnsureCodexHome = %v, want nil when there is nothing to seed", err)
+		t.Fatalf("EnsureCodexHome = %v", err)
 	}
 	if _, err := os.Stat(codexHome); err != nil {
 		t.Errorf("CODEX_HOME was not created: %v", err)

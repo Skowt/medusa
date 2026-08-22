@@ -103,8 +103,8 @@ func buildCodexCommand(command, sessionName, codexHome string, opts AgentOptions
 	return cmd
 }
 
-// prepareCodexHome creates a profile's CODEX_HOME, seeds its credentials, trusts
-// the worktree, and injects the activity hooks. Every step is best-effort: a
+// prepareCodexHome creates a profile's CODEX_HOME, trusts the worktree, and
+// injects the activity hooks. Every step is best-effort: a
 // Codex tab that starts without hooks loses activity detection, which is a
 // lesser failure than not starting at all.
 func prepareCodexHome(codexHome, workspaceRoot, hooksDir, emitBin string) {
