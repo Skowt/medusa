@@ -294,7 +294,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 			continue
 		}
 		restoreCount++
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode, tab.Fullscreen))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, tab.SessionName, tab.Name, activate, tab.ClaudeSessionID, agentTabOptionsFromTabInfo(tab)))
 	}
 	if restoreCount > 0 {
 		m.restoredWorkspaces[wsID] = struct{}{}
@@ -360,7 +360,7 @@ func (m *Model) AddTabsFromWorkspace(ws *data.Workspace, tabs []data.TabInfo) te
 			}
 			continue
 		}
-		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, tab.Isolated, tab.AllowUnsandboxedCommands, tab.PermissionMode, tab.Fullscreen))
+		cmds = append(cmds, m.createAgentTabWithSession(tab.Assistant, ws, sessionName, tab.Name, false, tab.ClaudeSessionID, agentTabOptionsFromTabInfo(tab)))
 	}
 	return common.SafeBatch(cmds...)
 }

@@ -17,7 +17,15 @@ import (
 
 // updateLaunchAgent handles messages.LaunchAgent.
 func (m *Model) updateLaunchAgent(msg messages.LaunchAgent) (*Model, tea.Cmd) {
-	return m, m.createAgentTab(msg.Assistant, msg.Workspace, msg.Isolated, msg.AllowUnsandboxedCommands, msg.PermissionMode, msg.Fullscreen)
+	return m, m.createAgentTab(msg.Assistant, msg.Workspace, agentTabOptions{
+		Isolated:                 msg.Isolated,
+		AllowUnsandboxedCommands: msg.AllowUnsandboxedCommands,
+		PermissionMode:           msg.PermissionMode,
+		Fullscreen:               msg.Fullscreen,
+		CodexSandbox:             msg.CodexSandbox,
+		CodexApproval:            msg.CodexApproval,
+		CodexSearch:              msg.CodexSearch,
+	})
 }
 
 // updateLaunchScript handles messages.LaunchScript.
@@ -204,10 +212,7 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 	tab.mu.Lock()
 	sessionName := tab.SessionName
 	claudeSessionID := tab.ClaudeSessionID
-	tabIsolated := tab.Isolated
-	tabAllowUnsandboxed := tab.AllowUnsandboxedCommands
-	tabPermissionMode := tab.PermissionMode
-	tabFullscreen := tab.Fullscreen
+	tabOptions := agentTabOptionsFromTab(tab)
 	tab.autoRestartAttempt = msg.Attempt
 	tab.mu.Unlock()
 
@@ -236,19 +241,15 @@ func (m *Model) updateTabAutoRestart(msg tabAutoRestart) (*Model, tea.Cmd) {
 	termHeight := tm.Height
 	assistant := tab.Assistant
 	attempt := msg.Attempt
-	fullscreen := tabFullscreen && appPty.AgentType(assistant) == appPty.AgentClaude
+	tabOptions = tabOptions.forAssistant(assistant)
+	fullscreen := tabOptions.Fullscreen
 
 	logging.Info("Auto-restart attempt %d/%d for tab %s", attempt, tabAutoRestartMax, tabID)
 
 	return m, func() tea.Msg {
 		_ = tmux.KillSession(sessionName, tmuxOpts)
 
-		agentOpts := appPty.AgentOptions{
-			Isolated:                 tabIsolated,
-			AllowUnsandboxedCommands: tabAllowUnsandboxed,
-			PermissionMode:           tabPermissionMode,
-			Fullscreen:               fullscreen,
-		}
+		agentOpts := tabOptions.agentOptions()
 		if claudeSessionID != "" {
 			agentOpts.ClaudeSessionID = claudeSessionID
 			agentOpts.Resume = true

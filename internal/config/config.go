@@ -34,6 +34,13 @@ func DefaultConfig() (*Config, error) {
 				InterruptCount:   2,
 				InterruptDelayMs: 200,
 			},
+			// Codex interrupts the running turn on the first Ctrl-C; a second
+			// one is its quit gesture, so a repeat would kill the session
+			// medusa was only trying to interrupt.
+			"codex": {
+				Command:        "codex",
+				InterruptCount: 1,
+			},
 		},
 	}
 	return cfg, nil

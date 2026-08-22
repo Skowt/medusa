@@ -38,7 +38,19 @@ type DialogResult struct {
 	CheckboxValue  bool   // Value of checkbox if dialog had one
 	Checkbox2Value bool   // Value of second checkbox if dialog had one
 	Checkbox3Value bool   // Value of third checkbox if dialog had one
-	SelectValue    string // Value of select field if dialog had one (DialogInput)
+	SelectValue    string // Value of select slot 0 if the dialog had one (DialogInput)
+	Select2Value   string // Value of select slot 1 if the dialog had one (DialogInput)
+}
+
+// DialogSelectChanged is emitted when a select field marked with
+// SetSelectNotifiesChange cycles to a different option, so the dialog's owner
+// can rebuild it around the new value — the New Tab dialog swapping in the
+// chosen assistant's own fields. It fires on the change, not on submit, and
+// only for slots that asked for it.
+type DialogSelectChanged struct {
+	ID    string
+	Slot  int
+	Value string
 }
 
 // InputTransformFunc transforms input text before it's added to the input field
@@ -103,10 +115,9 @@ type Dialog struct {
 	checkbox2RequiresFirst bool
 
 	// Select field (for DialogInput): a single-line cycler with description.
-	selectLabel   string         // e.g. "Starting Mode:" (empty = no select field)
-	selectOptions []SelectOption // available choices
-	selectIndex   int            // current cursor into selectOptions
-	selectFocused bool
+	// Inline select fields, rendered in slot order. Slot 0 is the dialog's
+	// primary control; see selectField.
+	sel [selectSlotCount]selectField
 
 	// Input visibility
 	inputHidden bool // Hide the text input field (checkbox-only dialog)
@@ -203,6 +214,9 @@ func (d *Dialog) Show() {
 	d.checkboxFocused = false
 	d.checkbox2Focused = false
 	d.checkbox3Focused = false
+	for i := range d.sel {
+		d.sel[i].focused = false
+	}
 	if d.dtype == DialogInput {
 		d.input.SetValue("")
 		d.input.Focus()
@@ -261,7 +275,8 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 	checkbox2Val := d.checkbox2Value
 	checkbox3Val := d.checkbox3Value
 	selectVal := d.SelectValue()
-	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v select=%s", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val, selectVal)
+	select2Val := d.Select2Value()
+	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v select=%s select2=%s", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val, selectVal, select2Val)
 	return func() tea.Msg {
 		return DialogResult{
 			ID:             id,
@@ -271,6 +286,7 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 			Checkbox2Value: checkbox2Val,
 			Checkbox3Value: checkbox3Val,
 			SelectValue:    selectVal,
+			Select2Value:   select2Val,
 		}
 	}
 }
@@ -329,6 +345,23 @@ func (d *Dialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 
 	// Inline controls take priority over the row regions they sit on.
 	if d.dtype == DialogInput {
+		// Selects first: each slot owns three regions (row, left chevron,
+		// right chevron), so they are checked per slot rather than in the
+		// single switch below.
+		for slot := range d.sel {
+			if !d.sel[slot].present() {
+				continue
+			}
+			switch {
+			case hit(selectRegionID(dialogIDSelectLeft, slot)):
+				d.setFocus(4 + slot)
+				return d.cycleSelect(slot, -1)
+			case hit(selectRegionID(dialogIDSelectRight, slot)),
+				hit(selectRegionID(dialogIDSelectField, slot)):
+				d.setFocus(4 + slot)
+				return d.cycleSelect(slot, +1)
+			}
+		}
 		switch {
 		case d.checkboxLabel != "" && hit(dialogIDCheckbox1):
 			d.checkboxValue = !d.checkboxValue
@@ -340,18 +373,6 @@ func (d *Dialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			return nil
 		case d.checkbox3Label != "" && hit(dialogIDCheckbox3):
 			d.checkbox3Value = !d.checkbox3Value
-			return nil
-		case d.selectLabel != "" && hit(dialogIDSelectLeft):
-			d.setFocus(4)
-			d.cycleSelect(-1)
-			return nil
-		case d.selectLabel != "" && hit(dialogIDSelectRight):
-			d.setFocus(4)
-			d.cycleSelect(+1)
-			return nil
-		case d.selectLabel != "" && hit(dialogIDSelectField):
-			d.setFocus(4)
-			d.cycleSelect(+1)
 			return nil
 		case hit(dialogIDOK):
 			return d.submitInput(true)

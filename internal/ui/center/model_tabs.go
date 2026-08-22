@@ -37,7 +37,7 @@ func nextAssistantName(assistant string, tabs []*Tab) string {
 		return assistant
 	}
 
-	for i := 1; ; i++ {
+	for i := 2; ; i++ {
 		candidate := fmt.Sprintf("%s %d", assistant, i)
 		if _, ok := used[candidate]; !ok {
 			return candidate
@@ -45,22 +45,95 @@ func nextAssistantName(assistant string, tabs []*Tab) string {
 	}
 }
 
-type ptyTabCreateResult struct {
-	Workspace                *data.Workspace
-	Assistant                string
-	DisplayName              string
-	Agent                    *appPty.Agent
-	TabID                    TabID
-	Activate                 bool
-	Rows                     int
-	Cols                     int
-	ScrollbackCapture        []byte
-	ClaudeSessionID          string
+// agentTabOptions carries the per-tab launch settings from the New Tab dialog
+// (or a restore) down to the agent. Claude reads the sandbox/permission/
+// fullscreen fields and Codex the three codex ones; each ignores the other's.
+type agentTabOptions struct {
 	Isolated                 bool
 	AllowUnsandboxedCommands bool
 	PermissionMode           string
 	Fullscreen               bool
-	ScriptFullCmd            string // Only set for script tabs; enables in-place Restart.
+	CodexSandbox             string
+	CodexApproval            string
+	CodexSearch              bool
+}
+
+// agentTabOptionsFromTab rebuilds the launch settings of an existing tab, for
+// the restore and restart paths.
+func agentTabOptionsFromTab(tab *Tab) agentTabOptions {
+	return agentTabOptions{
+		Isolated:                 tab.Isolated,
+		AllowUnsandboxedCommands: tab.AllowUnsandboxedCommands,
+		PermissionMode:           tab.PermissionMode,
+		Fullscreen:               tab.Fullscreen,
+		CodexSandbox:             tab.CodexSandbox,
+		CodexApproval:            tab.CodexApproval,
+		CodexSearch:              tab.CodexSearch,
+	}
+}
+
+// agentTabOptionsFromTabInfo rebuilds the launch settings of a persisted tab.
+func agentTabOptionsFromTabInfo(info data.TabInfo) agentTabOptions {
+	return agentTabOptions{
+		Isolated:                 info.Isolated,
+		AllowUnsandboxedCommands: info.AllowUnsandboxedCommands,
+		PermissionMode:           info.PermissionMode,
+		Fullscreen:               info.Fullscreen,
+		CodexSandbox:             info.CodexSandbox,
+		CodexApproval:            info.CodexApproval,
+		CodexSearch:              info.CodexSearch,
+	}
+}
+
+// forAssistant drops the settings that belong to another assistant, so a tab
+// can never be launched with flags its agent does not take. Fullscreen is the
+// one that matters most: it is Claude's renderer, and Codex neither reports
+// mouse nor takes the pane's alternate screen, so marking a Codex tab
+// fullscreen would forward its mouse into an app that ignores it and disable
+// medusa's own scrollback.
+func (o agentTabOptions) forAssistant(assistant string) agentTabOptions {
+	if appPty.AgentType(assistant) == appPty.AgentCodex {
+		return agentTabOptions{
+			CodexSandbox:  o.CodexSandbox,
+			CodexApproval: o.CodexApproval,
+			CodexSearch:   o.CodexSearch,
+		}
+	}
+	return agentTabOptions{
+		Isolated:                 o.Isolated,
+		AllowUnsandboxedCommands: o.AllowUnsandboxedCommands,
+		PermissionMode:           o.PermissionMode,
+		Fullscreen:               o.Fullscreen && appPty.AgentType(assistant) == appPty.AgentClaude,
+	}
+}
+
+// agentOptions converts the tab settings into the launch options the pty layer
+// takes.
+func (o agentTabOptions) agentOptions() appPty.AgentOptions {
+	return appPty.AgentOptions{
+		Isolated:                 o.Isolated,
+		AllowUnsandboxedCommands: o.AllowUnsandboxedCommands,
+		PermissionMode:           o.PermissionMode,
+		Fullscreen:               o.Fullscreen,
+		CodexSandbox:             o.CodexSandbox,
+		CodexApproval:            o.CodexApproval,
+		CodexSearch:              o.CodexSearch,
+	}
+}
+
+type ptyTabCreateResult struct {
+	Workspace         *data.Workspace
+	Assistant         string
+	DisplayName       string
+	Agent             *appPty.Agent
+	TabID             TabID
+	Activate          bool
+	Rows              int
+	Cols              int
+	ScrollbackCapture []byte
+	ClaudeSessionID   string
+	Options           agentTabOptions
+	ScriptFullCmd     string // Only set for script tabs; enables in-place Restart.
 }
 
 type ptyTabReattachResult struct {
@@ -89,14 +162,13 @@ func truncateDisplayName(name string) string {
 	return name
 }
 
-// createAgentTab creates a new agent tab with per-tab settings. Fullscreen is
-// a Claude-only renderer mode, so it is ignored for other assistants.
-func (m *Model) createAgentTab(assistant string, ws *data.Workspace, isolated, allowUnsandboxed bool, permissionMode string, fullscreen bool) tea.Cmd {
-	fullscreen = fullscreen && appPty.AgentType(assistant) == appPty.AgentClaude
-	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", isolated, allowUnsandboxed, permissionMode, fullscreen)
+// createAgentTab creates a new agent tab with per-tab settings, keeping only
+// the ones the chosen assistant understands.
+func (m *Model) createAgentTab(assistant string, ws *data.Workspace, opts agentTabOptions) tea.Cmd {
+	return m.createAgentTabWithSession(assistant, ws, "", "", true, "", opts.forAssistant(assistant))
 }
 
-func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string, isolated, allowUnsandboxed bool, permissionMode string, fullscreen bool) tea.Cmd {
+func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, sessionName string, displayName string, activate bool, claudeSessionID string, opts agentTabOptions) tea.Cmd {
 	if ws == nil {
 		return func() tea.Msg {
 			return messages.Error{Err: fmt.Errorf("no workspace selected"), Context: "creating agent"}
@@ -116,14 +188,10 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 			sessionName, _ = tmux.NextUniqueSessionName(ws.Name, tmux.DefaultOptions())
 		}
 
-		// Build agent options for Claude session resumption and per-tab settings.
-		agentOpts := appPty.AgentOptions{
-			Isolated:                 isolated,
-			AllowUnsandboxedCommands: allowUnsandboxed,
-			PermissionMode:           permissionMode,
-			Fullscreen:               fullscreen,
-		}
-		if appPty.AgentType(assistant) == appPty.AgentClaude {
+		// Build agent options for session resumption and per-tab settings.
+		agentOpts := opts.agentOptions()
+		switch appPty.AgentType(assistant) {
+		case appPty.AgentClaude:
 			if claudeSessionID != "" {
 				// Restoring from persisted state — resume existing conversation.
 				agentOpts.ClaudeSessionID = claudeSessionID
@@ -132,6 +200,14 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 				// New tab — generate a fresh session ID.
 				claudeSessionID = appPty.GenerateSessionID()
 				agentOpts.ClaudeSessionID = claudeSessionID
+			}
+		case appPty.AgentCodex:
+			// Codex mints its own session ids, so there is nothing to
+			// pre-assign: a restore resumes the id the SessionStart hook
+			// reported, and a fresh tab has none until it does.
+			if claudeSessionID != "" {
+				agentOpts.ClaudeSessionID = claudeSessionID
+				agentOpts.Resume = true
 			}
 		}
 
@@ -155,20 +231,17 @@ func (m *Model) createAgentTabWithSession(assistant string, ws *data.Workspace, 
 		scrollback, _ := tmux.CapturePane(agent.Session, m.getTmuxOptions())
 
 		return ptyTabCreateResult{
-			Workspace:                ws,
-			Assistant:                assistant,
-			Agent:                    agent,
-			TabID:                    tabID,
-			DisplayName:              displayName,
-			Activate:                 activate,
-			Rows:                     termHeight,
-			Cols:                     termWidth,
-			ScrollbackCapture:        scrollback,
-			ClaudeSessionID:          claudeSessionID,
-			Isolated:                 isolated,
-			AllowUnsandboxedCommands: allowUnsandboxed,
-			PermissionMode:           permissionMode,
-			Fullscreen:               fullscreen,
+			Workspace:         ws,
+			Assistant:         assistant,
+			Agent:             agent,
+			TabID:             tabID,
+			DisplayName:       displayName,
+			Activate:          activate,
+			Rows:              termHeight,
+			Cols:              termWidth,
+			ScrollbackCapture: scrollback,
+			ClaudeSessionID:   claudeSessionID,
+			Options:           opts,
 		}
 	}
 }
@@ -202,7 +275,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 	// whatever the agent does, so scrollback must not be gated on AltScreen.
 	// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
 	term.AllowAltScreenScrollback = true
-	term.AppFullscreen = msg.Fullscreen
+	term.AppFullscreen = msg.Options.Fullscreen
 	term.PrependScrollback(msg.ScrollbackCapture)
 
 	// Create tab with unique ID (pre-generated if provided)
@@ -221,10 +294,13 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		Terminal:                 term,
 		Running:                  true, // Agent/viewer starts running
 		monitorDirty:             true,
-		Isolated:                 msg.Isolated,
-		AllowUnsandboxedCommands: msg.AllowUnsandboxedCommands,
-		PermissionMode:           msg.PermissionMode,
-		Fullscreen:               msg.Fullscreen,
+		Isolated:                 msg.Options.Isolated,
+		AllowUnsandboxedCommands: msg.Options.AllowUnsandboxedCommands,
+		PermissionMode:           msg.Options.PermissionMode,
+		Fullscreen:               msg.Options.Fullscreen,
+		CodexSandbox:             msg.Options.CodexSandbox,
+		CodexApproval:            msg.Options.CodexApproval,
+		CodexSearch:              msg.Options.CodexSearch,
 		ScriptFullCmd:            msg.ScriptFullCmd,
 	}
 

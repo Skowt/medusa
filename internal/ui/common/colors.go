@@ -41,6 +41,7 @@ var (
 // Agent colors remain constant across themes for brand recognition.
 var (
 	ColorClaude = lipgloss.Color("#CC785C")
+	ColorCodex  = lipgloss.Color("#10A37F")
 )
 
 // GetCurrentTheme returns the currently active theme.
@@ -80,8 +81,11 @@ func applyThemeColors() {
 
 // AgentColor returns the color for a given agent type
 func AgentColor(agent string) color.Color {
-	if agent == "claude" {
+	switch agent {
+	case "claude":
 		return ColorClaude
+	case "codex":
+		return ColorCodex
 	}
 	return ColorPrimary
 }

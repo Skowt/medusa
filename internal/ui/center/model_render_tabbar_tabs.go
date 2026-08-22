@@ -57,6 +57,8 @@ func (m *Model) renderAgentTab(i int, tab *Tab, activeIdx int) string {
 	switch {
 	case isScript:
 		agentStyle = m.styles.AgentScript
+	case tab.Assistant == "codex":
+		agentStyle = m.styles.AgentCodex
 	case tab.Assistant != "claude":
 		agentStyle = m.styles.AgentTerm
 	}

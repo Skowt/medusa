@@ -9,11 +9,15 @@ import (
 func TestNextAssistantName(t *testing.T) {
 	tabs := []*Tab{
 		{Assistant: "codex", Name: "codex"},
-		{Assistant: "codex", Name: "codex 1"},
 	}
 
 	if got := nextAssistantName("codex", tabs); got != "codex 2" {
 		t.Fatalf("expected codex 2, got %q", got)
+	}
+
+	tabs = append(tabs, &Tab{Assistant: "codex", Name: "codex 2"})
+	if got := nextAssistantName("codex", tabs); got != "codex 3" {
+		t.Fatalf("expected codex 3, got %q", got)
 	}
 
 	if got := nextAssistantName("claude", tabs); got != "claude" {

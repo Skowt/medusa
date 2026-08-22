@@ -54,6 +54,15 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.safeCmd(cmd)
 	}
 
+	// A select field asked its owner to rebuild the dialog around a new value
+	// (the New Tab dialog swapping in the chosen assistant's fields). It rides
+	// beside DialogResult because it comes from the same widget, and it must be
+	// handled before the overlay chain: the dialog is still visible.
+	if changed, ok := msg.(common.DialogSelectChanged); ok {
+		a.handleDialogSelectChanged(changed)
+		return a, nil
+	}
+
 	// Handle help overlay input (highest priority when visible)
 	if a.helpOverlay.Visible() {
 		switch msg := msg.(type) {

@@ -145,16 +145,19 @@ func (d *Dialog) buildInput(b *LineBuilder) {
 			b.Append("", errStyle.Render(d.validationErr))
 		}
 	}
-	// Inline select first — primary control of the dialog.
-	if d.selectLabel != "" && len(d.selectOptions) > 0 {
-		if !d.inputHidden || d.message == "" {
+	// Inline selects first — the primary controls of the dialog.
+	for slot := range d.sel {
+		if !d.sel[slot].present() {
+			continue
+		}
+		if slot > 0 || !d.inputHidden || d.message == "" {
 			b.Blank()
 		}
-		d.appendSelectField(b)
+		d.appendSelectField(b, slot)
 	}
 	// Then checkboxes.
 	if d.checkboxLabel != "" {
-		if d.selectLabel != "" || !d.inputHidden || d.message == "" {
+		if d.hasSelect() || !d.inputHidden || d.message == "" {
 			b.Blank()
 		}
 		d.appendCheckbox(b, dialogIDCheckbox1, d.checkboxLabel, d.checkboxValue, d.checkboxFocused, false, d.checkboxDesc)
@@ -221,28 +224,29 @@ func (d *Dialog) appendCheckbox(b *LineBuilder, id, label string, value, focused
 // the current option's description. The full row is registered as
 // dialogIDSelectField; the chevrons get inline regions so clicks can
 // distinguish "cycle back" vs "cycle forward".
-func (d *Dialog) appendSelectField(b *LineBuilder) {
+func (d *Dialog) appendSelectField(b *LineBuilder, slot int) {
+	field := &d.sel[slot]
 	labelStyle := lipgloss.NewStyle().Foreground(ColorForeground)
-	if d.selectFocused {
+	if field.focused {
 		labelStyle = labelStyle.Foreground(ColorPrimary)
 	}
 	arrowStyle := lipgloss.NewStyle().Foreground(ColorPrimary)
-	valueStyle := lipgloss.NewStyle().Foreground(ColorForeground).Bold(d.selectFocused)
+	valueStyle := lipgloss.NewStyle().Foreground(ColorForeground).Bold(field.focused)
 
-	current := d.selectOptions[d.selectIndex]
+	current := field.current()
 	left := arrowStyle.Render("<")
 	right := arrowStyle.Render(">")
 	value := valueStyle.Render(current.Label)
-	row := labelStyle.Render(d.selectLabel) + "  " + left + " " + value + " " + right
+	row := labelStyle.Render(field.label) + "  " + left + " " + value + " " + right
 
 	rowY := b.CurrentRow()
-	b.Append(dialogIDSelectField, row)
+	b.Append(selectRegionID(dialogIDSelectField, slot), row)
 
-	labelW := lipgloss.Width(d.selectLabel) + 2 // label + "  "
+	labelW := lipgloss.Width(field.label) + 2 // label + "  "
 	leftW := lipgloss.Width(left)
-	b.AddRegion(dialogIDSelectLeft, labelW, rowY, leftW, 1)
+	b.AddRegion(selectRegionID(dialogIDSelectLeft, slot), labelW, rowY, leftW, 1)
 	rightX := labelW + leftW + 1 + lipgloss.Width(value) + 1
-	b.AddRegion(dialogIDSelectRight, rightX, rowY, lipgloss.Width(right), 1)
+	b.AddRegion(selectRegionID(dialogIDSelectRight, slot), rightX, rowY, lipgloss.Width(right), 1)
 
 	if current.Description != "" {
 		descStyle := lipgloss.NewStyle().Foreground(ColorMuted)
@@ -377,7 +381,7 @@ func (d *Dialog) visibleOptionIndices() []int {
 func (d *Dialog) helpText() string {
 	switch d.dtype {
 	case DialogInput:
-		if d.selectLabel != "" {
+		if d.hasSelect() {
 			return "↑/↓: navigate • ←/→: change mode • space: toggle • enter: confirm • esc: cancel"
 		}
 		if d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "" {
@@ -421,4 +425,13 @@ func itoa(n int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// selectRegionID namespaces a select's hit regions per slot, so a click lands
+// on the cycler the user actually aimed at.
+func selectRegionID(base string, slot int) string {
+	if slot == 0 {
+		return base
+	}
+	return base + "-" + itoa(slot)
 }

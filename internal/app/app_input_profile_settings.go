@@ -293,30 +293,6 @@ func (a *App) handleShowDeleteWorkspaceDialog(msg messages.ShowDeleteWorkspaceDi
 	a.dialog.Show()
 }
 
-// handleShowCustomizeTabDialog shows the customize tab dialog: a Sandbox
-// checkbox with an "Allow unsandboxed commands" sub-checkbox, a "Fullscreen
-// TUI" checkbox, plus a "Starting Mode" select that wires through to
-// claude --permission-mode.
-func (a *App) handleShowCustomizeTabDialog() {
-	if a.activeWorkspace == nil {
-		return
-	}
-	a.dialog = common.NewInputDialog(DialogCustomizeTab, "New Claude Tab", "")
-	a.dialog.SetInputHidden(true)
-	a.dialog.SetMessage("Configure settings for this tab.")
-	a.dialog.SetSelect("Starting Mode:", permissionModeOptions(), defaultPermissionMode(a.config.UI.LastPermissionMode))
-	a.dialog.SetCheckbox("Sandboxed", a.config.UI.LastIsolated)
-	a.dialog.SetCheckboxDescription(1, "Sandboxes subprocess calls including Bash commands. Tool use does not use sandbox (e.g. Write, Edit).")
-	a.dialog.SetCheckbox2("Allow unsandboxed commands", a.config.UI.LastAllowUnsandboxedCommands)
-	a.dialog.SetCheckboxDescription(2, "Allows Claude to try run blocked commands outside of the sandbox, using the user's allowed permissions. Do not use in 'Bypass Permissions' mode.")
-	a.dialog.SetCheckbox2RequiresFirst(true)
-	a.dialog.SetCheckbox3("Fullscreen TUI", a.config.UI.LastFullscreen)
-	a.dialog.SetCheckboxDescription(3, "Runs Claude in its fullscreen renderer and forwards the mouse to Claude. Requires Claude Code v2.1.89+.")
-	a.dialog.SetSize(a.width, a.height)
-	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-	a.dialog.Show()
-}
-
 // handleShowCleanupTmuxDialog shows the tmux cleanup dialog.
 func (a *App) handleShowCleanupTmuxDialog() {
 	if a.dialog != nil && a.dialog.Visible() {

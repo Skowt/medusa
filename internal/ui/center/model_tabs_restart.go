@@ -61,10 +61,7 @@ func (m *Model) restartTab(index int) tea.Cmd {
 		sessionName = tab.Agent.Session
 	}
 	claudeSessionID := tab.ClaudeSessionID
-	tabIsolated := tab.Isolated
-	tabAllowUnsandboxed := tab.AllowUnsandboxedCommands
-	tabPermissionMode := tab.PermissionMode
-	tabFullscreen := tab.Fullscreen
+	tabOptions := agentTabOptionsFromTab(tab)
 	scriptFullCmd := tab.ScriptFullCmd
 	tab.mu.Unlock()
 
@@ -103,7 +100,10 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	termWidth := tm.Width
 	termHeight := tm.Height
 	assistant := tab.Assistant
-	fullscreen := tabFullscreen && appPty.AgentType(assistant) == appPty.AgentClaude
+	// A restart relaunches the tab as it was started, minus anything that
+	// belongs to a different assistant.
+	tabOptions = tabOptions.forAssistant(assistant)
+	fullscreen := tabOptions.Fullscreen
 
 	// A restart does not carry on whatever the agent was doing, so the
 	// activity spinner has to go: Claude Code's Stop hook never fires for the
@@ -135,14 +135,9 @@ func (m *Model) restartTab(index int) tea.Cmd {
 		} else {
 			tags.Type = "agent"
 			tags.Assistant = assistant
-			// Build agent options: resume the Claude conversation if we have
-			// a session ID, and use the tab's per-tab settings.
-			agentOpts := appPty.AgentOptions{
-				Isolated:                 tabIsolated,
-				AllowUnsandboxedCommands: tabAllowUnsandboxed,
-				PermissionMode:           tabPermissionMode,
-				Fullscreen:               fullscreen,
-			}
+			// Build agent options: resume the conversation if we have a
+			// session ID, and use the tab's per-tab settings.
+			agentOpts := tabOptions.agentOptions()
 			if claudeSessionID != "" {
 				agentOpts.ClaudeSessionID = claudeSessionID
 				agentOpts.Resume = true

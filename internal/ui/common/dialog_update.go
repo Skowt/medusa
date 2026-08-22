@@ -119,9 +119,8 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("h", "left"))):
-			if d.dtype == DialogInput && d.selectFocused {
-				d.cycleSelect(-1)
-				return d, nil
+			if slot := d.focusedSelectSlot(); d.dtype == DialogInput && slot >= 0 {
+				return d, d.cycleSelect(slot, -1)
 			}
 			if d.dtype == DialogConfirm || (d.dtype == DialogSelect && !d.filterEnabled && !d.verticalLayout) {
 				maxLen := len(d.options)
@@ -134,9 +133,8 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("l", "right"))):
-			if d.dtype == DialogInput && d.selectFocused {
-				d.cycleSelect(+1)
-				return d, nil
+			if slot := d.focusedSelectSlot(); d.dtype == DialogInput && slot >= 0 {
+				return d, d.cycleSelect(slot, +1)
 			}
 			if d.dtype == DialogConfirm || (d.dtype == DialogSelect && !d.filterEnabled && !d.verticalLayout) {
 				maxLen := len(d.options)

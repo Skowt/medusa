@@ -21,6 +21,10 @@ type UISettings struct {
 	LastAllowUnsandboxedCommands bool   // Last state of "allow unsandboxed commands" checkbox
 	LastPermissionMode           string // Last selected starting mode (default "auto")
 	LastFullscreen               bool   // Last state of "Fullscreen TUI" checkbox (default on)
+	LastAssistant                string // Assistant the New Tab dialog opens on (claude, codex)
+	LastCodexSandbox             string // Last codex --sandbox policy
+	LastCodexApproval            string // Last codex --ask-for-approval policy
+	LastCodexSearch              bool   // Last state of the Codex "web search" checkbox
 	Theme                        string // Theme ID, defaults to "gruvbox"
 	TmuxServer                   string
 	TmuxConfigPath               string
@@ -42,6 +46,9 @@ func defaultUISettings() UISettings {
 		AutoAddPermissions: false,
 		LastPermissionMode: "auto",
 		LastFullscreen:     true,
+		LastAssistant:      "claude",
+		LastCodexSandbox:   "workspace-write",
+		LastCodexApproval:  "on-request",
 		Theme:              "gruvbox",
 		TmuxServer:         "",
 		TmuxConfigPath:     "",
@@ -76,6 +83,10 @@ func loadUISettings(path string) UISettings {
 			LastAllowUnsandboxedCommands *bool           `json:"last_allow_unsandboxed_commands"`
 			LastPermissionMode           *string         `json:"last_permission_mode"`
 			LastFullscreen               *bool           `json:"last_fullscreen"`
+			LastAssistant                *string         `json:"last_assistant"`
+			LastCodexSandbox             *string         `json:"last_codex_sandbox"`
+			LastCodexApproval            *string         `json:"last_codex_approval"`
+			LastCodexSearch              *bool           `json:"last_codex_search"`
 			Theme                        *string         `json:"theme"`
 			TmuxServer                   *string         `json:"tmux_server"`
 			TmuxConfigPath               *string         `json:"tmux_config"`
@@ -131,6 +142,18 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.LastFullscreen != nil {
 		settings.LastFullscreen = *raw.UI.LastFullscreen
+	}
+	if raw.UI.LastAssistant != nil && *raw.UI.LastAssistant != "" {
+		settings.LastAssistant = *raw.UI.LastAssistant
+	}
+	if raw.UI.LastCodexSandbox != nil && *raw.UI.LastCodexSandbox != "" {
+		settings.LastCodexSandbox = *raw.UI.LastCodexSandbox
+	}
+	if raw.UI.LastCodexApproval != nil && *raw.UI.LastCodexApproval != "" {
+		settings.LastCodexApproval = *raw.UI.LastCodexApproval
+	}
+	if raw.UI.LastCodexSearch != nil {
+		settings.LastCodexSearch = *raw.UI.LastCodexSearch
 	}
 	if raw.UI.Theme != nil {
 		settings.Theme = *raw.UI.Theme
@@ -191,6 +214,10 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["last_allow_unsandboxed_commands"] = settings.LastAllowUnsandboxedCommands
 	ui["last_permission_mode"] = settings.LastPermissionMode
 	ui["last_fullscreen"] = settings.LastFullscreen
+	ui["last_assistant"] = settings.LastAssistant
+	ui["last_codex_sandbox"] = settings.LastCodexSandbox
+	ui["last_codex_approval"] = settings.LastCodexApproval
+	ui["last_codex_search"] = settings.LastCodexSearch
 	ui["theme"] = settings.Theme
 	ui["tmux_server"] = settings.TmuxServer
 	ui["tmux_config"] = settings.TmuxConfigPath

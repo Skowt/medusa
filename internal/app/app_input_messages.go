@@ -150,23 +150,10 @@ func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cm
 		root := a.pendingProfileLaunchRoot
 		a.pendingProfileLaunch = ""
 		a.pendingProfileLaunchRoot = ""
-		isolated := a.config.UI.LastIsolated
-		allowUnsandboxed := a.config.UI.LastAllowUnsandboxedCommands
-		permMode := defaultPermissionMode(a.config.UI.LastPermissionMode)
-		fullscreen := a.config.UI.LastFullscreen
 		for _, ws := range a.allWorkspaces {
 			if ws.Root() == root {
-				w := ws
-				cmds = append(cmds, func() tea.Msg {
-					return messages.LaunchAgent{
-						Assistant:                assistant,
-						Workspace:                w,
-						Isolated:                 isolated,
-						AllowUnsandboxedCommands: allowUnsandboxed,
-						PermissionMode:           permMode,
-						Fullscreen:               fullscreen,
-					}
-				})
+				launch := a.lastUsedLaunch(ws, assistant)
+				cmds = append(cmds, func() tea.Msg { return launch })
 				break
 			}
 		}
