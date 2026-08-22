@@ -227,7 +227,7 @@ func (m *Model) updateSelectionScrollTick(msg selectionScrollTick) tea.Cmd {
 		return nil
 	}
 	// Nudge selection to keep scrollback advancing while dragging.
-	if !tab.Fullscreen {
+	if !tab.FrameRendering {
 		tab.Terminal.ScrollView(tab.selectionScrollDir)
 	}
 	tab.monitorDirty = true

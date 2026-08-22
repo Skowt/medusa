@@ -42,7 +42,7 @@ func clientCommand(sessionName, workDir, command string, opts Options, tags Sess
 		fmt.Fprintf(&settings, "%s set-option -t %s status off 2>/dev/null; ", base, session)
 	}
 	if tags.Fullscreen {
-		// Fullscreen Claude owns the mouse; tmux must forward mouse events to it.
+		// Fullscreen Claude owns the mouse; tmux must forward events to it.
 		fmt.Fprintf(&settings, "%s set-option -t %s mouse on 2>/dev/null; ", base, session)
 	} else if opts.DisableMouse {
 		fmt.Fprintf(&settings, "%s set-option -t %s mouse off 2>/dev/null; ", base, session)

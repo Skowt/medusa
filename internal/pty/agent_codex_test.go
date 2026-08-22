@@ -103,7 +103,7 @@ func TestBuildAgentCommandCodex(t *testing.T) {
 	for _, want := range []string{
 		"CODEX_HOME='" + home + "'",
 		"MEDUSA_SESSION_NAME='medusa-ws-1'",
-		`codex -c 'tui.alternate_screen="always"' --search --approve-for-me`,
+		`codex --no-alt-screen --search --approve-for-me`,
 	} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("codex command missing %q: %s", want, cmd)
@@ -145,13 +145,13 @@ func TestBuildAgentCommandCodexResumeOrder(t *testing.T) {
 		CodexSandbox:    CodexSandboxWorkspace,
 		CodexAuto:       true,
 	})
-	configAt := strings.Index(cmd, ` -c 'tui.alternate_screen="always"'`)
+	inlineAt := strings.Index(cmd, " --no-alt-screen")
 	autoAt := strings.Index(cmd, " --approve-for-me")
 	resumeAt := strings.Index(cmd, " resume ")
-	if configAt < 0 || autoAt < 0 || resumeAt < 0 {
-		t.Fatalf("want config, automatic approval, and resume in: %s", cmd)
+	if inlineAt < 0 || autoAt < 0 || resumeAt < 0 {
+		t.Fatalf("want inline mode, automatic approval, and resume in: %s", cmd)
 	}
-	if configAt > autoAt || autoAt > resumeAt {
+	if inlineAt > autoAt || autoAt > resumeAt {
 		t.Errorf("global flags must precede resume: %s", cmd)
 	}
 	if strings.Contains(cmd, " --sandbox ") {

@@ -92,11 +92,10 @@ func buildCodexCommand(command, sessionName, codexHome string, opts AgentOptions
 	if codexHome != "" {
 		cmd = "CODEX_HOME=" + shellutil.Quote(codexHome) + " " + cmd
 	}
-	// Codex otherwise chooses its screen mode from the profile config and its
-	// terminal heuristics. Medusa needs deterministic fullscreen behavior so
-	// Codex owns its transcript instead of painting an inline TUI into Medusa's
-	// line-oriented scrollback buffer.
-	cmd += " " + command + " -c " + shellutil.Quote(`tui.alternate_screen="always"`) + " --search"
+	// Medusa owns scrolling for embedded Codex tabs. --no-alt-screen is Codex's
+	// supported inline mode and keeps its transcript in terminal history instead
+	// of splitting scroll ownership between Codex, tmux, and Medusa.
+	cmd += " " + command + " --no-alt-screen --search"
 	if opts.CodexAuto {
 		cmd += " --approve-for-me"
 	}

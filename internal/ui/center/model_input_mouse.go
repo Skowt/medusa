@@ -55,7 +55,6 @@ func (m *Model) updateMouseClick(msg tea.MouseClickMsg) (*Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-
 	if msg.Button != tea.MouseLeft {
 		return m, nil
 	}
@@ -203,12 +202,12 @@ func (m *Model) updateMouseMotion(msg tea.MouseMotionMsg) (*Model, tea.Cmd) {
 			termX = termWidth - 1
 		}
 		if termY < 0 {
-			if !tab.Fullscreen {
+			if !tab.FrameRendering {
 				tab.Terminal.ScrollView(1)
 			}
 			termY = 0
 		} else if termY >= termHeight {
-			if !tab.Fullscreen {
+			if !tab.FrameRendering {
 				tab.Terminal.ScrollView(-1)
 			}
 			termY = termHeight - 1
@@ -312,6 +311,11 @@ func (m *Model) updateMouseWheel(msg tea.MouseWheelMsg) (*Model, tea.Cmd) {
 		if cok {
 			m.forwardMouse(tab2, code, msg.X, msg.Y, false)
 		}
+		return m, nil
+	}
+	// A frame-rendering app owns its history even when it has not requested
+	// mouse reporting. Do not manufacture vterm scrollback from old frames.
+	if tabAppOwnsScreen(tab) {
 		return m, nil
 	}
 

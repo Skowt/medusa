@@ -56,6 +56,7 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 	rows := tm.Height
 	cols := tm.Width
 	tab.mu.Lock()
+	frameRendering := agentPaintsFrames(tab.Assistant, msg.Fullscreen)
 	createdTerminal := false
 	if tab.Terminal == nil {
 		tab.Terminal = vterm.New(cols, rows)
@@ -66,7 +67,7 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 		// whatever the agent does, so scrollback must not be gated on AltScreen.
 		// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
 		tab.Terminal.AllowAltScreenScrollback = true
-		tab.Terminal.AppFullscreen = msg.Fullscreen
+		tab.Terminal.AppFullscreen = frameRendering
 		if createdTerminal {
 			tab.Terminal.PrependScrollback(msg.ScrollbackCapture)
 		}
@@ -79,6 +80,7 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 	tab.Detached = false
 	tab.Running = true
 	tab.Fullscreen = msg.Fullscreen
+	tab.FrameRendering = frameRendering
 	tab.monitorDirty = true
 	tab.autoRestartAttempt = 0
 	tab.WorkspaceRenamed = false

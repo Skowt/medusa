@@ -44,7 +44,7 @@ func encodeSGRMouse(code, col1, row1 int, release bool) []byte {
 }
 
 // tabAppOwnsScreen reports whether the tab's application is driving the screen
-// itself — a fullscreen-launched agent, or one that has grabbed the mouse at
+// itself — a frame-rendering agent, or one that has grabbed the mouse at
 // runtime (Claude Code's /tui fullscreen in a default-launched session).
 //
 // It deliberately does not consult Terminal.AltScreen: the vterm is fed by a
@@ -59,7 +59,7 @@ func tabAppOwnsScreen(tab *Tab) bool {
 	}
 	tab.mu.Lock()
 	defer tab.mu.Unlock()
-	if tab.Fullscreen {
+	if tab.FrameRendering || tab.Fullscreen {
 		return true
 	}
 	return tab.Terminal != nil && tab.Terminal.MouseReporting()
@@ -79,7 +79,10 @@ func (m *Model) activeTabForwardsMouse() (*Tab, bool) {
 		return nil, false
 	}
 	tab := tabs[idx]
-	if !tabAppOwnsScreen(tab) {
+	tab.mu.Lock()
+	forwardsMouse := tab.Fullscreen || (tab.Terminal != nil && tab.Terminal.MouseReporting())
+	tab.mu.Unlock()
+	if !forwardsMouse {
 		return nil, false
 	}
 	if m.getDiffViewer(tab) != nil {

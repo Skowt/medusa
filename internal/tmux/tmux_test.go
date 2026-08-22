@@ -291,6 +291,17 @@ func TestClientCommandFullscreenSession(t *testing.T) {
 	}
 }
 
+func TestClientCommandCodexLeavesTmuxMouseDisabled(t *testing.T) {
+	opts := Options{ServerName: "s", ConfigPath: "/dev/null", HideStatus: true, DisableMouse: true, DefaultTerminal: "xterm-256color"}
+	cmd := ClientCommandWithTags("sess", "/tmp", "codex", opts, SessionTags{Assistant: "codex"})
+	if strings.Contains(cmd, "mouse on") || !strings.Contains(cmd, "mouse off") {
+		t.Errorf("Codex must not let tmux turn wheel events into copy mode: %s", cmd)
+	}
+	if strings.Contains(cmd, "@medusa_fullscreen") {
+		t.Errorf("mouse capability must not mark a Codex session as Claude fullscreen: %s", cmd)
+	}
+}
+
 func TestTmuxBase(t *testing.T) {
 	tests := []struct {
 		name     string

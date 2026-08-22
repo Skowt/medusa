@@ -397,7 +397,8 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 	// whatever the agent does, so scrollback must not be gated on AltScreen.
 	// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
 	term.AllowAltScreenScrollback = true
-	term.AppFullscreen = info.Fullscreen
+	frameRendering := agentPaintsFrames(info.Assistant, info.Fullscreen)
+	term.AppFullscreen = frameRendering
 	tab := &Tab{
 		ID:                       generateTabID(),
 		Name:                     displayName,

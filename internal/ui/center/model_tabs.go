@@ -84,10 +84,8 @@ func agentTabOptionsFromTabInfo(info data.TabInfo) agentTabOptions {
 
 // forAssistant drops the settings that belong to another assistant, so a tab
 // can never be launched with flags its agent does not take. Fullscreen is the
-// one that matters most: it is Claude's renderer, and Codex neither reports
-// mouse nor takes the pane's alternate screen, so marking a Codex tab
-// fullscreen would forward its mouse into an app that ignores it and disable
-// medusa's own scrollback.
+// one that matters most: Fullscreen means Claude's renderer plus unconditional
+// mouse forwarding, while Codex is deliberately launched in inline mode.
 func (o agentTabOptions) forAssistant(assistant string) agentTabOptions {
 	if appPty.AgentType(assistant) == appPty.AgentCodex {
 		return agentTabOptions{
@@ -140,6 +138,13 @@ type ptyTabReattachResult struct {
 	ScrollbackCapture []byte
 	ClaudeSessionID   string
 	Fullscreen        bool
+}
+
+// agentPaintsFrames reports whether an assistant is launched with a
+// frame-oriented renderer. Claude does so only in fullscreen mode; Codex is
+// always forced into its alternate-screen renderer by buildCodexCommand.
+func agentPaintsFrames(_ string, fullscreen bool) bool {
+	return fullscreen
 }
 
 type ptyTabReattachFailed struct {
@@ -270,7 +275,8 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 	// whatever the agent does, so scrollback must not be gated on AltScreen.
 	// Frame-painting agents are excluded by AppFullscreen/mouse reporting.
 	term.AllowAltScreenScrollback = true
-	term.AppFullscreen = msg.Options.Fullscreen
+	frameRendering := agentPaintsFrames(msg.Assistant, msg.Options.Fullscreen)
+	term.AppFullscreen = frameRendering
 	term.PrependScrollback(msg.ScrollbackCapture)
 
 	// Create tab with unique ID (pre-generated if provided)
@@ -293,6 +299,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		AllowUnsandboxedCommands: msg.Options.AllowUnsandboxedCommands,
 		PermissionMode:           msg.Options.PermissionMode,
 		Fullscreen:               msg.Options.Fullscreen,
+		FrameRendering:           frameRendering,
 		CodexSandbox:             msg.Options.CodexSandbox,
 		CodexAuto:                msg.Options.CodexAuto,
 		ScriptFullCmd:            msg.ScriptFullCmd,

@@ -1,9 +1,10 @@
 package center
 
 import (
+	"testing"
+
 	"github.com/Skowt/medusa/internal/data"
 	appPty "github.com/Skowt/medusa/internal/pty"
-	"testing"
 )
 
 func allSetOptions() agentTabOptions {
@@ -20,9 +21,9 @@ func TestOptionsForCodexDropClaudeSettings(t *testing.T) {
 	}
 }
 
-func TestCodexPaintsFramesWithoutClaudeFullscreen(t *testing.T) {
-	if !agentPaintsFrames("codex", false) {
-		t.Fatal("Codex must be treated as a frame renderer")
+func TestCodexInlineModeUsesMedusaScrollback(t *testing.T) {
+	if agentPaintsFrames("codex", false) {
+		t.Fatal("inline Codex must not be treated as a frame renderer")
 	}
 	if agentPaintsFrames("claude", false) {
 		t.Fatal("classic Claude must retain transcript scrollback")

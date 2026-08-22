@@ -241,13 +241,13 @@ func (m *Model) handleTabEvent(ev tabEvent) {
 
 		scrollDir := 0
 		if termY < 0 {
-			if !tab.Fullscreen {
+			if !tab.FrameRendering {
 				tab.Terminal.ScrollView(1)
 			}
 			scrollDir = 1
 			termY = 0
 		} else if termY >= termHeight {
-			if !tab.Fullscreen {
+			if !tab.FrameRendering {
 				tab.Terminal.ScrollView(-1)
 			}
 			scrollDir = -1
@@ -333,7 +333,7 @@ func (m *Model) handleTabEvent(ev tabEvent) {
 			tab.mu.Unlock()
 			return
 		}
-		if !tab.Fullscreen {
+		if !tab.FrameRendering {
 			tab.Terminal.ScrollView(tab.selectionScrollDir)
 		}
 		tab.monitorDirty = true

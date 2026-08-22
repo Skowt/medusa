@@ -97,6 +97,7 @@ type Tab struct {
 	AllowUnsandboxedCommands bool
 	PermissionMode           string
 	Fullscreen               bool // Claude fullscreen TUI mode: mouse is forwarded to Claude.
+	FrameRendering           bool // App repaints complete frames; it owns paging but not necessarily mouse input.
 	// Codex per-tab policies, persisted so a restart relaunches the tab the
 	// way it was started. Empty for every other assistant.
 	CodexSandbox string

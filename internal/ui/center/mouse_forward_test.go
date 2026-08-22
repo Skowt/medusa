@@ -107,6 +107,34 @@ func TestClassicTabScrollsVterm(t *testing.T) {
 	}
 }
 
+func TestFrameRendererOwnsHistoryWithoutClaimingMouse(t *testing.T) {
+	m := newTestModelWithAgentTab(t)
+	tab := m.getTabs()[m.getActiveTabIdx()]
+	for i := 0; i < 50; i++ {
+		tab.Terminal.Write([]byte("line\r\n"))
+	}
+	tab.FrameRendering = true
+	tab.Terminal.AppFullscreen = true
+	before := tab.Terminal.ViewOffset
+	scrollbackBefore := len(tab.Terminal.Scrollback)
+
+	if _, ok := m.activeTabForwardsMouse(); ok {
+		t.Fatal("frame renderer without a requested mouse mode must not receive SGR mouse reports")
+	}
+	if !tabAppOwnsScreen(tab) {
+		t.Fatal("frame renderer must own paging/history")
+	}
+	m.updateMouseWheel(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if tab.Terminal.ViewOffset != before {
+		t.Errorf("frame renderer must not scroll synthetic vterm history (offset %d -> %d)", before, tab.Terminal.ViewOffset)
+	}
+
+	tab.Terminal.Write([]byte("frame\r\n"))
+	if len(tab.Terminal.Scrollback) != scrollbackBefore {
+		t.Errorf("frame repaint entered scrollback: got %d lines, want %d", len(tab.Terminal.Scrollback), scrollbackBefore)
+	}
+}
+
 // TestFullscreenTabDoesNotScrollOnPgUp and TestClassicTabScrollsOnPgUp drive
 // PgUp through the real Model.Update entry point (there is no standalone
 // key-handling method to call the way updateMouseWheel exists for wheel
