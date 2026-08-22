@@ -202,35 +202,47 @@ func (m *Model) renderTabBar() string {
 	// is how we watch that happen. It is deliberately outside the width
 	// budgeting above — it takes only what the tabs and the note left unused,
 	// so it can never push a tab out of view or truncate the note.
+	var badge string
+	badgeWidth, badgeGap := 0, 0
 	if slack := width - x - nWidth; slack > 0 {
 		reserve := slack
 		if nWidth > 0 {
-			reserve-- // keep one cell between the badge and the note
+			reserve-- // keep one cell between the note and the badge
 		}
-		if badge := m.sessionIDBadge(reserve); badge != "" {
-			badgeWidth := lipgloss.Width(badge)
-			if pad := slack - badgeWidth - (slack - reserve); pad > 0 {
-				segments = append(segments, strings.Repeat(" ", pad))
-				x += pad
+		if badge = m.sessionIDBadge(reserve); badge != "" {
+			badgeWidth = lipgloss.Width(badge)
+			if nWidth > 0 {
+				badgeGap = 1
 			}
-			segments = append(segments, badge)
-			x += badgeWidth
 		}
 	}
 
-	// --- Right-align the note by padding out to the content edge. ---
-	if nWidth > 0 {
-		pad := width - x - nWidth
+	// --- Right-align note then badge against the content edge. The badge goes
+	// last so the session id is always the rightmost thing on the line. ---
+	if nWidth > 0 || badgeWidth > 0 {
+		pad := width - x - nWidth - badgeGap - badgeWidth
 		if pad < 0 {
 			pad = 0
 		}
 		segments = append(segments, strings.Repeat(" ", pad))
 		x += pad
+	}
 
+	if nWidth > 0 {
 		noteStyle := lipgloss.NewStyle().Foreground(common.ColorPrimary)
 		truncated := ansi.Truncate(note, nWidth, "…")
 		m.addHit(tabHitNote, -1, x, nWidth)
 		segments = append(segments, noteStyle.Render(truncated))
+		x += nWidth
+	}
+
+	if badgeWidth > 0 {
+		if badgeGap > 0 {
+			segments = append(segments, " ")
+			x += badgeGap
+		}
+		segments = append(segments, badge)
+		x += badgeWidth
 	}
 
 	tabLine := lipgloss.JoinHorizontal(lipgloss.Bottom, segments...)
@@ -263,15 +275,14 @@ func (m *Model) sessionIDBadge(avail int) string {
 		return ""
 	}
 
-	const label = "sid "
 	switch {
-	case avail >= len(label)+len(id):
-	case avail >= len(label)+shortSessionIDLen && len(id) > shortSessionIDLen:
+	case avail >= len(id):
+	case avail >= shortSessionIDLen && len(id) > shortSessionIDLen:
 		id = id[:shortSessionIDLen]
 	default:
 		return ""
 	}
-	return m.styles.Muted.Render(label + id)
+	return m.styles.Muted.Render(id)
 }
 
 // shortSessionIDLen is how much of a session id the badge keeps when the full

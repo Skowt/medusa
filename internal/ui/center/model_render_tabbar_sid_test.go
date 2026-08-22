@@ -26,7 +26,7 @@ func tabBarWithSessionID(t *testing.T, name, note string, tabCount, w int, sid s
 // against log lines and transcript filenames, which carry the full UUID.
 func TestSessionIDBadgeShowsFullID(t *testing.T) {
 	_, line := tabBarWithSessionID(t, "ws-sid", "", 2, 160, testSessionID)
-	if !strings.Contains(line, "sid "+testSessionID) {
+	if !strings.Contains(line, testSessionID) {
 		t.Errorf("wide pane must show the full session id, got: %q", line)
 	}
 }
@@ -38,8 +38,8 @@ func TestSessionIDBadgeShortensBeforeDisappearing(t *testing.T) {
 	var sawShort bool
 	for w := 40; w <= 160; w += 2 {
 		_, line := tabBarWithSessionID(t, "ws-sid-short", "", 2, w, testSessionID)
-		full := strings.Contains(line, "sid "+testSessionID)
-		if !full && strings.Contains(line, "sid "+short) {
+		full := strings.Contains(line, testSessionID)
+		if !full && strings.Contains(line, short) {
 			sawShort = true
 		}
 	}
@@ -72,10 +72,14 @@ func TestSessionIDBadgeNeverStealsWidth(t *testing.T) {
 				t.Errorf("pane=%d tabs=%d: tab line is %d cells, pane holds %d",
 					paneW, tabCount, w, withID.contentWidth())
 			}
-			// The note stays flush against the content edge with a badge in
-			// front of it, so the plain line's width is the badge-free floor.
+			// The badge takes the content edge and pushes the note left, so
+			// the plain line's width is the badge-free floor.
 			if idNote != nil && lipgloss.Width(idLine) < lipgloss.Width(plainLine) {
 				t.Errorf("pane=%d tabs=%d: badge shortened the line", paneW, tabCount)
+			}
+			if plainNote != nil && idNote != nil && idNote.region.X > plainNote.region.X {
+				t.Errorf("pane=%d tabs=%d: note moved right (%d → %d); the badge must sit to its right",
+					paneW, tabCount, plainNote.region.X, idNote.region.X)
 			}
 		}
 	}
@@ -86,7 +90,7 @@ func TestSessionIDBadgeHiddenForInfoTab(t *testing.T) {
 	m, _ := tabBarWithSessionID(t, "ws-info", "", 2, 160, testSessionID)
 	m.infoTabActive = true
 	line := strings.SplitN(m.renderTabBar(), "\n", 2)[0]
-	if strings.Contains(line, "sid ") {
+	if strings.Contains(line, testSessionID[:shortSessionIDLen]) {
 		t.Errorf("Info tab must not show a session id badge, got: %q", line)
 	}
 }
@@ -99,4 +103,28 @@ func countHits(m *Model, kind tabHitKind) int {
 		}
 	}
 	return n
+}
+
+// The session id is the rightmost thing on the tab line: a note is laid out to
+// its left, never after it, so the id stays column-aligned as notes change.
+func TestSessionIDBadgeSitsRightOfTheNote(t *testing.T) {
+	const note = "Testing locally"
+	for _, paneW := range []int{80, 120, 160, 200} {
+		m, line := tabBarWithSessionID(t, "ws-order", note, 2, paneW, testSessionID)
+		h := findHit(m, tabHitNote)
+		if h == nil {
+			t.Fatalf("pane=%d: note must render", paneW)
+		}
+		id := testSessionID
+		if !strings.Contains(line, id) {
+			id = id[:shortSessionIDLen]
+		}
+		noteAt, idAt := strings.Index(line, note), strings.LastIndex(line, id)
+		if noteAt < 0 || idAt < 0 {
+			t.Fatalf("pane=%d: want both note and id on the line, got: %q", paneW, line)
+		}
+		if idAt < noteAt {
+			t.Errorf("pane=%d: session id must follow the note, got: %q", paneW, line)
+		}
+	}
 }
