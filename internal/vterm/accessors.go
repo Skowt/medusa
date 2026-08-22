@@ -78,3 +78,21 @@ func (v *VTerm) bumpVersionIfCursorMoved(prevX, prevY int) {
 		v.bumpVersion()
 	}
 }
+
+// ScreenIsBlank reports whether the visible screen holds no printable
+// character. A pane whose app has been killed and replaced stays blank until
+// the replacement paints, so callers use this to tell "nothing has been drawn
+// yet" apart from "the app has drawn something".
+func (v *VTerm) ScreenIsBlank() bool {
+	for _, row := range v.Screen {
+		for _, cell := range row {
+			if cell.Rune != 0 && cell.Rune != ' ' {
+				return false
+			}
+			if cell.GraphemeCluster != "" {
+				return false
+			}
+		}
+	}
+	return true
+}

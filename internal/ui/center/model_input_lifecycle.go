@@ -110,6 +110,7 @@ func (m *Model) updatePtyTabReattachFailed(msg ptyTabReattachFailed) (*Model, te
 	}
 	tab.mu.Lock()
 	tab.Running = false
+	tab.restarting = false
 	if msg.Stopped {
 		tab.Detached = false
 	}

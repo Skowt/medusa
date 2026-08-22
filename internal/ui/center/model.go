@@ -85,6 +85,13 @@ type Tab struct {
 	ptyRestartSince    time.Time
 	autoRestartAttempt int // tracks auto-restart attempts after session death
 
+	// restarting marks the window between tearing a tab's agent down and the
+	// replacement painting its first frame. The old session's pane is gone and
+	// the new agent takes about a second to boot, so without this the tab shows
+	// a blank pane and a STOPPED status while a restart is in fact under way.
+	restarting      bool
+	restartingSince time.Time
+
 	// Per-tab agent settings (configured at tab creation time)
 	Isolated                 bool
 	AllowUnsandboxedCommands bool

@@ -78,34 +78,17 @@ func (m *Model) updatePTYFlush(msg PTYFlush) tea.Cmd {
 			}
 			tab.mu.Unlock()
 			if writeOutput && len(chunk) > 0 {
-				if m.isTabActorReady() {
-					if !m.sendTabEvent(tabEvent{
-						tab:         tab,
-						workspaceID: msg.WorkspaceID,
-						tabID:       msg.TabID,
-						kind:        tabEventWriteOutput,
-						output:      chunk,
-					}) {
-						tab.mu.Lock()
-						if tab.Terminal != nil {
-							flushDone := perf.Time("pty_flush")
-							tab.Terminal.Write(chunk)
-							flushDone()
-							perf.Count("pty_flush_bytes", int64(len(chunk)))
-							tab.monitorDirty = true
-						}
-						tab.mu.Unlock()
-					}
-				} else {
-					tab.mu.Lock()
-					if tab.Terminal != nil {
-						flushDone := perf.Time("pty_flush")
-						tab.Terminal.Write(chunk)
-						flushDone()
-						perf.Count("pty_flush_bytes", int64(len(chunk)))
-						tab.monitorDirty = true
-					}
-					tab.mu.Unlock()
+				// Hand the chunk to the tab actor when it is up; parse it here
+				// when it is not, or when its queue rejected the event.
+				ev := tabEvent{
+					tab:         tab,
+					workspaceID: msg.WorkspaceID,
+					tabID:       msg.TabID,
+					kind:        tabEventWriteOutput,
+					output:      chunk,
+				}
+				if !m.isTabActorReady() || !m.sendTabEvent(ev) {
+					writeTabOutput(tab, chunk)
 				}
 			}
 			if len(tab.pendingOutput) > 0 {
@@ -255,4 +238,24 @@ func (m *Model) updateSelectionScrollTick(msg selectionScrollTick) tea.Cmd {
 		return selectionScrollTick{WorkspaceID: wtID, TabID: tabID, Gen: msg.Gen}
 	}))
 	return common.SafeBatch(cmds...)
+}
+
+// writeTabOutput parses chunk into the tab's virtual terminal. Both the tab
+// actor and the flush path that runs when the actor is unavailable go through
+// it, so terminal writes have one shape.
+func writeTabOutput(tab *Tab, chunk []byte) {
+	if tab == nil || len(chunk) == 0 {
+		return
+	}
+	tab.mu.Lock()
+	defer tab.mu.Unlock()
+	if tab.Terminal == nil {
+		return
+	}
+	flushDone := perf.Time("pty_flush")
+	tab.Terminal.Write(chunk)
+	flushDone()
+	perf.Count("pty_flush_bytes", int64(len(chunk)))
+	clearRestartingIfPaintedLocked(tab)
+	tab.monitorDirty = true
 }

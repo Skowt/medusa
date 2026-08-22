@@ -61,3 +61,62 @@ func TestClaudeSessionArgs(t *testing.T) {
 		}
 	}
 }
+
+// A recorded id with no transcript does not mean the tab has no conversation:
+// a stray SessionStart can leave the tab holding an id that never owned one
+// (see handleSessionStart). Starting fresh there silently discards the tab's
+// real conversation, so the fallback continues the worktree's most recent one
+// whenever there is one to continue.
+func TestClaudeSessionArgsContinuesWorktreeConversation(t *testing.T) {
+	configDir := t.TempDir()
+	cwd := "/Users/me/.medusa/workspaces/ws"
+	phantom := "11111111-2222-3333-4444-555555555555"
+
+	opts := AgentOptions{ClaudeSessionID: phantom, Resume: true, Cwd: cwd}
+
+	// Nothing on disk for this worktree yet: a fresh session under the
+	// recorded id is still the only safe answer, since --continue would exit
+	// with "No conversation found" and drop the tab to a bare shell.
+	if got, want := claudeSessionArgs(configDir, opts), " --session-id "+shellutil.Quote(phantom); got != want {
+		t.Errorf("empty worktree: claudeSessionArgs = %q, want %q", got, want)
+	}
+
+	// A conversation exists under this worktree's project directory, just not
+	// under the recorded id.
+	writeConversation(t, configDir, "-Users-me--medusa-workspaces-ws", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	if got, want := claudeSessionArgs(configDir, opts), " --continue"; got != want {
+		t.Errorf("orphaned id: claudeSessionArgs = %q, want %q", got, want)
+	}
+
+	// The recorded id itself still wins when it does resolve.
+	opts.ClaudeSessionID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	if got, want := claudeSessionArgs(configDir, opts), " --resume "+shellutil.Quote(opts.ClaudeSessionID); got != want {
+		t.Errorf("resumable id: claudeSessionArgs = %q, want %q", got, want)
+	}
+
+	// A conversation in a different worktree must not be continued here.
+	other := AgentOptions{ClaudeSessionID: phantom, Resume: true, Cwd: "/Users/me/.medusa/workspaces/other"}
+	if got, want := claudeSessionArgs(configDir, other), " --session-id "+shellutil.Quote(phantom); got != want {
+		t.Errorf("other worktree: claudeSessionArgs = %q, want %q", got, want)
+	}
+
+	// No cwd at all (a caller that never set it) cannot locate a project
+	// directory, so it must not guess.
+	noCwd := AgentOptions{ClaudeSessionID: phantom, Resume: true}
+	if got, want := claudeSessionArgs(configDir, noCwd), " --session-id "+shellutil.Quote(phantom); got != want {
+		t.Errorf("no cwd: claudeSessionArgs = %q, want %q", got, want)
+	}
+}
+
+// Claude Code encodes a cwd into its project directory name by replacing every
+// '/' and '.' with '-'; the doubled dash comes from the dot in .medusa.
+func TestClaudeProjectDir(t *testing.T) {
+	got := claudeProjectDir("/cfg", "/Users/me/.medusa/workspaces/ws")
+	want := "/cfg/projects/-Users-me--medusa-workspaces-ws"
+	if got != want {
+		t.Errorf("claudeProjectDir = %q, want %q", got, want)
+	}
+	if claudeProjectDir("", "/x") != "" || claudeProjectDir("/cfg", "") != "" {
+		t.Error("an unknown config dir or cwd must yield no project directory")
+	}
+}

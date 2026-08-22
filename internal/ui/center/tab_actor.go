@@ -436,18 +436,7 @@ func (m *Model) handleTabEvent(ev tabEvent) {
 			}
 		}
 	case tabEventWriteOutput:
-		if len(ev.output) == 0 {
-			return
-		}
-		tab.mu.Lock()
-		if tab.Terminal != nil {
-			flushDone := perf.Time("pty_flush")
-			tab.Terminal.Write(ev.output)
-			flushDone()
-			perf.Count("pty_flush_bytes", int64(len(ev.output)))
-			tab.monitorDirty = true
-		}
-		tab.mu.Unlock()
+		writeTabOutput(tab, ev.output)
 	default:
 		logging.Debug("unknown tab event: %v", ev.kind)
 	}

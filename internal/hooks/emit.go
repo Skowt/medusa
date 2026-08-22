@@ -14,6 +14,7 @@ type emitPayload struct {
 	SessionID       string           `json:"session_id"`
 	AgentID         string           `json:"agent_id"`
 	AgentType       string           `json:"agent_type"`
+	Cwd             string           `json:"cwd"`
 	BackgroundTasks []backgroundTask `json:"background_tasks"`
 }
 
@@ -35,6 +36,10 @@ type eventLine struct {
 	Outstanding     *int   `json:"outstanding,omitempty"`
 	ClaudeSessionID string `json:"claude_session_id,omitempty"`
 	AgentType       string `json:"agent_type,omitempty"`
+	// Cwd is the hook payload's cwd, forwarded on SessionStart only: it is
+	// what lets the app tell a tab's own session from a nested claude that
+	// merely inherited MEDUSA_SESSION_NAME.
+	Cwd string `json:"cwd,omitempty"`
 }
 
 // terminalTaskStatuses are background_tasks statuses that mean the task is no
@@ -95,6 +100,7 @@ func BuildEventLine(event, session string, stdin []byte, now time.Time) []byte {
 		line.AgentType = payload.AgentType
 		if event == "SessionStart" {
 			line.ClaudeSessionID = payload.SessionID
+			line.Cwd = payload.Cwd
 		}
 		if _, ok := probe["background_tasks"]; ok && carriesOutstanding(event) {
 			outstanding := 0

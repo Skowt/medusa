@@ -55,6 +55,11 @@ type HookEvent struct {
 	// agent sessions (claude --agent <name>). Non-empty means the event is
 	// not the tab's main conversation and its id must not be adopted.
 	AgentType string
+	// Cwd is the hook payload's cwd, carried on SessionStart. A nested claude
+	// inherits MEDUSA_SESSION_NAME from the tab it was launched in, so the
+	// session name alone cannot say whether an event belongs to the tab's own
+	// conversation; the cwd can. Empty for hook emitters that predate it.
+	Cwd string
 }
 
 // IsActiveEvent reports whether a stored state means the agent is still busy —

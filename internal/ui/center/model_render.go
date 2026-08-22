@@ -3,6 +3,7 @@ package center
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 
@@ -60,9 +61,13 @@ func (m *Model) View() string {
 			// Render native diff viewer
 			b.WriteString(tab.DiffViewer.View())
 		} else if tab.Terminal != nil {
-			tab.Terminal.ShowCursor = m.focused
-			// Use VTerm.Render() directly - it uses dirty line caching and delta styles
-			b.WriteString(tab.Terminal.Render())
+			if m.restartingLocked(tab) {
+				b.WriteString(m.renderRestartingContent(tab))
+			} else {
+				tab.Terminal.ShowCursor = m.focused
+				// Use VTerm.Render() directly - it uses dirty line caching and delta styles
+				b.WriteString(tab.Terminal.Render())
+			}
 
 			if status := m.terminalStatusLineLocked(tab); status != "" {
 				b.WriteString("\n" + status)
@@ -203,6 +208,13 @@ func (m *Model) terminalStatusLineLocked(tab *Tab) string {
 			Background(common.ColorInfo)
 		return scrollStyle.Render(" SCROLL: " + formatScrollPos(offset, total) + " ")
 	}
+	if m.restartingLocked(tab) {
+		return lipgloss.NewStyle().
+			Bold(true).
+			Foreground(common.ColorBackground).
+			Background(common.ColorInfo).
+			Render(" RESTARTING ")
+	}
 	if tab.Running && !tab.Detached {
 		return ""
 	}
@@ -252,4 +264,65 @@ func (m *Model) activeTerminalStatusLine() string {
 // ActiveTerminalStatusLine returns the status line for the active terminal.
 func (m *Model) ActiveTerminalStatusLine() string {
 	return m.activeTerminalStatusLine()
+}
+
+// restartingMaxDisplay bounds how long the restarting placeholder is shown.
+// It is cleared as soon as the new agent paints; the bound only covers an
+// agent that never paints at all, so the tab falls back to its real state
+// instead of claiming a restart is still in progress forever.
+const restartingMaxDisplay = 15 * time.Second
+
+// restartingLocked reports whether tab is between agents and should be shown
+// as restarting. Caller must hold tab.mu.
+func (m *Model) restartingLocked(tab *Tab) bool {
+	if tab == nil || !tab.restarting {
+		return false
+	}
+	if !tab.restartingSince.IsZero() && time.Since(tab.restartingSince) > restartingMaxDisplay {
+		tab.restarting = false
+		return false
+	}
+	return true
+}
+
+// clearRestartingIfPaintedLocked ends the restarting state once the new agent
+// has drawn something. The replacement's tmux client repaints an empty pane
+// well before the agent itself boots, so arrival of output is not enough — the
+// screen has to actually hold something. Caller must hold tab.mu.
+func clearRestartingIfPaintedLocked(tab *Tab) {
+	if tab == nil || !tab.restarting || tab.Terminal == nil {
+		return
+	}
+	if !tab.Terminal.ScreenIsBlank() {
+		tab.restarting = false
+	}
+}
+
+// renderRestartingContent fills the terminal viewport with a restart notice.
+// Caller must hold tab.mu.
+func (m *Model) renderRestartingContent(tab *Tab) string {
+	tm := m.terminalMetrics()
+	width, height := tm.Width, tm.Height
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
+	label := lipgloss.NewStyle().
+		Foreground(common.ColorMuted).
+		Render("Restarting " + restartLabel(tab) + "…")
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, label)
+}
+
+// restartLabel names what is being restarted, for the placeholder.
+func restartLabel(tab *Tab) string {
+	name := strings.TrimSpace(tab.Assistant)
+	if name == "" {
+		return "agent"
+	}
+	if name == "script" {
+		return "script"
+	}
+	return strings.ToUpper(name[:1]) + name[1:]
 }

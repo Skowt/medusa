@@ -473,8 +473,9 @@ type OpenFileInVim struct {
 	Workspace *data.Workspace
 }
 
-// AgentInterrupted is sent when Ctrl+C is forwarded to a workspace terminal,
-// signaling that the agent's activity spinner should be cleared.
+// AgentInterrupted is sent when a workspace's agent stops mid-turn without
+// Claude Code's Stop hook firing — Ctrl+C forwarded to the terminal, or a tab
+// restart — signaling that the agent's activity spinner should be cleared.
 type AgentInterrupted struct {
 	WorkspaceID string
 }

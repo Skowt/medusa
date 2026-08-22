@@ -1,7 +1,11 @@
 package center
 
 import (
+	"path/filepath"
+	"strings"
+
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/logging"
 )
 
 // workspaceID returns the ID of the current workspace, or empty string
@@ -64,12 +68,24 @@ func (m *Model) getTabBySession(wsID, sessionName string) *Tab {
 // name; wsID follows the rename redirect map. Returns true if the id actually
 // changed, so the caller can persist. Runs in the Update loop; the mutex write
 // mirrors the tab's other ClaudeSessionID setter.
-func (m *Model) UpdateTabClaudeSessionID(wsID, sessionName, claudeSessionID string) bool {
+//
+// cwd is the SessionStart payload's working directory. An id is adopted only
+// when it was reported from inside the tab's own workspace: any process the
+// tab spawns inherits MEDUSA_SESSION_NAME, so nested claude runs fire
+// SessionStart under this same session name and would otherwise overwrite the
+// tab's id with a session it can never resume. An empty cwd is accepted — hook
+// emitters predating the field send none, and rejecting those would stop
+// tracking /clear for anyone still running one.
+func (m *Model) UpdateTabClaudeSessionID(wsID, sessionName, claudeSessionID, cwd string) bool {
 	if claudeSessionID == "" {
 		return false
 	}
 	tab := m.getTabBySession(wsID, sessionName)
 	if tab == nil {
+		return false
+	}
+	if !cwdWithinWorkspace(tab.Workspace, cwd) {
+		logging.Info("Ignoring Claude session id %s for %s: cwd %q is outside the workspace", claudeSessionID, sessionName, cwd)
 		return false
 	}
 	tab.mu.Lock()
@@ -79,6 +95,63 @@ func (m *Model) UpdateTabClaudeSessionID(wsID, sessionName, claudeSessionID stri
 	}
 	tab.ClaudeSessionID = claudeSessionID
 	return true
+}
+
+// cwdWithinWorkspace reports whether cwd is one of the workspace's worktree
+// roots or a directory inside one. Both sides are resolved through symlinks
+// first: Claude Code reports the cwd it resolved (/private/tmp on macOS, say)
+// while the registry may hold the symlinked form, and a spurious mismatch here
+// would silently stop session-id tracking.
+//
+// Unverifiable inputs are accepted rather than rejected: an empty cwd, a nil
+// workspace, or a workspace with no worktrees carries no evidence either way,
+// and refusing those would regress /clear tracking to nothing.
+func cwdWithinWorkspace(ws *data.Workspace, cwd string) bool {
+	if cwd == "" || ws == nil {
+		return true
+	}
+	roots := ws.AllRoots()
+	if len(roots) == 0 {
+		return true
+	}
+	target := resolveDir(cwd)
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		rel, err := filepath.Rel(resolveDir(root), target)
+		if err != nil {
+			continue
+		}
+		if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveDir cleans path and follows symlinks through its deepest existing
+// ancestor, re-appending whatever does not exist yet. Resolving only whole
+// paths would compare a resolved root against an unresolved cwd (or the
+// reverse) whenever either one is missing — on macOS every path under /var or
+// /tmp resolves elsewhere, so that mismatch is the common case, not the edge.
+func resolveDir(path string) string {
+	cleaned := filepath.Clean(path)
+	rest := ""
+	for dir := cleaned; ; {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			if rest == "" {
+				return resolved
+			}
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return cleaned
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = parent
+	}
 }
 
 // getActiveTabIdx returns the active tab index for the current workspace

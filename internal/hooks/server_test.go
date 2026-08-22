@@ -122,7 +122,7 @@ func TestServerParsesSessionStart(t *testing.T) {
 	sock := filepath.Join(shortTempDir(t), SocketName)
 	events := startTestServer(t, sock)
 
-	sendLine(t, sock, `{"event":"SessionStart","ts":1700000000,"session":"medusa-ws1-tab1","claude_session_id":"sid-9","agent_type":""}`)
+	sendLine(t, sock, `{"event":"SessionStart","ts":1700000000,"session":"medusa-ws1-tab1","claude_session_id":"sid-9","agent_type":"","cwd":"/repo/ws"}`)
 	select {
 	case he := <-events:
 		if he.Event != EventSessionStart {
@@ -133,6 +133,9 @@ func TestServerParsesSessionStart(t *testing.T) {
 		}
 		if he.AgentType != "" {
 			t.Errorf("AgentType = %q, want empty", he.AgentType)
+		}
+		if he.Cwd != "/repo/ws" {
+			t.Errorf("Cwd = %q, want /repo/ws", he.Cwd)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for event")

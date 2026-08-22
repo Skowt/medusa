@@ -78,22 +78,25 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	}
 
 	ws := tab.Workspace
+	wsID := string(ws.ID())
 	tabID := tab.ID
 	if sessionName == "" {
 		sessionName = tmux.SessionName("medusa", ws.Name, "1")
 	}
 
-	// Tear down the existing agent (if any) before spawning a new one.
+	// Detach the existing agent (if any) before spawning a new one. Cancelling
+	// the reader is cheap, but closing the agent kills a process group and
+	// waits on it, so it belongs in the command below rather than here on the
+	// UI thread.
 	m.stopPTYReader(tab)
 	tab.mu.Lock()
 	existingAgent := tab.Agent
 	tab.Agent = nil
 	tab.Running = false
 	tab.autoRestartAttempt = 0
+	tab.restarting = true
+	tab.restartingSince = time.Now()
 	tab.mu.Unlock()
-	if existingAgent != nil {
-		_ = m.agentManager.CloseAgent(existingAgent)
-	}
 	tmuxOpts := m.getTmuxOptions()
 
 	tm := m.terminalMetrics()
@@ -102,11 +105,24 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	assistant := tab.Assistant
 	fullscreen := tabFullscreen && appPty.AgentType(assistant) == appPty.AgentClaude
 
-	return func() tea.Msg {
+	// A restart does not carry on whatever the agent was doing, so the
+	// activity spinner has to go: Claude Code's Stop hook never fires for the
+	// killed turn, and nothing else would clear it.
+	clearActivity := func() tea.Msg {
+		return messages.AgentInterrupted{WorkspaceID: wsID}
+	}
+
+	restart := func() tea.Msg {
+		// Kill the session first: that ends the agent and makes the old tmux
+		// client exit on its own, so closing its terminal rarely has to wait
+		// out even the short grace period.
 		_ = tmux.KillSession(sessionName, tmuxOpts)
+		if existingAgent != nil {
+			_ = m.agentManager.CloseAgent(existingAgent)
+		}
 
 		tags := tmux.SessionTags{
-			WorkspaceID: string(ws.ID()),
+			WorkspaceID: wsID,
 			TabID:       string(tabID),
 			CreatedAt:   time.Now().Unix(),
 		}
@@ -135,24 +151,26 @@ func (m *Model) restartTab(index int) tea.Cmd {
 		}
 		if err != nil {
 			return ptyTabReattachFailed{
-				WorkspaceID: string(ws.ID()),
+				WorkspaceID: wsID,
 				TabID:       tabID,
 				Err:         err,
 				Stopped:     true,
 				Action:      "restart",
 			}
 		}
-		// Best-effort capture of scrollback (empty for fresh sessions, which is fine).
-		scrollback, _ := tmux.CapturePane(sessionName, tmuxOpts)
+		// No scrollback capture: the session above was just created, so its
+		// history is empty by construction and the capture is a wasted
+		// round-trip to tmux on a path the user is waiting on.
 		return ptyTabReattachResult{
-			WorkspaceID:       string(ws.ID()),
-			TabID:             tabID,
-			Agent:             agent,
-			Rows:              termHeight,
-			Cols:              termWidth,
-			ScrollbackCapture: scrollback,
-			ClaudeSessionID:   claudeSessionID,
-			Fullscreen:        fullscreen,
+			WorkspaceID:     wsID,
+			TabID:           tabID,
+			Agent:           agent,
+			Rows:            termHeight,
+			Cols:            termWidth,
+			ClaudeSessionID: claudeSessionID,
+			Fullscreen:      fullscreen,
 		}
 	}
+
+	return tea.Batch(clearActivity, restart)
 }

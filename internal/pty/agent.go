@@ -28,6 +28,11 @@ type AgentOptions struct {
 	// CLAUDE_CODE_NO_FLICKER (1 on, 0 off) and marks the tmux session
 	// accordingly. It is always passed explicitly: see buildAgentCommand.
 	Fullscreen bool
+	// Cwd is the directory the agent runs in (the tmux pane's start
+	// directory). claudeSessionArgs needs it to tell whether the worktree has
+	// any conversation to continue when the recorded session id has none;
+	// CreateAgentWithTags fills it in.
+	Cwd string
 }
 
 // buildAgentCommand assembles the env-prefixed shell command for an agent.
@@ -88,6 +93,13 @@ func GenerateSessionID() string {
 	hex.Encode(buf[24:36], b[10:16])
 	return string(buf[:])
 }
+
+// agentCloseGrace is how long an agent's terminal gets to exit on SIGTERM
+// before it is killed. Every agent terminal's process group is just a tmux
+// client (see tmux.ClientCommandWithTags) — the agent itself runs under the
+// tmux server and outlives this kill — so there is nothing to shut down
+// gracefully, and the default grace only stalls the caller.
+const agentCloseGrace = 20 * time.Millisecond
 
 // AgentType represents the type of AI agent
 type AgentType string
@@ -187,6 +199,9 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 		_ = config.InjectSkipPermissionPrompt(profileDir)
 	}
 
+	// The pane starts in ws.Root() (see ClientCommandWithTags below), which is
+	// the cwd Claude Code encodes into its transcript directory.
+	opts.Cwd = ws.Root()
 	agentCommand := buildAgentCommand(agentType, assistantCfg.Command, sessionName, profileDir, opts)
 
 	// Create terminal with agent command, falling back to shell on exit
@@ -268,7 +283,7 @@ func (m *AgentManager) CreateViewerWithTags(ws *data.Workspace, command string, 
 // CloseAgent closes an agent
 func (m *AgentManager) CloseAgent(agent *Agent) error {
 	if agent.Terminal != nil {
-		_ = agent.Terminal.Close()
+		_ = agent.Terminal.CloseWithGrace(agentCloseGrace)
 	}
 
 	// Remove from list
@@ -297,7 +312,7 @@ func (m *AgentManager) CloseAll() {
 	for _, agents := range agentsByWorkspace {
 		for _, agent := range agents {
 			if agent.Terminal != nil {
-				_ = agent.Terminal.Close()
+				_ = agent.Terminal.CloseWithGrace(agentCloseGrace)
 			}
 		}
 	}
@@ -335,7 +350,7 @@ func (m *AgentManager) CloseWorkspaceAgents(ws *data.Workspace) {
 	m.mu.Unlock()
 	for _, agent := range agents {
 		if agent.Terminal != nil {
-			_ = agent.Terminal.Close()
+			_ = agent.Terminal.CloseWithGrace(agentCloseGrace)
 		}
 	}
 }

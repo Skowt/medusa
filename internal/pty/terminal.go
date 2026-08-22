@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 
@@ -113,8 +114,22 @@ func (t *Terminal) SendString(s string) error {
 	return err
 }
 
-// Close closes the terminal
+// Close closes the terminal, giving the process group the default grace
+// period to exit on SIGTERM before it is killed.
 func (t *Terminal) Close() error {
+	return t.close(process.KillOptions{})
+}
+
+// CloseWithGrace closes the terminal, allowing only grace for the process
+// group to act on SIGTERM. Use it when the leader is a disposable client of a
+// process that lives elsewhere — an agent's tmux client, say, whose agent runs
+// under the tmux server and is unaffected by this kill — since waiting out the
+// default grace there just stalls the caller.
+func (t *Terminal) CloseWithGrace(grace time.Duration) error {
+	return t.close(process.KillOptions{GracePeriod: grace})
+}
+
+func (t *Terminal) close(opts process.KillOptions) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -132,7 +147,7 @@ func (t *Terminal) Close() error {
 		proc := t.cmd.Process
 		if proc != nil {
 			leaderPID := proc.Pid
-			_ = process.KillProcessGroup(leaderPID, process.KillOptions{})
+			_ = process.KillProcessGroup(leaderPID, opts)
 		}
 		_ = t.cmd.Wait()
 	}

@@ -100,6 +100,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		Outstanding     *int   `json:"outstanding"`
 		ClaudeSessionID string `json:"claude_session_id"`
 		AgentType       string `json:"agent_type"`
+		Cwd             string `json:"cwd"`
 	}
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		return
@@ -121,6 +122,7 @@ func (s *Server) handleConn(conn net.Conn) {
 			Outstanding:     outstanding,
 			ClaudeSessionID: raw.ClaudeSessionID,
 			AgentType:       raw.AgentType,
+			Cwd:             raw.Cwd,
 		})
 	}
 }

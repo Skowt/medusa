@@ -196,6 +196,28 @@ func (m *Model) renderTabBar() string {
 		x += plusWidth
 	}
 
+	// --- Session-id badge, drawn only out of leftover slack. ---
+	// Temporary instrumentation: a tab's Claude session id changes underneath
+	// it (a SessionStart adoption, /clear, a restart's resume), and showing it
+	// is how we watch that happen. It is deliberately outside the width
+	// budgeting above — it takes only what the tabs and the note left unused,
+	// so it can never push a tab out of view or truncate the note.
+	if slack := width - x - nWidth; slack > 0 {
+		reserve := slack
+		if nWidth > 0 {
+			reserve-- // keep one cell between the badge and the note
+		}
+		if badge := m.sessionIDBadge(reserve); badge != "" {
+			badgeWidth := lipgloss.Width(badge)
+			if pad := slack - badgeWidth - (slack - reserve); pad > 0 {
+				segments = append(segments, strings.Repeat(" ", pad))
+				x += pad
+			}
+			segments = append(segments, badge)
+			x += badgeWidth
+		}
+	}
+
 	// --- Right-align the note by padding out to the content edge. ---
 	if nWidth > 0 {
 		pad := width - x - nWidth
@@ -218,6 +240,43 @@ func (m *Model) renderTabBar() string {
 
 	return tabLine + "\n" + separatorLine
 }
+
+// sessionIDBadge renders the active agent tab's Claude session id, or "" when
+// there is no id to show or avail cells cannot hold it. The full id is shown
+// when it fits, since that is what the logs and the transcript filenames carry;
+// below that it degrades to the leading 8 characters, which is still enough to
+// see the id change.
+func (m *Model) sessionIDBadge(avail int) string {
+	if m.infoTabActive {
+		return ""
+	}
+	tabs := m.getTabs()
+	idx := m.getActiveTabIdx()
+	if idx < 0 || idx >= len(tabs) || tabs[idx] == nil {
+		return ""
+	}
+	tab := tabs[idx]
+	tab.mu.Lock()
+	id := tab.ClaudeSessionID
+	tab.mu.Unlock()
+	if id == "" {
+		return ""
+	}
+
+	const label = "sid "
+	switch {
+	case avail >= len(label)+len(id):
+	case avail >= len(label)+shortSessionIDLen && len(id) > shortSessionIDLen:
+		id = id[:shortSessionIDLen]
+	default:
+		return ""
+	}
+	return m.styles.Muted.Render(label + id)
+}
+
+// shortSessionIDLen is how much of a session id the badge keeps when the full
+// one does not fit — a UUID's first group, unique enough to track changes.
+const shortSessionIDLen = 8
 
 // visibleTabCount reports how many whole agent tabs fit in avail cells.
 func (m *Model) visibleTabCount(widths []int, avail, pullTarget int) int {

@@ -175,13 +175,29 @@ func TestBuildEventLineNotificationMessage(t *testing.T) {
 	}
 }
 
-// TestBuildEventLineSessionStart verifies the live session id and agent_type
-// discriminator are forwarded for SessionStart.
+// TestBuildEventLineSessionStart verifies the live session id, the agent_type
+// discriminator and the cwd are forwarded for SessionStart. The cwd is what
+// lets the app reject a nested claude that inherited MEDUSA_SESSION_NAME but
+// runs somewhere else, so dropping it silently reopens that hijack.
 func TestBuildEventLineSessionStart(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	stdin := []byte(`{"session_id":"sid-42","source":"clear"}`)
+	stdin := []byte(`{"session_id":"sid-42","source":"clear","cwd":"/repo/ws"}`)
 	m := decodeLine(t, BuildEventLine("SessionStart", "medusa-ws1-tab1", stdin, now))
 	if m["claude_session_id"] != "sid-42" {
 		t.Errorf("claude_session_id = %v", m["claude_session_id"])
+	}
+	if m["cwd"] != "/repo/ws" {
+		t.Errorf("cwd = %v, want /repo/ws", m["cwd"])
+	}
+}
+
+// The cwd rides only on SessionStart: it exists to qualify a session id, and
+// every other event would just carry the same string on every line.
+func TestBuildEventLineCwdOnlyOnSessionStart(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	stdin := []byte(`{"session_id":"sid-42","cwd":"/repo/ws"}`)
+	m := decodeLine(t, BuildEventLine("Stop", "medusa-ws1-tab1", stdin, now))
+	if _, ok := m["cwd"]; ok {
+		t.Errorf("Stop must not carry a cwd, got %v", m["cwd"])
 	}
 }

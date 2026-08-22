@@ -23,9 +23,10 @@ type hookActivityEvent struct {
 	Outstanding int
 	// Tool is the tool name on PreToolUse/PostToolUse.
 	Tool string
-	// ClaudeSessionID and AgentType are carried on SessionStart.
+	// ClaudeSessionID, AgentType and Cwd are carried on SessionStart.
 	ClaudeSessionID string
 	AgentType       string
+	Cwd             string
 }
 
 // hookTransition is the user-visible outcome of applying a hook event: it
@@ -59,6 +60,7 @@ func (a *App) initHooksServer() {
 			Tool:            he.Tool,
 			ClaudeSessionID: he.ClaudeSessionID,
 			AgentType:       he.AgentType,
+			Cwd:             he.Cwd,
 		})
 	}
 
@@ -134,11 +136,20 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 // pre-clear conversation. Sessions started with `claude --agent <name>` carry
 // an agent_type and are skipped: they fire under the same session name but are
 // not the tab's main conversation, so adopting their id would be wrong.
+//
+// The payload's cwd is the second, load-bearing filter. MEDUSA_SESSION_NAME is
+// inherited by every process the tab spawns, so a nested claude — one launched
+// by a script or test, in any directory — fires SessionStart under the tab's
+// own session name. Those sessions usually never own a transcript, and
+// adopting one leaves the tab pointing at an id that cannot be resumed, which
+// is how a restart came back with an empty conversation. Requiring the cwd to
+// sit inside the tab's workspace rejects them while still accepting /clear,
+// which reports the same cwd as the session it replaced.
 func (a *App) handleSessionStart(wsID string, msg hookActivityEvent) []tea.Cmd {
 	if msg.AgentType != "" || msg.ClaudeSessionID == "" {
 		return nil
 	}
-	if !a.center.UpdateTabClaudeSessionID(wsID, msg.SessionName, msg.ClaudeSessionID) {
+	if !a.center.UpdateTabClaudeSessionID(wsID, msg.SessionName, msg.ClaudeSessionID, msg.Cwd) {
 		return nil
 	}
 	logging.Info("Refreshed Claude session id for %s → %s", msg.SessionName, msg.ClaudeSessionID)
@@ -352,9 +363,10 @@ func (a *App) restoreHookStatesFromWorkspaces() {
 }
 
 // handleAgentInterrupted clears the hook state for a workspace whose agent was
-// interrupted via Ctrl+C or Esc. Claude Code's Stop hook does not fire on user
-// interrupts, so the spinner would otherwise keep running indefinitely. The
-// clear is silent: the user caused it and is looking at the workspace.
+// interrupted via Ctrl+C or Esc, or whose tab was restarted. Claude Code's Stop
+// hook does not fire on user interrupts, and a restart does not resume the turn
+// that was running, so the spinner would otherwise keep running indefinitely.
+// The clear is silent: the user caused it and is looking at the workspace.
 func (a *App) handleAgentInterrupted(wsID string) []tea.Cmd {
 	delete(a.hookOutstanding, wsID)
 	if _, ok := a.hookWorkspaceStates[wsID]; !ok {
