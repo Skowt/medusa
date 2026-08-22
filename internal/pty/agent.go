@@ -33,12 +33,24 @@ type AgentOptions struct {
 	// any conversation to continue when the recorded session id has none;
 	// CreateAgentWithTags fills it in.
 	Cwd string
+	// CodexSandbox and CodexApproval are codex's --sandbox and
+	// --ask-for-approval policies; CodexSearch is its --search flag. All three
+	// are ignored for other agent types.
+	CodexSandbox  string
+	CodexApproval string
+	CodexSearch   bool
 }
 
 // buildAgentCommand assembles the env-prefixed shell command for an agent.
 // It is pure: all filesystem side effects (profile dir setup, settings/hook
 // injection) are performed by the caller, which passes the resolved profileDir.
 func buildAgentCommand(agentType AgentType, command, sessionName, profileDir string, opts AgentOptions) string {
+	if agentType == AgentCodex {
+		// profileDir is the profile's CODEX_HOME for a Codex tab: it holds the
+		// same role CLAUDE_CONFIG_DIR does, and every Codex flag differs from
+		// Claude's, so the two command lines share nothing below.
+		return buildCodexCommand(command, sessionName, profileDir, opts)
+	}
 	cmd := fmt.Sprintf("MEDUSA_SESSION_NAME=%s %s", shellutil.Quote(sessionName), command)
 	if agentType == AgentClaude && profileDir != "" {
 		cmd = fmt.Sprintf("CLAUDE_CONFIG_DIR=%s %s", shellutil.Quote(profileDir), cmd)
@@ -106,6 +118,7 @@ type AgentType string
 
 const (
 	AgentClaude AgentType = "claude"
+	AgentCodex  AgentType = "codex"
 )
 
 // Agent represents a running AI agent instance
@@ -134,8 +147,8 @@ func NewAgentManager(cfg *config.Config) *AgentManager {
 
 // CreateAgentWithTags creates a new agent for the given workspace with tmux tags.
 func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentType, sessionName string, rows, cols uint16, tags tmux.SessionTags, opts AgentOptions) (*Agent, error) {
-	if agentType == AgentClaude && ws.Profile == "" {
-		return nil, fmt.Errorf("cannot start Claude agent without a profile (workspace %q)", ws.Name)
+	if isAgentAssistant(agentType) && ws.Profile == "" {
+		return nil, fmt.Errorf("cannot start %s agent without a profile (workspace %q)", agentType, ws.Name)
 	}
 	assistantCfg, ok := m.config.Assistants[string(agentType)]
 	if !ok {
@@ -184,6 +197,13 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 				}
 			}
 		}
+	}
+
+	// A Codex tab's profileDir is its CODEX_HOME, which also carries the
+	// worktree trust entry and the activity hooks Codex reads.
+	if agentType == AgentCodex && ws.Profile != "" {
+		profileDir = config.CodexHomeDir(m.config.Paths.ProfilesRoot, ws.Profile)
+		prepareCodexHome(profileDir, ws.Root(), m.config.Paths.HooksDir, config.ResolveHookEmitBinary())
 	}
 
 	// Pre-trust the workspace directory so Claude doesn't prompt
