@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -29,7 +30,7 @@ func (m *Model) getBaseBranchDisplay() string {
 }
 
 // renderInfoBar renders the info bar with workspace details and action buttons.
-// Layout: [branch info] │ [path] [Copy] [IDE]
+// Layout: [branch info] │ [path] [IDE]
 // Also renders a subtle separator line below.
 func (m *Model) renderInfoBar(width int) string {
 	m.actionBarHits = m.actionBarHits[:0]
@@ -46,53 +47,57 @@ func (m *Model) renderInfoBar(width int) string {
 	pathStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
 	separatorStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
 
-	// Build branch info: "origin/main ← feature-branch" or just "main" if on main
+	branchLabel := ws.Branch()
+	branchWidth := max(lipgloss.Width(branchLabel), copyBadgeMinWidth)
+	branchLabel = m.copyLabel(copyTargetBranch, branchLabel, branchWidth)
 	baseBranchDisplay := m.getBaseBranchDisplay()
 	var branchInfo string
+	var branchX int
 	if ws.IsMainBranch() {
-		branchInfo = branchStyle.Render(ws.Branch())
+		branchInfo = branchStyle.Render(branchLabel)
 	} else {
-		branchInfo = mutedStyle.Render(baseBranchDisplay) + mutedStyle.Render(" ← ") + branchStyle.Render(ws.Branch())
+		prefix := mutedStyle.Render(baseBranchDisplay) + mutedStyle.Render(" ← ")
+		branchX = lipgloss.Width(prefix)
+		branchInfo = prefix + branchStyle.Render(branchLabel)
 	}
+	m.actionBarHits = append(m.actionBarHits, actionBarButton{
+		kind:   actionBarCopyBranch,
+		region: common.HitRegion{X: branchX, Y: 0, Width: branchWidth, Height: 1},
+	})
 
 	// Calculate left side content
 	separator := separatorStyle.Render(" │ ")
 	separatorWidth := lipgloss.Width(separator)
 
-	// Copy and IDE buttons (styled to match branch name)
-	copyBtn := branchStyle.Render("[Copy]")
-	copyBtnWidth := lipgloss.Width(copyBtn)
+	// IDE button (styled to match branch name)
 	ideBtn := branchStyle.Render("[IDE]")
 	ideBtnWidth := lipgloss.Width(ideBtn)
 
 	// Build path info (shortened)
-	reservedForLeft := lipgloss.Width(branchInfo) + separatorWidth + 1 + copyBtnWidth + 1 + ideBtnWidth // +1 for spaces
+	reservedForLeft := lipgloss.Width(branchInfo) + separatorWidth + 1 + ideBtnWidth
 	availableForPath := width - reservedForLeft
 	if availableForPath < 10 {
 		availableForPath = 10
 	}
 
 	pathInfo := shortenPath(ws.Root(), availableForPath)
+	pathWidth := max(lipgloss.Width(pathInfo), copyBadgeMinWidth)
+	pathInfo = m.copyLabel(copyTargetWorkdir, pathInfo, pathWidth)
 	pathRendered := pathStyle.Render(pathInfo)
 
-	// Left content: branch │ path [Copy] [IDE]
-	leftContent := branchInfo + separator + pathRendered + " " + copyBtn + " " + ideBtn
+	// Left content: branch │ path [IDE]
+	leftContent := branchInfo + separator + pathRendered + " " + ideBtn
 
-	// Track Copy button hit region
-	copyBtnX := lipgloss.Width(branchInfo + separator + pathRendered + " ")
+	// The displayed path itself is the copy target.
+	pathX := lipgloss.Width(branchInfo + separator)
 	m.actionBarHits = append(m.actionBarHits, actionBarButton{
-		kind:  actionBarCopyDir,
-		label: "Copy",
-		region: common.HitRegion{
-			X:      copyBtnX,
-			Y:      0,
-			Width:  copyBtnWidth,
-			Height: 1,
-		},
+		kind:   actionBarCopyDir,
+		label:  "Path",
+		region: common.HitRegion{X: pathX, Y: 0, Width: pathWidth, Height: 1},
 	})
 
-	// Track IDE button hit region (after Copy button)
-	ideBtnX := copyBtnX + copyBtnWidth + 1 // +1 for space
+	// Track IDE button hit region after the path.
+	ideBtnX := pathX + lipgloss.Width(pathInfo) + 1
 	m.actionBarHits = append(m.actionBarHits, actionBarButton{
 		kind:  actionBarOpenIDE,
 		label: "IDE",
@@ -162,16 +167,74 @@ func (m *Model) actionBarCommand(kind actionBarButtonKind) tea.Cmd {
 
 	ws := m.workspace
 	switch kind {
+	case actionBarCopyBranch:
+		return m.copyWithFeedback(copyTargetBranch, ws.Branch())
 	case actionBarCopyDir:
-		return func() tea.Msg {
-			return messages.ActionBarCopyDir{WorkspaceRoot: ws.Root()}
-		}
+		return m.copyWithFeedback(copyTargetWorkdir, ws.Root())
 	case actionBarOpenIDE:
 		return func() tea.Msg {
 			return messages.ActionBarOpenIDE{WorkspaceRoot: ws.Root()}
 		}
 	}
 	return nil
+}
+
+const copyFeedbackDuration = 1500 * time.Millisecond
+
+func (m *Model) copyFeedbackActive(target copyTarget) bool {
+	return m.copyFeedback != nil && m.copyFeedback[target] != 0
+}
+
+func (m *Model) copyLabel(target copyTarget, value string, width int) string {
+	label := value
+	var badge lipgloss.Style
+	styled := false
+	if m.copyFeedbackActive(target) {
+		label = " ✓ copied "
+		badge = lipgloss.NewStyle().
+			Foreground(common.ColorSuccess).
+			Background(common.ColorSurface1).
+			Bold(true)
+		styled = true
+	} else if m.copyHoverActive && m.copyHover == target {
+		label = " click to copy "
+		badge = lipgloss.NewStyle().
+			Foreground(common.ColorInfo).
+			Background(common.ColorSurface1)
+		styled = true
+	}
+	labelWidth := lipgloss.Width(label)
+	if labelWidth > width {
+		width = labelWidth
+	}
+	left := (width - labelWidth) / 2
+	if !styled {
+		return strings.Repeat(" ", left) + label + strings.Repeat(" ", width-labelWidth-left)
+	}
+	return strings.Repeat(" ", left) + badge.Render(label) + strings.Repeat(" ", width-labelWidth-left)
+}
+
+const copyBadgeMinWidth = len(" click to copy ")
+
+func (m *Model) copyWithFeedback(target copyTarget, value string) tea.Cmd {
+	write := m.clipboardWrite
+	if write == nil {
+		write = common.CopyToClipboard
+	}
+	if err := write(value); err != nil {
+		return func() tea.Msg {
+			return messages.Toast{Message: "Failed to copy: " + err.Error(), Level: messages.ToastError}
+		}
+	}
+	if m.copyFeedback == nil {
+		m.copyFeedback = make(map[copyTarget]uint64)
+	}
+	m.copySequence++
+	generation := m.copySequence
+	m.copyFeedback[target] = generation
+	return common.SafeTick(copyFeedbackDuration, func(time.Time) tea.Msg {
+		return copyFeedbackExpired{target: target, generation: generation}
+	})
 }
 
 // infoBarHeight returns the height of the info bar (2 if visible: content + separator, 0 otherwise).

@@ -1,10 +1,5 @@
 package messages
 
-// ActionBarCopyDir requests copying the workspace directory to clipboard
-type ActionBarCopyDir struct {
-	WorkspaceRoot string
-}
-
 // ActionBarOpenIDE requests opening the workspace folder in the user's IDE
 type ActionBarOpenIDE struct {
 	WorkspaceRoot string

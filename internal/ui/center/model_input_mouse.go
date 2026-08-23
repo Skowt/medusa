@@ -152,6 +152,7 @@ func (m *Model) updateMouseClick(msg tea.MouseClickMsg) (*Model, tea.Cmd) {
 // updateMouseMotion handles tea.MouseMotionMsg in the Update switch.
 func (m *Model) updateMouseMotion(msg tea.MouseMotionMsg) (*Model, tea.Cmd) {
 	var cmds []tea.Cmd
+	m.updateCopyHover(msg.X, msg.Y)
 
 	// Handle mouse drag events for text selection
 	if !m.focused || !m.hasActiveAgent() {
@@ -227,6 +228,45 @@ func (m *Model) updateMouseMotion(msg tea.MouseMotionMsg) (*Model, tea.Cmd) {
 	}
 	tab.mu.Unlock()
 	return m, common.SafeBatch(cmds...)
+}
+
+func (m *Model) updateCopyHover(screenX, screenY int) {
+	const (
+		borderTop   = 1
+		borderLeft  = 1
+		paddingLeft = 1
+	)
+	localX := screenX - m.offsetX - borderLeft - paddingLeft
+	m.copyHoverActive = false
+	if localX < 0 {
+		return
+	}
+
+	contentY := screenY - borderTop
+	if contentY == m.actionBarY {
+		for _, hit := range m.actionBarHits {
+			if hit.region.Contains(localX, 0) {
+				switch hit.kind {
+				case actionBarCopyBranch:
+					m.copyHover, m.copyHoverActive = copyTargetBranch, true
+				case actionBarCopyDir:
+					m.copyHover, m.copyHoverActive = copyTargetWorkdir, true
+				}
+				return
+			}
+		}
+	}
+
+	tabBarY := borderTop + m.infoBarHeight()
+	if screenY != tabBarY {
+		return
+	}
+	for _, hit := range m.tabHits {
+		if hit.kind == tabHitSessionID && hit.region.Contains(localX, 0) {
+			m.copyHover, m.copyHoverActive = copyTargetSessionID, true
+			return
+		}
+	}
 }
 
 // updateMouseRelease handles tea.MouseReleaseMsg in the Update switch.

@@ -445,6 +445,11 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 		cmd := m.updateSelectionScrollTick(msg)
 		cmds = append(cmds, cmd)
 
+	case copyFeedbackExpired:
+		if m.copyFeedback != nil && m.copyFeedback[msg.target] == msg.generation {
+			delete(m.copyFeedback, msg.target)
+		}
+
 	default:
 		// Forward unknown messages to active viewer if one exists
 		tabs := m.getTabs()

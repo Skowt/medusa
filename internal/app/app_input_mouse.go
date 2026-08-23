@@ -149,6 +149,22 @@ func (a *App) routeMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
 
 // routeMouseMotion routes mouse motion events to the appropriate pane.
 func (a *App) routeMouseMotion(msg tea.MouseMotionMsg) tea.Cmd {
+	// Hover-capable all-motion events have no pressed button. Always let the
+	// center observe them so its copy affordances activate when entered and
+	// clear when left, regardless of which pane owns keyboard focus. Drag
+	// motion remains routed exclusively to the focused pane below.
+	if msg.Button == tea.MouseNone && a.center != nil {
+		adjusted := msg
+		if a.layout != nil {
+			adjusted.Y -= a.layout.TopGutter()
+		}
+		newCenter, cmd := a.center.Update(adjusted)
+		a.center = newCenter
+		if a.focusedPane == messages.PaneCenter {
+			return cmd
+		}
+	}
+
 	switch a.focusedPane {
 	case messages.PaneDashboard:
 		adjusted := msg

@@ -216,8 +216,13 @@ type Model struct {
 	tmuxConfig tmuxConfig
 
 	// Action bar state
-	actionBarHits []actionBarButton
-	actionBarY    int // Y position of action bar within content
+	actionBarHits   []actionBarButton
+	actionBarY      int // Y position of action bar within content
+	copyFeedback    map[copyTarget]uint64
+	copySequence    uint64
+	clipboardWrite  func(string) error
+	copyHover       copyTarget
+	copyHoverActive bool
 }
 
 // tmuxConfig holds tmux-related configuration
@@ -253,15 +258,30 @@ const (
 	tabHitPrev
 	tabHitNext
 	tabHitNote
+	tabHitSessionID
 )
 
 // actionBarButtonKind identifies which action bar button was clicked
 type actionBarButtonKind int
 
 const (
-	actionBarCopyDir actionBarButtonKind = iota
+	actionBarCopyBranch actionBarButtonKind = iota
+	actionBarCopyDir
 	actionBarOpenIDE
 )
+
+type copyTarget int
+
+const (
+	copyTargetBranch copyTarget = iota
+	copyTargetWorkdir
+	copyTargetSessionID
+)
+
+type copyFeedbackExpired struct {
+	target     copyTarget
+	generation uint64
+}
 
 // actionBarButton stores hit region info for an action bar button
 type actionBarButton struct {

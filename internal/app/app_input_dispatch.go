@@ -59,10 +59,6 @@ func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 	case messages.Error:
 		a.err = msg.Err
 		logging.Error("Error in %s: %v", msg.Context, msg.Err)
-	case messages.ActionBarCopyDir:
-		if cmd := a.handleActionBarCopyDir(msg); cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
 	case messages.ActionBarOpenIDE:
 		if cmd := a.handleActionBarOpenIDE(msg); cmd != nil {
 			*cmds = append(*cmds, cmd)

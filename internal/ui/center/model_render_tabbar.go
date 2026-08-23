@@ -241,6 +241,7 @@ func (m *Model) renderTabBar() string {
 			segments = append(segments, " ")
 			x += badgeGap
 		}
+		m.addHit(tabHitSessionID, -1, x, badgeWidth)
 		segments = append(segments, badge)
 		x += badgeWidth
 	}
@@ -274,15 +275,17 @@ func (m *Model) sessionIDBadge(avail int) string {
 	if id == "" {
 		return ""
 	}
-
+	var width int
 	switch {
-	case avail >= len(id):
-	case avail >= shortSessionIDLen && len(id) > shortSessionIDLen:
+	case avail >= max(len(id), copyBadgeMinWidth):
+		width = max(len(id), copyBadgeMinWidth)
+	case avail >= max(shortSessionIDLen, copyBadgeMinWidth) && len(id) > shortSessionIDLen:
 		id = id[:shortSessionIDLen]
+		width = max(shortSessionIDLen, copyBadgeMinWidth)
 	default:
 		return ""
 	}
-	return m.styles.Muted.Render(id)
+	return m.styles.Muted.Render(m.copyLabel(copyTargetSessionID, id, width))
 }
 
 // shortSessionIDLen is how much of a session id the badge keeps when the full
@@ -393,6 +396,19 @@ func (m *Model) dispatchTabHit(localX int) tea.Cmd {
 			return func() tea.Msg {
 				return messages.ShowSetWorkspaceNoteDialog{Workspace: ws}
 			}
+		case tabHitSessionID:
+			tabs := m.getTabs()
+			idx := m.getActiveTabIdx()
+			if idx < 0 || idx >= len(tabs) || tabs[idx] == nil {
+				return nil
+			}
+			tabs[idx].mu.Lock()
+			id := tabs[idx].ClaudeSessionID
+			tabs[idx].mu.Unlock()
+			if id == "" {
+				return nil
+			}
+			return m.copyWithFeedback(copyTargetSessionID, id)
 		case tabHitPlus:
 			if m.workspace != nil && m.workspace.Archived() {
 				ws := m.workspace

@@ -334,17 +334,6 @@ func (a *App) handleShowCommitDialog(msg messages.ShowCommitDialog) {
 	a.dialog.Show()
 }
 
-// handleActionBarCopyDir copies the workspace directory to clipboard.
-func (a *App) handleActionBarCopyDir(msg messages.ActionBarCopyDir) tea.Cmd {
-	root := msg.WorkspaceRoot
-	return func() tea.Msg {
-		if err := common.CopyToClipboard(root); err != nil {
-			return messages.Toast{Message: "Failed to copy to clipboard: " + err.Error(), Level: messages.ToastError}
-		}
-		return messages.Toast{Message: "Copied directory to clipboard", Level: messages.ToastSuccess}
-	}
-}
-
 // handleActionBarOpenIDE detects IDE installs off the UI thread, then opens the
 // picker (or toasts if none are found).
 func (a *App) handleActionBarOpenIDE(msg messages.ActionBarOpenIDE) tea.Cmd {
