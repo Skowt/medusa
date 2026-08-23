@@ -61,6 +61,26 @@ func DefaultCell() Cell {
 	return Cell{Rune: ' ', Width: 1}
 }
 
+// eraseCell returns the blank produced by terminal erase operations. Terminals
+// apply the current background color when erasing (BCE), while resetting the
+// character and the other rendition attributes.
+func (v *VTerm) eraseCell() Cell {
+	return Cell{
+		Rune:  ' ',
+		Width: 1,
+		Style: Style{Bg: v.CurrentStyle.Bg},
+	}
+}
+
+func (v *VTerm) makeErasedLine() []Cell {
+	line := make([]Cell, v.Width)
+	cell := v.eraseCell()
+	for i := range line {
+		line[i] = cell
+	}
+	return line
+}
+
 // MakeBlankLine creates a blank line
 func MakeBlankLine(width int) []Cell {
 	line := make([]Cell, width)

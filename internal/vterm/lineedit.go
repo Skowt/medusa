@@ -115,7 +115,7 @@ func (v *VTerm) eraseChars(n int) {
 
 	for i := v.CursorX; i < v.CursorX+n && i < v.Width; i++ {
 		if i < len(line) {
-			line[i] = DefaultCell()
+			line[i] = v.eraseCell()
 		}
 	}
 	normalizeLine(line)

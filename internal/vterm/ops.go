@@ -159,14 +159,14 @@ func (v *VTerm) eraseDisplay(mode int) {
 		if v.CursorY < len(v.Screen) {
 			for x := v.CursorX; x < v.Width; x++ {
 				if x < len(v.Screen[v.CursorY]) {
-					v.Screen[v.CursorY][x] = DefaultCell()
+					v.Screen[v.CursorY][x] = v.eraseCell()
 				}
 			}
 		}
 		// Clear all lines below
 		for y := v.CursorY + 1; y < v.Height; y++ {
 			if y < len(v.Screen) {
-				v.Screen[y] = MakeBlankLine(v.Width)
+				v.Screen[y] = v.makeErasedLine()
 			}
 		}
 		v.markDirtyRange(v.CursorY, v.Height-1)
@@ -174,14 +174,14 @@ func (v *VTerm) eraseDisplay(mode int) {
 		// Clear all lines above
 		for y := 0; y < v.CursorY; y++ {
 			if y < len(v.Screen) {
-				v.Screen[y] = MakeBlankLine(v.Width)
+				v.Screen[y] = v.makeErasedLine()
 			}
 		}
 		// Clear from start of line to cursor
 		if v.CursorY < len(v.Screen) {
 			for x := 0; x <= v.CursorX && x < v.Width; x++ {
 				if x < len(v.Screen[v.CursorY]) {
-					v.Screen[v.CursorY][x] = DefaultCell()
+					v.Screen[v.CursorY][x] = v.eraseCell()
 				}
 			}
 		}
@@ -189,7 +189,7 @@ func (v *VTerm) eraseDisplay(mode int) {
 	case 2, 3: // Entire display (3 also clears scrollback)
 		for y := 0; y < v.Height; y++ {
 			if y < len(v.Screen) {
-				v.Screen[y] = MakeBlankLine(v.Width)
+				v.Screen[y] = v.makeErasedLine()
 			}
 		}
 		if mode == 3 {
@@ -209,17 +209,17 @@ func (v *VTerm) eraseLine(mode int) {
 	case 0: // Cursor to end
 		for x := v.CursorX; x < v.Width; x++ {
 			if x < len(v.Screen[v.CursorY]) {
-				v.Screen[v.CursorY][x] = DefaultCell()
+				v.Screen[v.CursorY][x] = v.eraseCell()
 			}
 		}
 	case 1: // Start to cursor
 		for x := 0; x <= v.CursorX && x < v.Width; x++ {
 			if x < len(v.Screen[v.CursorY]) {
-				v.Screen[v.CursorY][x] = DefaultCell()
+				v.Screen[v.CursorY][x] = v.eraseCell()
 			}
 		}
 	case 2: // Entire line
-		v.Screen[v.CursorY] = MakeBlankLine(v.Width)
+		v.Screen[v.CursorY] = v.makeErasedLine()
 	}
 	v.markDirtyLine(v.CursorY)
 }
