@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/ui/compositor"
 )
@@ -41,8 +42,8 @@ func (m *Model) HasActiveAgents() bool {
 	return false
 }
 
-// IsTabActive returns whether a specific tab has emitted output recently.
-// This is used for the tab bar spinner animation (shows activity, not just running state).
+// IsTabActive reports hook-confirmed processing activity. PTY bytes are not a
+// lifecycle signal: tmux repaint traffic can be emitted for unrelated tabs.
 func (m *Model) IsTabActive(tab *Tab) bool {
 	if tab == nil {
 		return false
@@ -53,16 +54,10 @@ func (m *Model) IsTabActive(tab *Tab) bool {
 	if !m.isChatTab(tab) {
 		return false
 	}
-	// Check Running state and output state together to avoid race condition
-	// Note: These fields are accessed from the main update goroutine
 	if tab.Detached || !tab.Running {
 		return false
 	}
-	// Check buffered output or recent output timestamp
-	if tab.flushScheduled || len(tab.pendingOutput) > 0 {
-		return true
-	}
-	return !tab.lastOutputAt.IsZero() && time.Since(tab.lastOutputAt) < 2*time.Second
+	return hooks.IsActiveEvent(hooks.EventType(tab.HookState))
 }
 
 // HasActiveAgentsInWorkspace returns whether any tab in a workspace is actively outputting.
@@ -70,6 +65,19 @@ func (m *Model) HasActiveAgentsInWorkspace(wsID string) bool {
 	for _, tab := range m.tabsByWorkspace[wsID] {
 		if m.IsTabActive(tab) {
 			return true
+		}
+	}
+	return false
+}
+
+// HasRecentPTYOutput reports transport activity for stale-hook reconciliation
+// only. It deliberately does not drive tab or workspace UI state.
+func (m *Model) HasRecentPTYOutput(sessionName string, within time.Duration) bool {
+	for _, tabs := range m.tabsByWorkspace {
+		for _, tab := range tabs {
+			if tab != nil && tab.SessionName == sessionName && !tab.lastOutputAt.IsZero() && time.Since(tab.lastOutputAt) < within {
+				return true
+			}
 		}
 	}
 	return false

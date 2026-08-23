@@ -47,6 +47,29 @@ func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 			}
 		}
 	}
+	// The center model is authoritative for newly-created tabs. Persistence is
+	// debounced, so ws.OpenTabs can lag behind the first lifecycle hook.
+	if a.center != nil {
+		for _, ws := range a.allWorkspaces {
+			wsID := string(ws.ID())
+			tabs, _ := a.center.GetTabsInfoForWorkspace(wsID)
+			for _, tab := range tabs {
+				name := strings.TrimSpace(tab.SessionName)
+				if name == "" {
+					continue
+				}
+				status := strings.ToLower(strings.TrimSpace(tab.Status))
+				if status == "" {
+					status = "running"
+				}
+				assistant := strings.TrimSpace(tab.Assistant)
+				_, isChat := assistants[assistant]
+				infoBySession[name] = tabSessionInfo{
+					Status: status, WorkspaceID: wsID, Assistant: assistant, IsChat: isChat,
+				}
+			}
+		}
+	}
 	return infoBySession
 }
 

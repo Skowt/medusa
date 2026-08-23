@@ -291,7 +291,7 @@ func (m *Model) HandleMonitorInput(tabID TabID, msg tea.Msg) tea.Cmd {
 		// layer can clear the activity spinner.
 		if isInterruptInput(input) {
 			return func() tea.Msg {
-				return messages.AgentInterrupted{WorkspaceID: wtID}
+				return messages.AgentInterrupted{WorkspaceID: wtID, SessionName: tab.SessionName}
 			}
 		}
 	}

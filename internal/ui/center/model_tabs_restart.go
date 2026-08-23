@@ -109,7 +109,7 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	// activity spinner has to go: Claude Code's Stop hook never fires for the
 	// killed turn, and nothing else would clear it.
 	clearActivity := func() tea.Msg {
-		return messages.AgentInterrupted{WorkspaceID: wsID}
+		return messages.AgentInterrupted{WorkspaceID: wsID, SessionName: sessionName}
 	}
 
 	restart := func() tea.Msg {

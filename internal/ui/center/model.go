@@ -62,6 +62,8 @@ type Tab struct {
 	pendingOutput     []byte
 	flushScheduled    bool
 	lastOutputAt      time.Time
+	HookState         string
+	Unread            bool
 	flushPendingSince time.Time
 	ptyRows           int
 	ptyCols           int

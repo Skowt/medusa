@@ -3,6 +3,7 @@ package center
 import (
 	"charm.land/lipgloss/v2"
 
+	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -39,7 +40,6 @@ func (m *Model) renderAgentTab(i int, tab *Tab, activeIdx int) string {
 	tab.mu.Unlock()
 
 	var indicator string
-	var tabActive bool
 	isChat := m.isChatTab(tab)
 	isScript := tab.Assistant == "script"
 	if isChat || isScript {
@@ -47,9 +47,6 @@ func (m *Model) renderAgentTab(i int, tab *Tab, activeIdx int) string {
 			indicator = common.Icons.Idle + " "
 		} else {
 			indicator = common.Icons.Running + " "
-		}
-		if isChat {
-			tabActive = m.IsTabActive(tab)
 		}
 	}
 
@@ -63,10 +60,21 @@ func (m *Model) renderAgentTab(i int, tab *Tab, activeIdx int) string {
 		agentStyle = m.styles.AgentTerm
 	}
 
+	indicatorFg := agentStyle.GetForeground()
+	switch {
+	case hooks.IsActiveEvent(hooks.EventType(tab.HookState)):
+		indicator = common.SpinnerFrame(m.spinnerFrame) + " "
+		indicatorFg = common.ColorSuccess
+	case tab.HookState == string(hooks.EventNotificationElicitation):
+		indicator = "! "
+		indicatorFg = common.ColorWarning
+	case tab.Unread:
+		indicatorFg = common.ColorWarning
+	}
+
 	if i == activeIdx {
 		bg := common.ColorSurface2
 		pad := lipgloss.NewStyle().Background(bg).Render(" ")
-		indicatorFg := agentStyle.GetForeground()
 		if tabDisconnected {
 			indicatorFg = common.ColorMuted
 		}
@@ -85,8 +93,8 @@ func (m *Model) renderAgentTab(i int, tab *Tab, activeIdx int) string {
 	switch {
 	case tabDisconnected:
 		nameStyled = m.styles.Muted.Render(name)
-	case tabActive:
-		nameStyled = lipgloss.NewStyle().Foreground(common.ColorPrimary).Bold(true).Render(name)
+	case tab.Unread:
+		nameStyled = lipgloss.NewStyle().Foreground(common.ColorWarning).Bold(true).Render(name)
 	default:
 		nameStyled = m.styles.Muted.Render(name)
 	}
@@ -95,7 +103,7 @@ func (m *Model) renderAgentTab(i int, tab *Tab, activeIdx int) string {
 	if tabDisconnected {
 		indicatorStyled = m.styles.Muted.Render(indicator)
 	} else {
-		indicatorStyled = agentStyle.Render(indicator)
+		indicatorStyled = lipgloss.NewStyle().Foreground(indicatorFg).Render(indicator)
 	}
 
 	closeLabel := m.styles.Muted.Render("×")

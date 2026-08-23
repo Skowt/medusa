@@ -76,9 +76,10 @@ func (a *App) initHooksServer() {
 // handleHookActivityEvent processes a hook activity event, resolves the session
 // name to a workspace ID via tabSessionInfoByName, and updates hookWorkspaceStates.
 func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
-	// Resolve session name → workspace ID
+	// Resolve session name → workspace and tab identity.
 	wsID := ""
-	if info, ok := a.tabSessionInfoByName()[msg.SessionName]; ok {
+	infoBySession := a.tabSessionInfoByName()
+	if info, ok := infoBySession[msg.SessionName]; ok {
 		wsID = info.WorkspaceID
 	}
 	if wsID == "" {
@@ -96,13 +97,19 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	// goroutines (internal/hooks/server.go), so a turn's terminal Stop can be
 	// enqueued before a trailing tool event from the same turn; applying that
 	// stale active event revives the spinner with nothing left to clear it.
-	if !a.shouldApplyHookEvent(wsID, msg.Event, msg.Timestamp) {
+	if !shouldApplyHookEventFor(a.hookTabLastStamp, msg.SessionName, msg.Event, msg.Timestamp) {
 		return nil
 	}
 
-	transition := a.applyHookStateTransition(wsID, msg)
-	_, busyAfter := a.hookWorkspaceStates[wsID]
-	a.recordHookEvent(wsID, msg.Timestamp, isClearHookEvent(msg.Event) && !busyAfter)
+	transition := applyHookTransition(a.hookTabStates, a.hookTabOutstanding, msg.SessionName, msg)
+	_, busyAfter := a.hookTabStates[msg.SessionName]
+	recordHookEventFor(a.hookTabLastStamp, msg.SessionName, msg.Timestamp, isClearHookEvent(msg.Event) && !busyAfter)
+	a.recomputeWorkspaceHookState(wsID, infoBySession)
+	state := ""
+	if evt, ok := a.hookTabStates[msg.SessionName]; ok {
+		state = string(evt)
+	}
+	a.center.SetTabHookState(wsID, msg.SessionName, state, transition == hookTransitionReady)
 
 	var cmds []tea.Cmd
 	if transition != hookTransitionNone {
@@ -163,12 +170,16 @@ func (a *App) handleSessionStart(wsID string, msg hookActivityEvent) []tea.Cmd {
 // for a workspace. OutstandingUnknown (legacy shell hooks) leaves the previous
 // knowledge untouched; zero deletes the entry to keep the map from growing.
 func (a *App) setHookOutstanding(wsID string, outstanding int) {
+	setHookOutstandingFor(a.hookOutstanding, wsID, outstanding)
+}
+
+func setHookOutstandingFor(outstandingByKey map[string]int, key string, outstanding int) {
 	switch {
 	case outstanding < 0:
 	case outstanding == 0:
-		delete(a.hookOutstanding, wsID)
+		delete(outstandingByKey, key)
 	default:
-		a.hookOutstanding[wsID] = outstanding
+		outstandingByKey[key] = outstanding
 	}
 }
 
@@ -207,16 +218,20 @@ func isNeedsInputState(evt hooks.EventType) bool {
 // #59719, #70151), and any rule that lets SubagentStop set a state creates a
 // busy value with nothing left to clear it.
 func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookTransition {
-	prev, hadPrev := a.hookWorkspaceStates[wsID]
+	return applyHookTransition(a.hookWorkspaceStates, a.hookOutstanding, wsID, msg)
+}
+
+func applyHookTransition(states map[string]hooks.EventType, outstanding map[string]int, key string, msg hookActivityEvent) hookTransition {
+	prev, hadPrev := states[key]
 	evt := msg.Event
 	switch {
 	case evt == hooks.EventStop || evt == hooks.EventStopFailure:
-		a.setHookOutstanding(wsID, msg.Outstanding)
+		setHookOutstandingFor(outstanding, key, msg.Outstanding)
 		if msg.Outstanding > 0 {
-			a.hookWorkspaceStates[wsID] = hooks.EventSubagentWait
+			states[key] = hooks.EventSubagentWait
 			return hookTransitionNone
 		}
-		delete(a.hookWorkspaceStates, wsID)
+		delete(states, key)
 		// Ping only when leaving a busy state: after needs-input the user was
 		// already pinged, and with no state at all there is nothing to report.
 		if hadPrev && !isNeedsInputState(prev) {
@@ -228,7 +243,7 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 		// Inert for the state; only its outstanding count is trusted (it is
 		// authoritative and assignment-only, so a phantom SubagentStop's own
 		// payload still describes the session truthfully).
-		a.setHookOutstanding(wsID, msg.Outstanding)
+		setHookOutstandingFor(outstanding, key, msg.Outstanding)
 		return hookTransitionNone
 
 	case evt == hooks.EventNotificationIdle:
@@ -242,11 +257,11 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 		if hadPrev && isNeedsInputState(prev) {
 			return hookTransitionNone
 		}
-		if a.hookOutstanding[wsID] > 0 {
-			a.hookWorkspaceStates[wsID] = hooks.EventSubagentWait
+		if outstanding[key] > 0 {
+			states[key] = hooks.EventSubagentWait
 			return hookTransitionNone
 		}
-		delete(a.hookWorkspaceStates, wsID)
+		delete(states, key)
 		if hadPrev {
 			return hookTransitionReady
 		}
@@ -260,7 +275,7 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 		if evt == hooks.EventPreToolUse {
 			state = hooks.EventNotificationElicitation
 		}
-		a.hookWorkspaceStates[wsID] = state
+		states[key] = state
 		if hadPrev && isNeedsInputState(prev) {
 			return hookTransitionNone // already waiting; one ping is enough
 		}
@@ -268,7 +283,7 @@ func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookT
 
 	default:
 		// Tool activity, prompt submission, subagent start: busy.
-		a.hookWorkspaceStates[wsID] = evt
+		states[key] = evt
 		return hookTransitionNone
 	}
 }
@@ -316,7 +331,11 @@ func isClearHookEvent(evt hooks.EventType) bool {
 // started at the very same timestamp an agent stopped may drop its first
 // active event — the next tool event restarts the spinner.
 func (a *App) shouldApplyHookEvent(wsID string, evt hooks.EventType, ts time.Time) bool {
-	prev, seen := a.hookLastStamp[wsID]
+	return shouldApplyHookEventFor(a.hookLastStamp, wsID, evt, ts)
+}
+
+func shouldApplyHookEventFor(stamps map[string]hookEventStamp, key string, evt hooks.EventType, ts time.Time) bool {
+	prev, seen := stamps[key]
 	if !seen {
 		return true
 	}
@@ -333,7 +352,43 @@ func (a *App) shouldApplyHookEvent(wsID string, evt hooks.EventType, ts time.Tim
 // records whether the event actually left the workspace cleared (a Stop with
 // outstanding background work is clear-kind but leaves the workspace busy).
 func (a *App) recordHookEvent(wsID string, ts time.Time, cleared bool) {
-	a.hookLastStamp[wsID] = hookEventStamp{at: ts, clear: cleared}
+	recordHookEventFor(a.hookLastStamp, wsID, ts, cleared)
+}
+
+func recordHookEventFor(stamps map[string]hookEventStamp, key string, ts time.Time, cleared bool) {
+	stamps[key] = hookEventStamp{at: ts, clear: cleared}
+}
+
+// recomputeWorkspaceHookState derives the dashboard state from every agent tab
+// in the workspace. A blocked tab wins over a processing tab; processing wins
+// over idle. This prevents one tab's Stop event from clearing another tab.
+func (a *App) recomputeWorkspaceHookState(wsID string, infoBySession map[string]tabSessionInfo) {
+	var active hooks.EventType
+	var latest hookEventStamp
+	for sessionName, evt := range a.hookTabStates {
+		info, ok := infoBySession[sessionName]
+		if !ok || info.WorkspaceID != wsID {
+			continue
+		}
+		if stamp, ok := a.hookTabLastStamp[sessionName]; ok && stamp.at.After(latest.at) {
+			latest = stamp
+		}
+		if isNeedsInputState(evt) {
+			a.hookWorkspaceStates[wsID] = hooks.EventNotificationElicitation
+			a.hookLastStamp[wsID] = latest
+			return
+		}
+		if active == "" && hooks.IsActiveEvent(evt) {
+			active = evt
+		}
+	}
+	if active != "" {
+		a.hookWorkspaceStates[wsID] = active
+		a.hookLastStamp[wsID] = latest
+		return
+	}
+	delete(a.hookWorkspaceStates, wsID)
+	delete(a.hookLastStamp, wsID)
 }
 
 // persistHookState updates the workspace's HookState field and triggers a debounced save.
@@ -350,14 +405,29 @@ func (a *App) persistHookState(wsID string) tea.Cmd {
 	return a.persistWorkspaceTabs(wsID)
 }
 
-// restoreHookStatesFromWorkspaces populates hookWorkspaceStates from persisted
-// workspace HookState fields so that indicators (like '!') survive app restarts.
+// restoreHookStatesFromWorkspaces restores each tab independently, then derives
+// the workspace indicator using the same precedence as live hook events.
 func (a *App) restoreHookStatesFromWorkspaces() {
 	for _, ws := range a.allWorkspaces {
-		if ws.ActivityState == "" {
-			continue
+		wsID := string(ws.ID())
+		foundTabState := false
+		for _, tab := range ws.OpenTabs {
+			if tab.SessionName == "" || tab.ActivityState == "" {
+				continue
+			}
+			foundTabState = true
+			evt := hooks.EventType(tab.ActivityState)
+			a.hookTabStates[tab.SessionName] = evt
+			if evt == hooks.EventSubagentWait {
+				a.hookTabOutstanding[tab.SessionName] = 1
+			}
 		}
-		a.hookWorkspaceStates[string(ws.ID())] = hooks.EventType(ws.ActivityState)
+		if foundTabState {
+			a.recomputeWorkspaceHookState(wsID, a.tabSessionInfoByName())
+		} else if ws.ActivityState != "" {
+			// Read older workspace files which predate per-tab activity.
+			a.hookWorkspaceStates[wsID] = hooks.EventType(ws.ActivityState)
+		}
 	}
 	a.restoreHookOutstanding()
 }
@@ -367,12 +437,29 @@ func (a *App) restoreHookStatesFromWorkspaces() {
 // hook does not fire on user interrupts, and a restart does not resume the turn
 // that was running, so the spinner would otherwise keep running indefinitely.
 // The clear is silent: the user caused it and is looking at the workspace.
-func (a *App) handleAgentInterrupted(wsID string) []tea.Cmd {
-	delete(a.hookOutstanding, wsID)
-	if _, ok := a.hookWorkspaceStates[wsID]; !ok {
-		return nil
+func (a *App) handleAgentInterrupted(wsID string, sessions ...string) []tea.Cmd {
+	sessionName := ""
+	if len(sessions) > 0 {
+		sessionName = sessions[0]
 	}
-	delete(a.hookWorkspaceStates, wsID)
+	if sessionName != "" {
+		delete(a.hookTabOutstanding, sessionName)
+		delete(a.hookTabStates, sessionName)
+		delete(a.hookTabLastStamp, sessionName)
+		a.center.SetTabHookState(wsID, sessionName, "", false)
+		a.recomputeWorkspaceHookState(wsID, a.tabSessionInfoByName())
+	} else {
+		// Compatibility for callers without a session identity.
+		for session, info := range a.tabSessionInfoByName() {
+			if info.WorkspaceID == wsID {
+				delete(a.hookTabOutstanding, session)
+				delete(a.hookTabStates, session)
+				delete(a.hookTabLastStamp, session)
+			}
+		}
+		delete(a.hookWorkspaceStates, wsID)
+	}
+	delete(a.hookOutstanding, wsID)
 	var cmds []tea.Cmd
 	if cmd := a.persistHookState(wsID); cmd != nil {
 		cmds = append(cmds, cmd)

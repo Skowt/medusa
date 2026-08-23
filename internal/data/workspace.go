@@ -72,6 +72,7 @@ type TabInfo struct {
 	Name                     string `json:"name"`
 	SessionName              string `json:"session_name,omitempty"`
 	Status                   string `json:"status,omitempty"`
+	ActivityState            string `json:"activity_state,omitempty"`
 	ClaudeSessionID          string `json:"claude_session_id,omitempty"`
 	Isolated                 bool   `json:"isolated,omitempty"`
 	AllowUnsandboxedCommands bool   `json:"allow_unsandboxed_commands,omitempty"`

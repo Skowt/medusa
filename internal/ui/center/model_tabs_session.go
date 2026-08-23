@@ -404,6 +404,7 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		Assistant:                info.Assistant,
 		Workspace:                ws,
 		SessionName:              info.SessionName,
+		HookState:                info.ActivityState,
 		ClaudeSessionID:          info.ClaudeSessionID,
 		Detached:                 detached,
 		Running:                  false,

@@ -48,7 +48,7 @@ func (a *App) routePTYMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 	case center.TabInputFailed:
 		*cmds = append(*cmds, a.handleTabInputFailed(msg)...)
 	case messages.AgentInterrupted:
-		*cmds = append(*cmds, a.handleAgentInterrupted(msg.WorkspaceID)...)
+		*cmds = append(*cmds, a.handleAgentInterrupted(msg.WorkspaceID, msg.SessionName)...)
 	case messages.Toast:
 		switch msg.Level {
 		case messages.ToastSuccess:

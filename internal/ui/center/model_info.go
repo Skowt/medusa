@@ -37,6 +37,16 @@ func (m *Model) SetWorkspace(ws *data.Workspace) {
 	m.infoTabActive = false
 	m.tabScrollOffset = 0
 	m.lastRenderedActiveID = ""
+	// The workspace opens directly onto its remembered agent tab. That tab is
+	// visible immediately, so acknowledge any completion that happened while
+	// another workspace was selected just as an explicit tab selection would.
+	if ws != nil {
+		tabs := m.getTabs()
+		idx := m.getActiveTabIdx()
+		if idx >= 0 && idx < len(tabs) && tabs[idx] != nil {
+			tabs[idx].Unread = false
+		}
+	}
 	// Activating a workspace shows the info bar, which shrinks the terminal
 	// paint height. Reconcile tab sizes so a tab sized under the previous
 	// (info-bar-absent) state isn't painted — and clipped — at the new height.

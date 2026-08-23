@@ -194,6 +194,12 @@ type App struct {
 	// goes quiet even while background agents work, so idle must not read as
 	// "done" while this is non-zero. See applyHookStateTransition.
 	hookOutstanding map[string]int
+	// Hook lifecycle is tracked per tmux session so multiple agent tabs in one
+	// workspace cannot clear or overwrite each other's state. Workspace state
+	// is derived from these maps for dashboard rendering and persistence.
+	hookTabStates      map[string]hooks.EventType
+	hookTabLastStamp   map[string]hookEventStamp
+	hookTabOutstanding map[string]int
 
 	// Auto-start agent
 	pendingAutoLaunch  string // workspace root for post-creation auto-launch
@@ -374,6 +380,9 @@ func New(version, commit, date string) (*App, error) {
 		hookWorkspaceStates: make(map[string]hooks.EventType),
 		hookLastStamp:       make(map[string]hookEventStamp),
 		hookOutstanding:     make(map[string]int),
+		hookTabStates:       make(map[string]hooks.EventType),
+		hookTabLastStamp:    make(map[string]hookEventStamp),
+		hookTabOutstanding:  make(map[string]int),
 		dirtyWorkspaces:     make(map[string]bool),
 	}
 	app.supervisor = supervisor.New(ctx)

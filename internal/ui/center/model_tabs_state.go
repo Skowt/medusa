@@ -163,6 +163,26 @@ func (m *Model) getActiveTabIdx() int {
 // setActiveTabIdx sets the active tab index for the current workspace
 func (m *Model) setActiveTabIdx(idx int) {
 	m.activeTabByWorkspace[m.workspaceID()] = idx
+	tabs := m.getTabs()
+	if idx >= 0 && idx < len(tabs) && tabs[idx] != nil {
+		tabs[idx].Unread = false
+	}
+}
+
+// SetTabHookState applies lifecycle state reported by the hook belonging to a
+// tmux session. completed marks a transition from work to ready; hidden tabs
+// retain that as unread until selected.
+func (m *Model) SetTabHookState(wsID, sessionName, state string, completed bool) {
+	for _, tab := range m.tabsByWorkspace[m.resolveWSID(wsID)] {
+		if tab == nil || tab.SessionName != sessionName {
+			continue
+		}
+		tab.HookState = state
+		if completed && !m.isActiveTab(wsID, tab.ID) {
+			tab.Unread = true
+		}
+		return
+	}
 }
 
 func (m *Model) noteTabsChanged() {
@@ -170,7 +190,7 @@ func (m *Model) noteTabsChanged() {
 }
 
 func (m *Model) isActiveTab(wsID string, tabID TabID) bool {
-	if m.workspace == nil || m.resolveWSID(wsID) != m.workspaceID() {
+	if m.workspace == nil || m.infoTabActive || m.resolveWSID(wsID) != m.workspaceID() {
 		return false
 	}
 	tabs := m.getTabs()

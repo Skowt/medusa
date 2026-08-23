@@ -37,6 +37,36 @@ func stamp(n int) time.Time {
 	return time.Unix(1_700_000_000, 0).Add(time.Duration(n) * time.Second)
 }
 
+func TestWorkspaceHookStateAggregatesTabPriority(t *testing.T) {
+	a := newHookTestApp()
+	a.hookTabStates = map[string]hooks.EventType{
+		"session-a": hooks.EventPreToolUse,
+		"session-b": hooks.EventNotificationElicitation,
+	}
+	a.hookTabLastStamp = map[string]hookEventStamp{}
+	info := map[string]tabSessionInfo{
+		"session-a": {WorkspaceID: "ws"},
+		"session-b": {WorkspaceID: "ws"},
+	}
+
+	a.recomputeWorkspaceHookState("ws", info)
+	if got := a.hookWorkspaceStates["ws"]; got != hooks.EventNotificationElicitation {
+		t.Fatalf("needs-input must win over processing, got %q", got)
+	}
+
+	delete(a.hookTabStates, "session-b")
+	a.recomputeWorkspaceHookState("ws", info)
+	if got := a.hookWorkspaceStates["ws"]; got != hooks.EventPreToolUse {
+		t.Fatalf("processing tab must keep workspace active, got %q", got)
+	}
+
+	delete(a.hookTabStates, "session-a")
+	a.recomputeWorkspaceHookState("ws", info)
+	if _, ok := a.hookWorkspaceStates["ws"]; ok {
+		t.Fatal("workspace remained active after every tab became idle")
+	}
+}
+
 // TestHookActiveIDs verifies which stored states count as busy. SubagentStop
 // is never stored anymore, but a value persisted by an older Medusa version
 // must not resurrect as a permanently-busy state after restart.

@@ -364,7 +364,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				// so the app layer can clear the activity spinner.
 				if isInterruptInput(input) {
 					return m, func() tea.Msg {
-						return messages.AgentInterrupted{WorkspaceID: m.workspaceID()}
+						return messages.AgentInterrupted{WorkspaceID: m.workspaceID(), SessionName: tab.SessionName}
 					}
 				}
 				return m, nil

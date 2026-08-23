@@ -480,6 +480,7 @@ type OpenFileInVim struct {
 // restart — signaling that the agent's activity spinner should be cleared.
 type AgentInterrupted struct {
 	WorkspaceID string
+	SessionName string
 }
 
 // WorkspaceFetchDone is sent after remote bases have been fetched for workspace creation.

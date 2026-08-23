@@ -27,6 +27,9 @@ const staleBusyTimeout = 3 * time.Minute
 // The degrade is silent by design — a staleness guess must fix the spinner,
 // never fire a sound.
 func (a *App) staleBusyWorkspaces() []string {
+	if len(a.hookTabStates) > 0 {
+		return a.staleBusyTabs()
+	}
 	var cleared []string
 	for wsID, evt := range a.hookWorkspaceStates {
 		if !hooks.IsActiveEvent(evt) {
@@ -47,6 +50,44 @@ func (a *App) staleBusyWorkspaces() []string {
 		// Drop the background-work knowledge with the state: a dead session
 		// must not leave a stale count that swallows a future idle rescue.
 		delete(a.hookOutstanding, wsID)
+		cleared = append(cleared, wsID)
+	}
+	return cleared
+}
+
+func (a *App) staleBusyTabs() []string {
+	infoBySession := a.tabSessionInfoByName()
+	affected := make(map[string]bool)
+	now := time.Now()
+	for sessionName, evt := range a.hookTabStates {
+		if !hooks.IsActiveEvent(evt) {
+			continue
+		}
+		stamp, ok := a.hookTabLastStamp[sessionName]
+		if !ok {
+			a.hookTabLastStamp[sessionName] = hookEventStamp{at: now}
+			continue
+		}
+		if now.Sub(stamp.at) < staleBusyTimeout {
+			continue
+		}
+		if a.center != nil && a.center.HasRecentPTYOutput(sessionName, staleBusyTimeout) {
+			continue
+		}
+		info, ok := infoBySession[sessionName]
+		if ok {
+			affected[info.WorkspaceID] = true
+			if a.center != nil {
+				a.center.SetTabHookState(info.WorkspaceID, sessionName, "", false)
+			}
+		}
+		delete(a.hookTabStates, sessionName)
+		delete(a.hookTabOutstanding, sessionName)
+		delete(a.hookTabLastStamp, sessionName)
+	}
+	cleared := make([]string, 0, len(affected))
+	for wsID := range affected {
+		a.recomputeWorkspaceHookState(wsID, infoBySession)
 		cleared = append(cleared, wsID)
 	}
 	return cleared
