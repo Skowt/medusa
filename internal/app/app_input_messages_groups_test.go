@@ -171,3 +171,42 @@ func TestActiveGroupLabels_SkipsArchivedAndOrphaned(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleWorkspaceFetchDoneExpandsTargetGroup(t *testing.T) {
+	a := newAppForGroupTests(t)
+	a.config.Paths.WorkspacesRoot = t.TempDir()
+	a.config.UI.CollapsedGroups["shipping"] = true
+	a.config.UI.CollapsedGroups["other"] = true
+	a.dashboard.SetCollapsedGroups(a.config.UI.CollapsedGroups)
+
+	_ = a.handleWorkspaceFetchDone(messages.WorkspaceFetchDone{
+		Name:  "new-ws",
+		Repos: []data.RepoRef{{Name: "repo", Path: t.TempDir()}},
+		Bases: []string{"main"},
+		Group: "shipping",
+	})
+
+	if a.config.UI.CollapsedGroups["shipping"] {
+		t.Errorf("target group still collapsed")
+	}
+	if !a.config.UI.CollapsedGroups["other"] {
+		t.Errorf("unrelated group was expanded")
+	}
+}
+
+func TestHandleWorkspaceFetchDoneExpandsUngrouped(t *testing.T) {
+	a := newAppForGroupTests(t)
+	a.config.Paths.WorkspacesRoot = t.TempDir()
+	a.config.UI.CollapsedGroups[""] = true
+	a.dashboard.SetCollapsedGroups(a.config.UI.CollapsedGroups)
+
+	_ = a.handleWorkspaceFetchDone(messages.WorkspaceFetchDone{
+		Name:  "new-ws",
+		Repos: []data.RepoRef{{Name: "repo", Path: t.TempDir()}},
+		Bases: []string{"main"},
+	})
+
+	if a.config.UI.CollapsedGroups[""] {
+		t.Errorf("Ungrouped still collapsed")
+	}
+}

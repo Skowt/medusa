@@ -24,6 +24,11 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 	if a.creationOverlay != nil {
 		a.creationOverlay.AdvanceStep()
 	}
+	// Open the target group first: a collapsed group hides its members, so both
+	// the placeholder below and the finished workspace would be invisible.
+	if cmd := a.expandGroup(msg.Group); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	// Show the "creating" indicator in the dashboard
 	if pending := pendingWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, a.config.Paths.WorkspacesRoot); pending != nil {
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {

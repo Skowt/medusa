@@ -264,3 +264,24 @@ func (a *App) handleSetWorkspaceGroup(msg messages.SetWorkspaceGroup) tea.Cmd {
 	}
 	return nil
 }
+
+// expandGroup clears the collapsed state for label so a group that is about to
+// gain a workspace is open when the user looks at it. rebuildRows drops the
+// members of a collapsed group entirely, so a workspace created into one — and
+// its creation placeholder — would otherwise appear nowhere. No-op when the
+// group is already expanded: creation happens often and the config file is
+// rewritten in full on each save.
+func (a *App) expandGroup(label string) tea.Cmd {
+	if a.config == nil || !a.config.UI.CollapsedGroups[label] {
+		return nil
+	}
+	delete(a.config.UI.CollapsedGroups, label)
+	if a.dashboard != nil {
+		a.dashboard.SetCollapsedGroups(a.config.UI.CollapsedGroups)
+		a.dashboard.SetWorkspaces(a.allWorkspaces)
+	}
+	if err := a.config.SaveUISettings(); err != nil {
+		return a.toast.ShowWarning("Failed to save collapse state")
+	}
+	return nil
+}
