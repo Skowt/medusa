@@ -166,13 +166,9 @@ func (a *App) handleSessionStart(wsID string, msg hookActivityEvent) []tea.Cmd {
 	return nil
 }
 
-// setHookOutstanding records the latest authoritative background-task count
-// for a workspace. OutstandingUnknown (legacy shell hooks) leaves the previous
+// setHookOutstandingFor records the latest authoritative background-task count
+// for a key. OutstandingUnknown (legacy shell hooks) leaves the previous
 // knowledge untouched; zero deletes the entry to keep the map from growing.
-func (a *App) setHookOutstanding(wsID string, outstanding int) {
-	setHookOutstandingFor(a.hookOutstanding, wsID, outstanding)
-}
-
 func setHookOutstandingFor(outstandingByKey map[string]int, key string, outstanding int) {
 	switch {
 	case outstanding < 0:
