@@ -125,6 +125,14 @@ type Workspace struct {
 	Note  string `json:"note,omitempty"`
 	Group string `json:"group,omitempty"` // User-assigned group label; empty = ungrouped
 
+	// SortKey is the manual position of this workspace within its group, as set
+	// by drag-and-drop in the dashboard. Zero means "never placed by hand": the
+	// dashboard sorts keyed workspaces first, in key order, then unkeyed ones by
+	// Created, so a fresh registry orders exactly as it did before manual
+	// ordering existed and a newly created workspace lands at the bottom of its
+	// group instead of jumping to the top.
+	SortKey int `json:"sort_key,omitempty"`
+
 	// Lifecycle
 	Status        WorkspaceStatus `json:"status"`
 	StatusChanged time.Time       `json:"status_changed,omitempty"`

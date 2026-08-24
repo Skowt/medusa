@@ -53,11 +53,33 @@ func (m *Model) renderRow(row Row, selected bool) string {
 		}
 		return style.Render(" " + row.Label)
 
+	case RowNewGroup:
+		contentWidth := m.width - 3
+		if contentWidth < 1 {
+			contentWidth = 1
+		}
+		return m.renderNewGroupRow(contentWidth)
+
 	case RowSpacer:
 		return ""
 	}
 
 	return ""
+}
+
+// renderNewGroupRow renders the "New group" drop target: muted while the drag is
+// elsewhere, accented once the workspace is projected into it, so the row reads
+// as the outcome rather than as a button.
+func (m *Model) renderNewGroupRow(contentWidth int) string {
+	style := lipgloss.NewStyle().Foreground(common.ColorMuted)
+	if m.drag.placeNewGroup {
+		style = style.Foreground(common.ColorSecondary).Bold(true)
+	}
+	line := style.Render(" " + common.Icons.Add + " New group")
+	if m.drag.placeNewGroup {
+		return padWithBg(line, contentWidth, lipgloss.NewStyle())
+	}
+	return line
 }
 
 // renderWorkspaceRow renders an active workspace entry: wrapped name line(s),
@@ -101,6 +123,14 @@ func (m *Model) renderWorkspaceRow(row Row, selected bool) string {
 			m.wsButtonHits = append(m.wsButtonHits, h)
 		}
 		lines = append(lines, m.renderFooterLine())
+	}
+
+	if m.isHoveredWorkspace(ws) && len(lines) > 0 {
+		bg := lipgloss.NewStyle()
+		if selected {
+			bg = bg.Background(common.ColorSelection)
+		}
+		lines[0] = withDragHandle(lines[0], contentWidth, bg)
 	}
 
 	if selected {
@@ -213,6 +243,43 @@ func (m *Model) renderArchivedRow(ws *data.Workspace, selected bool, contentWidt
 	return line
 }
 
+// dragHandle is the grip glyph: shown at the right edge of a hovered row to
+// advertise that it can be dragged, and in place of the status indicator on the
+// row actually being carried.
+const dragHandle = "⠿"
+
+// withDragHandle right-aligns the drag handle on a row's first line. It pads to
+// width - handle first, so the handle sits flush at the right edge and the line
+// comes back exactly width wide — any later padWithBg is then a no-op and cannot
+// push the handle out of alignment.
+//
+// A line that still fills the width is clipped to make room rather than losing
+// its handle: workspace rows keep handleGutter clear so this never bites them,
+// but a long group label has no such reservation, and a handle that silently
+// disappears on the rows that need it most is worse than one truncated glyph of
+// label. Clipping goes through MaxWidth because these lines carry ANSI styling
+// that plain slicing would cut mid-sequence.
+//
+// The handle is drawn in the theme's primary color, never a Surface one. Surface
+// tokens are background tiers: Surface3 on the dark themes is #292e42 against a
+// #1a1b26 background, so the handle rendered correctly and was invisible. The
+// glyph is also sparse — six braille dots, not a solid block — which costs it
+// more perceived contrast than its nominal ratio suggests, and it has one job,
+// which is to be noticed. It only ever appears on the row under the pointer, so
+// it cannot accumulate into noise. Primary is the "this is interactive" accent;
+// the secondary accent is reserved for a drag actually in flight.
+func withDragHandle(line string, width int, bg lipgloss.Style) string {
+	handleWidth := lipgloss.Width(dragHandle)
+	if width <= handleWidth {
+		return line
+	}
+	room := width - handleWidth
+	if lipgloss.Width(line) > room {
+		line = lipgloss.NewStyle().MaxWidth(room).Render(line)
+	}
+	return padWithBg(line, room, bg) + bg.Foreground(common.ColorPrimary).Render(dragHandle)
+}
+
 // padWithBg right-pads a line to width using background-styled spaces.
 func padWithBg(line string, width int, bg lipgloss.Style) string {
 	w := lipgloss.Width(line)
@@ -256,12 +323,16 @@ func (m *Model) helpLines(contentWidth int) []string {
 			items = append(items, m.helpItem("P", "profile"))
 			items = append(items, m.helpItem("g", "group"))
 			items = append(items, m.helpItem("+", "duplicate"))
+			if ws := m.rows[m.cursor].Workspace; m.draggableWorkspace(ws) {
+				items = append(items, m.helpItem("drag", "reorder"))
+			}
 		}
 		if m.rows[m.cursor].Type == RowSectionHeader && m.rows[m.cursor].IsUserGroup {
 			items = append(items,
 				m.helpItem("enter/space", "toggle"),
 				m.helpItem("r", "rename"),
 				m.helpItem("D", "delete"),
+				m.helpItem("drag", "reorder"),
 			)
 		}
 	}
@@ -297,9 +368,28 @@ func (m *Model) renderUserGroupHeader(row Row, selected bool, contentWidth int) 
 		label = fmt.Sprintf("%s (%d)", label, row.MemberCount)
 	}
 
-	line := style.Render(" " + chevron + label)
+	// The marker takes the header's leading space rather than being prepended to
+	// it, so the label stays put and the row keeps its width.
+	key := labelToKey(row.Label)
+	marker := " "
+	if row.DragLifted {
+		// The section being carried takes the grip and an accent, and nothing
+		// else: the chevron still reports its real collapse state, because a
+		// drag must not look like — or turn into — a collapse.
+		marker = dragHandle
+		style = style.Foreground(common.ColorSecondary)
+	}
+
+	line := style.Render(marker + chevron + label)
+	bg := lipgloss.NewStyle()
 	if selected {
-		return padWithBg(line, contentWidth, lipgloss.NewStyle().Background(common.ColorSelection))
+		bg = bg.Background(common.ColorSelection)
+	}
+	if m.isHoveredGroup(key) {
+		line = withDragHandle(line, contentWidth, bg)
+	}
+	if selected {
+		return padWithBg(line, contentWidth, bg)
 	}
 	return line
 }

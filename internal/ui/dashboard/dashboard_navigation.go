@@ -15,6 +15,10 @@ func isSelectable(r Row) bool {
 	switch r.Type {
 	case RowSpacer, RowHome:
 		return false
+	case RowNewGroup:
+		// A drop target, not a button: it only exists mid-drag, and `g` already
+		// covers grouping a workspace from the keyboard.
+		return false
 	case RowSectionHeader:
 		return r.IsUserGroup
 	default:
@@ -108,7 +112,27 @@ func (m *Model) activeRowLineCount(ws *data.Workspace, selected bool) int {
 	return lines
 }
 
-func (m *Model) rowIndexAt(screenX, screenY int) (int, int, bool) {
+// rowAreaHeight returns the height of the scrollable row region in content
+// coordinates. Hit-testing and drag auto-scroll both need it, and they have to
+// agree: a drag that auto-scrolls on a different edge than the one hit-testing
+// stops at would carry a row into a band where nothing is droppable.
+func (m *Model) rowAreaHeight() (int, bool) {
+	innerHeight := m.height - 2
+	if innerHeight <= 0 {
+		return 0, false
+	}
+	height := innerHeight - m.toolbarHeight() - m.helpLineCount()
+	if height < 1 {
+		height = 1
+	}
+	return height, true
+}
+
+// rowAreaHit converts screen coordinates into the row area's content Y, along
+// with the area's height, or reports false for a point outside it. Row
+// hit-testing and the group drag share it so they cannot disagree on where the
+// droppable region ends.
+func (m *Model) rowAreaHit(screenX, screenY int) (int, int, bool) {
 	borderTop := 1
 	borderLeft := 1
 	borderRight := 1
@@ -119,29 +143,24 @@ func (m *Model) rowIndexAt(screenX, screenY int) (int, int, bool) {
 	contentY := screenY - borderTop
 
 	contentWidth := m.width - (borderLeft + borderRight + paddingLeft + paddingRight)
-	innerHeight := m.height - 2
-	if contentWidth <= 0 || innerHeight <= 0 {
-		return -1, 0, false
+	rowAreaHeight, ok := m.rowAreaHeight()
+	if contentWidth <= 0 || !ok {
+		return 0, 0, false
 	}
 	if contentX < 0 || contentX >= contentWidth {
-		return -1, 0, false
+		return 0, 0, false
 	}
-	if contentY < 0 || contentY >= innerHeight {
-		return -1, 0, false
-	}
-
-	helpHeight := m.helpLineCount()
-	toolbarHeight := m.toolbarHeight()
-	rowAreaHeight := innerHeight - toolbarHeight - helpHeight
-	if rowAreaHeight < 1 {
-		rowAreaHeight = 1
-	}
-
 	if contentY < 0 || contentY >= rowAreaHeight {
+		return 0, 0, false
+	}
+	return contentY, rowAreaHeight, true
+}
+
+func (m *Model) rowIndexAt(screenX, screenY int) (int, int, bool) {
+	rowY, rowAreaHeight, ok := m.rowAreaHit(screenX, screenY)
+	if !ok {
 		return -1, 0, false
 	}
-
-	rowY := contentY
 
 	archivedStart := m.archivedSectionStart()
 	archivedLines := m.archivedSectionLineCount()

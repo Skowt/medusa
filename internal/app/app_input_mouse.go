@@ -1,10 +1,55 @@
 package app
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
+
+// mouseModeSettledMsg fires once shortly after startup and ends the mouse-mode
+// nudge (see mouseMode).
+type mouseModeSettledMsg struct{}
+
+// mouseModeNudgeDelay is long enough for the alt screen to be established and
+// the first frames to have gone out.
+const mouseModeNudgeDelay = 120 * time.Millisecond
+
+// mouseMode returns the mouse mode the view should request.
+//
+// It reports cell-motion for one short phase right after startup and all-motion
+// otherwise, purely so that the mode *changes*. Bubbletea only writes the
+// mouse-enable sequence when the requested mode differs from the last frame's,
+// and it writes that sequence before it enters the alternate screen — so on a
+// terminal that scopes DEC private modes to the screen buffer, the only enable
+// medusa ever asks for lands on the primary screen and is dropped on the way
+// into the alternate one. Nothing changes the mode after that, so motion
+// reporting stays off for the rest of the run and every hover affordance
+// silently does nothing.
+//
+// Asking for a different mode once, after the alt screen is up, makes bubbletea
+// emit a fresh all-motion enable where it can take effect. The cost is one frame
+// in which only button events are reported.
+func (a *App) mouseMode() tea.MouseMode {
+	if a.mouseModePhase == 1 {
+		return tea.MouseModeCellMotion
+	}
+	return tea.MouseModeAllMotion
+}
+
+// beginMouseModeNudge starts the nudge, once, on the first window size we see.
+func (a *App) beginMouseModeNudge() tea.Cmd {
+	if a.mouseModePhase != 0 {
+		return nil
+	}
+	a.mouseModePhase = 1
+	return common.SafeTick(mouseModeNudgeDelay, func(time.Time) tea.Msg {
+		return mouseModeSettledMsg{}
+	})
+}
 
 // routeMouseClick routes mouse click events to the appropriate pane.
 func (a *App) routeMouseClick(msg tea.MouseClickMsg) tea.Cmd {
@@ -150,19 +195,47 @@ func (a *App) routeMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
 // routeMouseMotion routes mouse motion events to the appropriate pane.
 func (a *App) routeMouseMotion(msg tea.MouseMotionMsg) tea.Cmd {
 	// Hover-capable all-motion events have no pressed button. Always let the
-	// center observe them so its copy affordances activate when entered and
-	// clear when left, regardless of which pane owns keyboard focus. Drag
-	// motion remains routed exclusively to the focused pane below.
-	if msg.Button == tea.MouseNone && a.center != nil {
-		adjusted := msg
-		if a.layout != nil {
-			adjusted.Y -= a.layout.TopGutter()
+	// center and the dashboard observe them, regardless of which pane owns
+	// keyboard focus: the center's copy affordances activate when entered and
+	// clear when left, and the dashboard's drag handles advertise a row before
+	// anything has been clicked. Drag motion remains routed exclusively to the
+	// focused pane below.
+	if !a.loggedFirstMotion {
+		// Logged once. Whether the terminal reports pointer motion at all — and
+		// from when — is invisible from inside the app otherwise, and hover
+		// affordances silently do nothing without it.
+		a.loggedFirstMotion = true
+		logging.Info("First mouse motion received: button=%v at (%d,%d)", msg.Button, msg.X, msg.Y)
+	}
+
+	if msg.Button == tea.MouseNone {
+		var centerCmd, dashCmd tea.Cmd
+		// The dashboard goes first: its drag handles must not depend on the
+		// center pane's hover handling getting through.
+		if a.dashboard != nil {
+			adjusted := msg
+			if a.layout != nil {
+				adjusted.X -= a.layout.LeftGutter()
+				adjusted.Y -= a.layout.TopGutter()
+			}
+			newDashboard, cmd := a.dashboard.Update(adjusted)
+			a.dashboard, dashCmd = newDashboard, cmd
 		}
-		newCenter, cmd := a.center.Update(adjusted)
-		a.center = newCenter
-		if a.focusedPane == messages.PaneCenter {
-			return cmd
+		if a.center != nil {
+			adjusted := msg
+			if a.layout != nil {
+				adjusted.Y -= a.layout.TopGutter()
+			}
+			newCenter, cmd := a.center.Update(adjusted)
+			a.center, centerCmd = newCenter, cmd
 		}
+		switch a.focusedPane {
+		case messages.PaneCenter:
+			return centerCmd
+		case messages.PaneDashboard:
+			return dashCmd
+		}
+		// Other panes still see hover motion through the switch below.
 	}
 
 	switch a.focusedPane {

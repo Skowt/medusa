@@ -87,12 +87,18 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.keyboardEnhancements = msg
 		logging.Info("Keyboard enhancements: disambiguation=%t event_types=%t", msg.SupportsKeyDisambiguation(), msg.SupportsEventTypes())
 
+	case mouseModeSettledMsg:
+		a.mouseModePhase = 2
+
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
 		a.ready = true
 		a.layout.Resize(msg.Width, msg.Height)
 		a.updateLayout()
+		if cmd := a.beginMouseModeNudge(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		// Update help overlay size for accurate hit-testing after resize
 		if a.helpOverlay.Visible() {
 			a.helpOverlay.SetSize(a.width, a.height)

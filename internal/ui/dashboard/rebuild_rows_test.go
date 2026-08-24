@@ -111,8 +111,9 @@ func TestRebuildRows_MultipleGroups_AlphabeticalOrder(t *testing.T) {
 	m.rebuildRows()
 
 	order := groupHeaderOrder(m)
-	if len(order) != 2 || order[0] != "apple" || order[1] != "zebra" {
-		t.Fatalf("expected alphabetical order [apple, zebra], got %v", order)
+	want := []string{"apple", "zebra", ungroupedLabel}
+	if !sameOrder(order, want) {
+		t.Fatalf("expected %v, got %v", want, order)
 	}
 }
 
@@ -125,8 +126,9 @@ func TestRebuildRows_GroupOrder_CaseInsensitive(t *testing.T) {
 	m.rebuildRows()
 
 	order := groupHeaderOrder(m)
-	if len(order) != 2 || order[0] != "apple" || order[1] != "Zebra" {
-		t.Fatalf("expected case-insensitive order [apple, Zebra], got %v", order)
+	want := []string{"apple", "Zebra", ungroupedLabel}
+	if !sameOrder(order, want) {
+		t.Fatalf("expected case-insensitive order %v, got %v", want, order)
 	}
 }
 
@@ -148,10 +150,11 @@ func TestRebuildRows_GroupOrder_StableAcrossArchive(t *testing.T) {
 	m.rebuildRows()
 	after := groupHeaderOrder(m)
 
-	if len(before) != 2 || before[0] != "apple" || before[1] != "zebra" {
-		t.Fatalf("expected [apple, zebra] before archive, got %v", before)
+	want := []string{"apple", "zebra", ungroupedLabel}
+	if !sameOrder(before, want) {
+		t.Fatalf("expected %v before archive, got %v", want, before)
 	}
-	if len(after) != len(before) || after[0] != before[0] || after[1] != before[1] {
+	if !sameOrder(after, before) {
 		t.Fatalf("group order shifted on archive: %v -> %v", before, after)
 	}
 }

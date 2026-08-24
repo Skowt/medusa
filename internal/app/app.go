@@ -98,6 +98,8 @@ type App struct {
 	gitStatusInFlight   map[string]bool
 	gitStatusInFlightMu sync.Mutex
 	focusedPane         messages.PaneType
+	loggedFirstMotion   bool // one-time log of the first pointer-motion event, for diagnosing hover
+	mouseModePhase      int  // 0 = not started, 1 = nudging, 2 = settled (see mouseMode)
 	showWelcome         bool
 	monitorMode         bool
 	monitorFilter       string
@@ -405,6 +407,7 @@ func New(version, commit, date string) (*App, error) {
 	app.toast.SetStyles(app.styles)
 	app.helpOverlay.SetStyles(app.styles)
 	app.dashboard.SetCollapsedGroups(cfg.UI.CollapsedGroups)
+	app.dashboard.SetGroupOrder(cfg.UI.GroupOrder)
 	app.layout.SetSidebarHidden(cfg.UI.HideSidebar)
 	app.layout.SetTerminalHidden(cfg.UI.HideTerminal)
 	app.setKeymapHintsEnabled(cfg.UI.ShowKeymapHints)

@@ -127,3 +127,31 @@ func TestUISettingsLastWorkspaceRoundTrip(t *testing.T) {
 		t.Errorf("LastWorkspace = %q, want %q", got.LastWorkspace, wsID)
 	}
 }
+
+func TestSaveLoadUISettingsGroupOrder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	settings := defaultUISettings()
+	settings.GroupOrder = []string{"shipping-q2", "", "infra"}
+	if err := saveUISettings(path, settings); err != nil {
+		t.Fatalf("saveUISettings: %v", err)
+	}
+
+	loaded := loadUISettings(path)
+	want := []string{"shipping-q2", "", "infra"}
+	if len(loaded.GroupOrder) != len(want) {
+		t.Fatalf("GroupOrder = %v, want %v", loaded.GroupOrder, want)
+	}
+	for i := range want {
+		if loaded.GroupOrder[i] != want[i] {
+			t.Fatalf("GroupOrder = %v, want %v (the empty Ungrouped key must survive)", loaded.GroupOrder, want)
+		}
+	}
+}
+
+func TestUISettingsGroupOrderDefaultsEmpty(t *testing.T) {
+	if got := defaultUISettings().GroupOrder; got != nil {
+		t.Errorf("GroupOrder default = %v, want nil so the dashboard keeps its alphabetical fallback", got)
+	}
+}

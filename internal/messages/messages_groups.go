@@ -47,3 +47,33 @@ type ToggleGroupCollapse struct {
 type DuplicateWorkspace struct {
 	Workspace *data.Workspace
 }
+
+// ReorderWorkspaces sets the manual order of one group's members. OrderedRoots
+// lists every member root of Group in its new order; any workspace named there
+// that currently belongs to another group is moved into Group as part of the
+// same commit, which is how a cross-group drag is expressed.
+type ReorderWorkspaces struct {
+	Group        string
+	OrderedRoots []string
+}
+
+// CreateGroupForWorkspace moves one workspace into a brand-new group, pins that
+// group where it was created, and opens the rename dialog on it. Label is the
+// generated placeholder the group is created with, so there is something real to
+// show and persist before the user picks a name.
+//
+// This is one message rather than a batch of the three steps because the order
+// matters: the rename dialog has to open on a group that already has its member,
+// and batched commands arrive in no particular order.
+type CreateGroupForWorkspace struct {
+	Root  string
+	Label string
+	Order []string // section order that keeps the new group where it was dropped
+}
+
+// ReorderGroups sets the display order of the dashboard's group sections.
+// Labels holds every currently visible section key in its new order, with ""
+// standing for the Ungrouped section.
+type ReorderGroups struct {
+	Labels []string
+}

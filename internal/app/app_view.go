@@ -42,7 +42,7 @@ func (a *App) view() tea.View {
 	baseView := func() tea.View {
 		var view tea.View
 		view.AltScreen = true
-		view.MouseMode = tea.MouseModeAllMotion
+		view.MouseMode = a.mouseMode()
 		view.BackgroundColor = common.ColorBackground
 		view.ForegroundColor = common.ColorForeground
 		view.KeyboardEnhancements.ReportEventTypes = true
@@ -89,7 +89,7 @@ func (a *App) fallbackView() tea.View {
 func (a *App) viewLayerBased() tea.View {
 	view := tea.View{
 		AltScreen:            true,
-		MouseMode:            tea.MouseModeAllMotion,
+		MouseMode:            a.mouseMode(),
 		BackgroundColor:      common.ColorBackground,
 		ForegroundColor:      common.ColorForeground,
 		KeyboardEnhancements: tea.KeyboardEnhancements{ReportEventTypes: true},

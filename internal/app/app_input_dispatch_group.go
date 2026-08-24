@@ -7,8 +7,8 @@ import (
 )
 
 // routeGroupMsg dispatches workspace-group related messages (Set/Rename/Delete
-// group, collapse toggle, duplicate-workspace). Returns handled=true when the
-// message was consumed here.
+// group, collapse toggle, manual reordering, duplicate-workspace). Returns
+// handled=true when the message was consumed here.
 func (a *App) routeGroupMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 	switch msg := msg.(type) {
 	case messages.ShowSetWorkspaceGroupDialog:
@@ -31,6 +31,18 @@ func (a *App) routeGroupMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		}
 	case messages.ToggleGroupCollapse:
 		if cmd := a.handleToggleGroupCollapse(msg); cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
+	case messages.ReorderWorkspaces:
+		if cmd := a.handleReorderWorkspaces(msg); cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
+	case messages.CreateGroupForWorkspace:
+		if cmd := a.handleCreateGroupForWorkspace(msg); cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
+	case messages.ReorderGroups:
+		if cmd := a.handleReorderGroups(msg); cmd != nil {
 			*cmds = append(*cmds, cmd)
 		}
 	case messages.DuplicateWorkspace:

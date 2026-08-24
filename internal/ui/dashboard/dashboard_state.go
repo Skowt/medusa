@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"sort"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -94,11 +93,20 @@ func (m *Model) SetWorkspaceDeleting(root string, deleting bool) tea.Cmd {
 
 // rebuildRows rebuilds the row list from workspaces
 func (m *Model) rebuildRows() {
-	// Remember the workspace at the current cursor so we can re-anchor after rebuild.
-	var prevCursorRoot string
+	// Remember what the cursor was on so we can re-anchor after the rebuild.
+	// Group headers are anchored too, not just workspaces: a section that moves
+	// — because it was collapsed, renamed, or is being dragged — would otherwise
+	// leave the cursor on whatever row took its index, and a cursor landing on a
+	// workspace row makes that row taller, shifting every row below it.
+	var prevCursorRoot, prevCursorGroup string
+	hadGroupCursor := false
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
-		if row := m.rows[m.cursor]; row.Type == RowWorkspace && row.Workspace != nil {
+		switch row := m.rows[m.cursor]; {
+		case row.Type == RowWorkspace && row.Workspace != nil:
 			prevCursorRoot = row.Workspace.Root()
+		case row.Type == RowSectionHeader && row.IsUserGroup:
+			prevCursorGroup = labelToKey(row.Label)
+			hadGroupCursor = true
 		}
 	}
 
@@ -140,57 +148,60 @@ func (m *Model) rebuildRows() {
 		return all[i].Created.Before(all[j].Created)
 	})
 
-	// Partition workspaces by user group. Groups are derived from distinct non-empty Group values.
+	// Partition workspaces by user group. The empty key holds the Ungrouped
+	// section, so named groups and Ungrouped flow through one emit loop.
 	groupMembers := make(map[string][]*data.Workspace)
-	var ungrouped []*data.Workspace
-
 	for _, ws := range all {
-		if ws.Group == "" {
-			ungrouped = append(ungrouped, ws)
-			continue
-		}
 		groupMembers[ws.Group] = append(groupMembers[ws.Group], ws)
 	}
-
-	// Group order: alphabetical by label, case-insensitive, with a case-sensitive
-	// tiebreak for determinism. Deliberately a function of the label alone —
-	// ordering by member timestamps made a group's position depend on which of
-	// its members were live, so archiving a group's oldest workspace reshuffled
-	// the sidebar.
-	groupOrder := make([]string, 0, len(groupMembers))
-	for g := range groupMembers {
-		groupOrder = append(groupOrder, g)
+	for key := range groupMembers {
+		sortWorkspacesForDisplay(groupMembers[key])
 	}
-	sort.SliceStable(groupOrder, func(i, j int) bool {
-		li, lj := strings.ToLower(groupOrder[i]), strings.ToLower(groupOrder[j])
-		if li == lj {
-			return groupOrder[i] < groupOrder[j]
+
+	// The section keys are taken before the drag projection is applied: a
+	// workspace dragged out of a single-member group has to leave that group's
+	// header standing, or there would be nothing left to drop it back onto.
+	keys := m.sectionOrder(groupMembers)
+	newGroupMember := m.projectDraggedWorkspace(groupMembers)
+	keys = m.projectDraggedGroup(keys)
+
+	// The "New group" target sits at the bottom of the section list, above
+	// Ungrouped, and exists only while a workspace is being dragged. It is shown
+	// for the whole drag rather than only once the pointer nears it: a drop
+	// target you cannot see until you are on it is one you cannot aim for.
+	emitNewGroup := func() {
+		if !m.showNewGroupRow() {
+			return
 		}
-		return li < lj
-	})
-
-	// Within-section sort: Created ascending, so the oldest workspace sits at the
-	// top of its group. Ties broken by name to keep output deterministic. Used for
-	// named groups and the Ungrouped section alike.
-	sortMembers := func(members []*data.Workspace) {
-		sort.SliceStable(members, func(i, j int) bool {
-			if members[i].Created.Equal(members[j].Created) {
-				return members[i].Name < members[j].Name
-			}
-			return members[i].Created.Before(members[j].Created)
-		})
+		m.rows = append(m.rows, Row{Type: RowNewGroup})
+		if newGroupMember != nil {
+			m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: newGroupMember})
+		}
+		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
+	emittedNewGroup := false
 
-	// Emit named groups in alphabetical order.
-	for _, label := range groupOrder {
-		members := groupMembers[label]
-		sortMembers(members)
-		collapsed := m.collapsedGroups[label]
+	for _, key := range keys {
+		if key == "" && !emittedNewGroup {
+			emitNewGroup()
+			emittedNewGroup = true
+		}
+		members := groupMembers[key]
+		label := key
+		if key == "" {
+			label = ungroupedLabel
+		}
+		collapsed := m.collapsedGroups[key]
 		header := Row{
 			Type:        RowSectionHeader,
 			Label:       label,
 			IsUserGroup: true,
 			Collapsed:   collapsed,
+			// A section being dragged is marked, but keeps its members and its
+			// collapse state: withholding them made dragging a group look like
+			// collapsing it, and it left the pointer resolving against a
+			// one-line stand-in for a section many lines tall.
+			DragLifted: m.isDragSourceGroup(key),
 		}
 		if collapsed {
 			header.MemberCount = len(members)
@@ -203,28 +214,8 @@ func (m *Model) rebuildRows() {
 		}
 		m.rows = append(m.rows, Row{Type: RowSpacer})
 	}
-
-	// Ungrouped pseudo-section: always rendered when ungrouped workspaces exist,
-	// so the group structure is visible even before any named group is created.
-	if len(ungrouped) > 0 {
-		sortMembers(ungrouped)
-		collapsed := m.collapsedGroups[""]
-		header := Row{
-			Type:        RowSectionHeader,
-			Label:       ungroupedLabel,
-			IsUserGroup: true,
-			Collapsed:   collapsed,
-		}
-		if collapsed {
-			header.MemberCount = len(ungrouped)
-		}
-		m.rows = append(m.rows, header)
-		if !collapsed {
-			for _, ws := range ungrouped {
-				m.rows = append(m.rows, Row{Type: RowWorkspace, Workspace: ws})
-			}
-		}
-		m.rows = append(m.rows, Row{Type: RowSpacer})
+	if !emittedNewGroup {
+		emitNewGroup()
 	}
 
 	// Orphans section
@@ -255,6 +246,16 @@ func (m *Model) rebuildRows() {
 			})
 		}
 		m.rows = append(m.rows, Row{Type: RowSectionHeader, Label: "archived-footer"})
+	}
+
+	// Try to re-anchor the cursor to the section header it was on.
+	if hadGroupCursor {
+		for i, row := range m.rows {
+			if row.Type == RowSectionHeader && row.IsUserGroup && labelToKey(row.Label) == prevCursorGroup {
+				m.cursor = i
+				break
+			}
+		}
 	}
 
 	// Try to re-anchor cursor to the previously selected workspace.

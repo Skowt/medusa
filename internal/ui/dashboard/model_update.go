@@ -54,19 +54,41 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				}
 			}
 
-			if m.rows[idx].Type == RowSectionHeader && m.rows[idx].IsUserGroup {
-				m.toolbarFocused = false
-				m.cursor = idx
-				return m, m.handleToggleCollapse()
-			}
-
 			m.toolbarFocused = false
 			m.cursor = idx
+			if m.beginDragCandidate(idx, msg.Y) {
+				// The row's own action waits for the release. This press may be
+				// the start of a drag, and a drag must not also activate the
+				// workspace or toggle the group it was carrying.
+				return m, nil
+			}
 			return m, m.handleClick()
 		}
 
+	case tea.MouseMotionMsg:
+		// Hover is tracked whether or not the pane holds focus: the handle exists
+		// to advertise that a row is draggable, and clicking is what takes focus.
+		if m.updateDragMotion(msg) {
+			return m, nil
+		}
+		m.updateHover(msg.X, msg.Y)
+		return m, nil
+
+	case tea.MouseReleaseMsg:
+		if !m.focused {
+			return m, nil
+		}
+		if msg.Button != tea.MouseLeft {
+			return m, nil
+		}
+		return m, m.finishDrag()
+
 	case tea.KeyPressMsg:
 		if !m.focused {
+			return m, nil
+		}
+
+		if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) && m.cancelDrag() {
 			return m, nil
 		}
 

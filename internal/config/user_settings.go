@@ -30,6 +30,7 @@ type UISettings struct {
 	NotificationSound            string          // Sound name from /System/Library/Sounds (empty = none)
 	IDE                          string          // Remembered IDE install launch path (.app bundle on macOS, binary on Linux)
 	CollapsedGroups              map[string]bool // Dashboard group collapse state, keyed by group label ("" = Ungrouped)
+	GroupOrder                   []string        // Dashboard group display order, keyed by group label ("" = Ungrouped); labels absent from it fall back to alphabetical
 }
 
 func defaultUISettings() UISettings {
@@ -50,6 +51,7 @@ func defaultUISettings() UISettings {
 		TmuxPersistence:       true,
 		NotificationSound:     "",
 		CollapsedGroups:       nil,
+		GroupOrder:            nil,
 	}
 }
 
@@ -85,6 +87,7 @@ func loadUISettings(path string) UISettings {
 			NotificationSound            *string         `json:"notification_sound"`
 			IDE                          *string         `json:"ide"`
 			CollapsedGroups              map[string]bool `json:"collapsed_groups"`
+			GroupOrder                   []string        `json:"group_order"`
 		} `json:"ui"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -159,6 +162,9 @@ func loadUISettings(path string) UISettings {
 	if raw.UI.CollapsedGroups != nil {
 		settings.CollapsedGroups = raw.UI.CollapsedGroups
 	}
+	if raw.UI.GroupOrder != nil {
+		settings.GroupOrder = raw.UI.GroupOrder
+	}
 	return settings
 }
 
@@ -205,6 +211,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["ide"] = settings.IDE
 	delete(ui, "compound_approve")
 	ui["collapsed_groups"] = settings.CollapsedGroups
+	ui["group_order"] = settings.GroupOrder
 	payload["ui"] = ui
 
 	data, err := json.MarshalIndent(payload, "", "  ")

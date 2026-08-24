@@ -260,6 +260,166 @@ The Codex New Agent dialog exposes a Starting Mode: Auto adds
 always enabled with `--search`; the selected Codex sandbox is passed through
 with `--sandbox`.
 
+### Workspaces pane ordering
+
+Workspaces and group sections in the dashboard are reorderable by dragging a
+row. Both halves of the order are persisted, and both are deliberately additive
+over the ordering that existed before them:
+
+1. **`data.Workspace.SortKey` is the position within a group, and 0 means
+   "never placed by hand".** `sortWorkspacesForDisplay` puts keyed workspaces
+   first in key order, then unkeyed ones oldest-first. Treating 0 as unplaced
+   rather than as position zero is what makes a registry that predates manual
+   ordering sort exactly as it did, and what makes a newly created workspace
+   land at the bottom of an already-ordered group instead of jumping to its top.
+   Every drop renumbers the whole target group (`sortKeyStride`), so the
+   half-ordered case never has to be reasoned about.
+2. **Group order lives in `config.UI.GroupOrder`**, keyed by label alone — the
+   same property the alphabetical fallback has, and for the same reason:
+   ordering sections by their members' timestamps made a group's position
+   depend on which members were live, so archiving a group's oldest workspace
+   reshuffled the pane. `sectionOrder` emits manually-ordered keys first and
+   falls back to the old rule (alphabetical) for every group never dragged, so
+   an empty `GroupOrder` reproduces the previous layout exactly. **Ungrouped is
+   pinned to the bottom** and never participates: it is not a real group, so a
+   manual position for it would only hide where the ungrouped workspaces are.
+   It is not draggable and is never written to `GroupOrder`. It *is* emitted
+   with no members whenever any group exists, because an empty section still has
+   to be a drop target and a header that vanishes when its last workspace leaves
+   cannot be one.
+
+**The drag renders its own outcome.** There is no separate drop-target
+highlight to keep in sync with the pending order: `dragState` holds a projected
+placement, `rebuildRows` applies it, and the release commits what is on screen.
+A dragged workspace moves among the rows; a dragged section moves as a block,
+members and collapse state intact, marked only by a grip on its header
+(`Row.DragLifted`).
+
+**Dropping on "New group" creates one.** A workspace drag emits a `RowNewGroup`
+target at the bottom of the section list, above Ungrouped. A drop there emits a
+single `CreateGroupForWorkspace`, which the app expands into three steps in
+order: move the workspace into a group named by `group_names.go`, pin that group
+where it was dropped, then open the naming dialog on it. The generated name is a
+placeholder the group can exist under — a group *is* the label its members share,
+so it needs one before anything can be persisted or shown — and it is the
+dialog's placeholder text, not its value, so the input starts empty and the user
+just types. Cancelling keeps the generated name (`r` renames later); submitting
+empty puts the workspace back in Ungrouped, which is what an empty rename has
+always meant.
+
+It is one message rather than a batch of the three steps because the order is
+load-bearing and batched commands arrive in none: the dialog renames whatever
+`dialogDefaultName` points at, so opening it before the move lands would cascade
+a rename over a group with no members. The handler also skips the dialog when the
+move did not stick — offering to rename a group whose creation just failed to
+save is worse than silence.
+
+Pinning matters for the same reason ordering does elsewhere: without it the new
+group falls back to the alphabetical order every undragged group uses, and a
+generated name starting with an "a" leaps to the top of the pane the instant it
+is created at the bottom.
+
+The target is shown for the whole drag, not only once the pointer nears it — a
+drop target you cannot see until you are on it is one you cannot aim for — and
+it is not keyboard-selectable, since `g` already groups a workspace by name.
+Because inserting it reflows every row below, **promotion rebuilds the rows
+before the pointer is resolved against them**; resolving against the
+pre-promotion layout landed drops a row or two from where the user was looking.
+It is separated from the Ungrouped header below it by a spacer, so it does not
+read as that section's own header.
+
+**Rows and sections resolve the pointer differently, and have to.** Both would
+jitter under the other's rule:
+
+- **A workspace resolves to an index in the *displayed* order** — never against
+  a target row's identity. Rendering the projection puts the dragged row under
+  the pointer, so identity-based resolution ("the row I am over is not the one I
+  am dragging") flips between placed and unplaced on alternating events. An index
+  read off the list that still contains the dragged item is a fixed point:
+  re-reading the same position resolves to the same index. This holds because
+  the dragged row is the cursor row, hence the tallest, so after the move the
+  pointer is always still inside it. `TestMoveToIndex_IsAFixedPoint` and
+  `TestDrag_PreviewIsStableWhilePointerHolds` guard it.
+- **A section moves one place at a time, once the pointer passes the midpoint of
+  the neighbour it would displace** (`updateGroupProjection`). Sections are tall
+  and unequal, so they have no such fixed point: resolving to the hovered
+  section landed the dragged one somewhere the pointer was no longer inside, the
+  next event resolved to whatever took its place, and it flipped above and below
+  its neighbour forever. Half of the *displaced* neighbour is the threshold that
+  makes the two directions disjoint — displacing a neighbour of height `e`
+  downward needs the pointer `e/2` past this section's end, while coming back up
+  would need it more than `e/2` above the section's new start, and those bands
+  cannot both hold. `TestDrag_GroupSweepIsMonotone` sweeps the pane a line at a
+  time and asserts the index never goes backwards.
+
+Three further properties are load-bearing
+(`internal/ui/dashboard/dashboard_drag.go`):
+1. **A press on a draggable row defers that row's action to the release.**
+   Activating a workspace or toggling a group on press cannot coexist with
+   dragging it — the drag would also open what it was carrying. Rows that are
+   not draggable (`+ New Workspace`, archived, orphaned, Ungrouped's header)
+   still act on press.
+2. **The drag stores roots and group labels, never row indices.** `rebuildRows`
+   runs on every workspace update, hook event and spinner tick; an index would
+   come to mean whichever row had moved into its place. For the same reason it
+   re-anchors a section-header cursor by label, not just a workspace cursor by
+   root — a cursor landing on a workspace row makes that row taller and shifts
+   everything below it.
+3. **Drag and hover markers never change a row's height.** A dragged section
+   keeps its members and its chevron for this reason too: withholding them made
+   dragging a group look like collapsing it, and left the pointer resolving
+   against a one-line stand-in for a section many lines tall.
+
+   A row's height depends on whether it is the cursor row (`activeRowLineCount` via
+   `nameChunks`) and `rowLineCount` decides that from the cursor alone, so the
+   lifted marker is foreground-only and the hover handle right-aligns *within*
+   the row's existing width. Anything that changed a row's height under the
+   pointer would move the drop target out from under it.
+
+   This is why `nameChunks` reserves `handleGutter` on **every** workspace row,
+   hovered or not, rather than making room when the handle appears: re-wrapping
+   a name on hover would change the row's height, and a name that already filled
+   the width had nowhere to put the handle — it silently vanished on selected
+   rows (selection fills the row) and on long names (truncated to the full
+   width), which is exactly where it was most needed. Group labels get no such
+   reservation and are clipped via `MaxWidth` instead — ANSI-aware, since these
+   lines carry styling that plain slicing would cut mid-sequence.
+
+Hover handles (the `⠿` at a row's right edge) are painted in the **accent**
+color, never a `Surface` one. Surface tokens are background tiers: `Surface3`
+against a dark theme's background is `#292e42` on `#1a1b26`, so the handle
+rendered exactly where it should and could not be seen at all. The glyph is also
+sparse — six braille dots rather than a solid block — which costs it more
+perceived contrast than its nominal ratio suggests.
+`TestHover_HandleIsNotPaintedInASurfaceColor` guards the tier.
+
+The dashboard observes hover motion **before** the center pane does, so its
+handles cannot be starved by anything on the center's path.
+
+**Every hover affordance depends on the terminal actually reporting pointer
+motion, and medusa has to nudge the mode to get it.** Bubbletea writes the
+mouse-enable sequence only when the mode a view requests differs from the last
+frame's, and it writes it *before* entering the alternate screen — so on a
+terminal that scopes DEC private modes to the screen buffer, the single
+all-motion enable medusa asks for at startup lands on the primary screen and is
+lost on the way in. Nothing changes the mode afterwards, so motion reporting
+stays off for the whole run and every hover affordance silently does nothing;
+the symptom is hover that only starts working once something unrelated happens
+to re-establish the modes. `App.mouseMode` therefore requests cell-motion for
+one short phase after the first window size and all-motion after it, purely so
+the mode changes once with the alt screen already up. `routeMouseMotion` also
+logs the first motion event it sees, which is the only way to tell "the terminal
+never reported motion" apart from "the app ignored it".
+
+Hover handles need hover motion to reach the pane whether or not it holds focus — clicking is what takes focus, so a
+focus-gated affordance could never advertise itself. `routeMouseMotion` lets the
+dashboard observe button-less motion alongside the center, the same way the
+center's copy affordances work.
+
+Regression cover: `dashboard_drag_test.go` and `dashboard_drag_preview_test.go`
+(both drive real mouse messages through `rowIndexAt`'s geometry),
+`dashboard_order_test.go`, and `app_input_messages_reorder_test.go`.
+
 ### Workspace / worktree model: `internal/data`
 
 A `Workspace` can span multiple repos (each with its own worktree) but shares a single branch. `Workspace.Root()` is the primary worktree root; `AllRoots()` / `PrimaryWorktreeRoot()` account for multi-repo layouts. Registry at `~/.medusa/workspaces.json` is the source of truth; `data.Registry` and `data.WorkspaceStore` are both guarded by `sync.Mutex` (saveLocked/deleteLocked pattern). Orphan handling has two flavors: `OrphanMetadata` (registry knows about a dir that's gone) and `OrphanDirectory` (dir on disk with no registry entry).

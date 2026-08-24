@@ -26,6 +26,7 @@ const (
 	RowCreate            // "+ New Workspace"
 	RowSpacer
 	RowSectionHeader // section header (user group, archived, orphans)
+	RowNewGroup      // "+ New group" drop target, only present while a workspace is being dragged
 )
 
 // Row represents a single row in the dashboard
@@ -36,6 +37,7 @@ type Row struct {
 	IsUserGroup bool   // true for user-defined group headers (interactive)
 	Collapsed   bool   // only meaningful when IsUserGroup && Type == RowSectionHeader
 	MemberCount int    // number of hidden children when Collapsed; 0 otherwise
+	DragLifted  bool   // this section is being dragged: marked, but rendered in full
 }
 
 // wsButtonAction identifies a workspace action button.
@@ -94,6 +96,9 @@ type Model struct {
 	toolbarIndex    int             // Focused toolbar action index
 	wsButtonHits    []wsButtonHit   // clickable action buttons of the currently selected workspace row
 	collapsedGroups map[string]bool // Group label ("" = Ungrouped) → collapsed
+	groupOrder      []string        // Manual section order; labels absent from it fall back to alphabetical
+	drag            dragState       // In-progress row drag (see dashboard_drag.go)
+	hover           hoverState      // Row under an unpressed pointer, for the drag handle
 
 	// Loading state
 	creatingWorkspaces map[string]*data.Workspace // Workspaces currently being created

@@ -16,6 +16,15 @@ import (
 const (
 	nameIndent   = 3 // width of the leading " ● " prefix on line 1
 	footerIndent = 3 // left indent of the action footer; equals width of " └ "
+
+	// handleGutter is the space at the right edge of a workspace's name line kept
+	// clear for the hover drag handle: one column for the glyph and one to keep
+	// it off the end of a truncated name. It is reserved on every row, hovered or
+	// not, for two reasons: a row's height must not depend on where the pointer
+	// is (rowLineCount decides it from the cursor alone, and re-wrapping a name
+	// to make room would change it), and a name already filling the width would
+	// otherwise have nowhere to show the handle at all.
+	handleGutter = 2
 )
 
 // detailIndent returns the " └ " tree connector prefix used by every detail
@@ -61,7 +70,7 @@ func (m *Model) workspacePending(ws *data.Workspace) bool {
 // selected row wraps up to maxNameLines. Both the renderer and rowLineCount
 // call this so their line counts cannot drift.
 func (m *Model) nameChunks(ws *data.Workspace, selected bool, contentWidth int) []string {
-	width := contentWidth - nameIndent
+	width := contentWidth - nameIndent - handleGutter
 	if width < 1 {
 		width = 1
 	}
@@ -161,6 +170,17 @@ func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, cont
 		indicatorFg = common.ColorWarning
 	}
 
+	// The row being carried shows a grip in place of its status indicator. The
+	// marker is deliberately foreground-only: the name wraps to a different
+	// number of lines when a row is selected, and rowLineCount decides that from
+	// the cursor alone, so a drag must not touch anything that changes a row's
+	// height under the pointer.
+	dragSource := m.isDragSourceWorkspace(ws)
+	if dragSource {
+		indicator = dragHandle
+		indicatorFg = common.ColorSecondary
+	}
+
 	iconStyle := lipgloss.NewStyle().Foreground(indicatorFg)
 	if selected {
 		iconStyle = iconStyle.Bold(true).Background(common.ColorSelection)
@@ -174,6 +194,9 @@ func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, cont
 	}
 	if selected {
 		style = lipgloss.NewStyle().Bold(true).Foreground(common.ColorForeground).Background(common.ColorSelection)
+	}
+	if dragSource {
+		style = style.Bold(true).Foreground(common.ColorSecondary)
 	}
 
 	// Prefix is the leading space + rendered indicator (" <indicator> "), width 3.
