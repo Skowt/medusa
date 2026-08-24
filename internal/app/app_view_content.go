@@ -10,6 +10,7 @@ import (
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/ui/center"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -90,6 +91,16 @@ func (a *App) renderWorkspaceInfo() string {
 
 	copyHint := lipgloss.NewStyle().Foreground(common.ColorMuted)
 
+	// Branch and Path are click-to-copy: the value itself is the target, and
+	// center swaps in a hover / copied badge that carries its own styling.
+	copyValue := func(field center.InfoCopyField, v string) string {
+		text, styled := a.center.InfoCopyValue(field, v)
+		if styled {
+			return text
+		}
+		return value.Render(text)
+	}
+
 	// Shorten path with ~ for home directory
 	displayPath := ws.Root()
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(displayPath, home) {
@@ -111,8 +122,10 @@ func (a *App) renderWorkspaceInfo() string {
 		b.WriteString(prefix(0) + off.Render("(no note)") + "\n")
 	}
 
-	b.WriteString("\n" + label.Render("Branch: ") + value.Render(ws.Branch()) + " " + copyHint.Render("[Copy]") + " " + copyHint.Render("[Rename]") + "\n")
-	b.WriteString(label.Render("Path:   ") + value.Render(displayPath) + " " + copyHint.Render("[Copy]") + "\n")
+	b.WriteString("\n" + label.Render(center.InfoCopyBranch.Label()) +
+		copyValue(center.InfoCopyBranch, ws.Branch()) + " " + copyHint.Render("[Rename]") + "\n")
+	b.WriteString(label.Render(center.InfoCopyPath.Label()) +
+		copyValue(center.InfoCopyPath, displayPath) + "\n")
 
 	// Settings section
 	b.WriteString("\n" + label.Render("Settings") + "\n")

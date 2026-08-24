@@ -276,6 +276,8 @@ const (
 	copyTargetBranch copyTarget = iota
 	copyTargetWorkdir
 	copyTargetSessionID
+	copyTargetInfoBranch
+	copyTargetInfoPath
 )
 
 type copyFeedbackExpired struct {

@@ -10,8 +10,8 @@ import (
 )
 
 func TestInfoBarLabelsCopyAndShowFeedback(t *testing.T) {
-	m, ws := tabBarModel(t, "feature-copy", "", 1, 140, 40)
-	ws = data.NewWorkspace("feature-copy", "feature/copy", "main", "/repo", "/repo/feature-copy")
+	m, _ := tabBarModel(t, "feature-copy", "", 1, 140, 40)
+	ws := data.NewWorkspace("feature-copy", "feature/copy", "main", "/repo", "/repo/feature-copy")
 	m.SetWorkspace(ws)
 	var copied string
 	m.clipboardWrite = func(value string) error {

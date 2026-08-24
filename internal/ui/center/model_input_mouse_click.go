@@ -30,7 +30,8 @@ func (m *Model) handleActionBarClickFromMsg(msg tea.MouseClickMsg) tea.Cmd {
 	return m.handleActionBarClick(contentX, contentY)
 }
 
-// handleInfoContentClick handles clicks on [Copy] and [Rename] buttons in the info tab.
+// handleInfoContentClick handles clicks on the info tab: the click-to-copy
+// Branch and Path values, and the [Rename] button.
 func (m *Model) handleInfoContentClick(msg tea.MouseClickMsg) tea.Cmd {
 	if m.infoContent == "" || m.workspace == nil {
 		return nil
@@ -45,10 +46,7 @@ func (m *Model) handleInfoContentClick(msg tea.MouseClickMsg) tea.Cmd {
 	localX := msg.X - m.offsetX - borderLeft - paddingLeft
 	localY := msg.Y - borderTop
 
-	// Info content starts after: info bar + tab bar (1) + separator (1) + leading \n from renderInfoContent
-	infoBarHeight := m.infoBarHeight()
-	contentStartY := infoBarHeight + 2 + 1 // tab bar + separator + leading \n
-	infoY := localY - contentStartY
+	infoY := localY - m.infoContentOriginY()
 
 	if localX < 0 || infoY < 0 {
 		return nil
@@ -59,11 +57,13 @@ func (m *Model) handleInfoContentClick(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 
-	// Find clickable buttons dynamically by scanning the clicked line
-	if infoY >= len(lines) {
-		return nil
+	// The Branch and Path values are themselves the copy targets — there are no
+	// [Copy] buttons beside them.
+	if field, ok := m.infoCopyHit(localX, infoY); ok {
+		return m.infoCopyCommand(field)
 	}
 
+	// Find clickable buttons dynamically by scanning the clicked line
 	ws := m.workspace
 	stripped := ansi.Strip(lines[infoY])
 
@@ -73,20 +73,8 @@ func (m *Model) handleInfoContentClick(msg tea.MouseClickMsg) tea.Cmd {
 		action func() tea.Msg
 	}
 	buttons := []button{
-		{"Branch:", "[Copy]", func() tea.Msg {
-			if err := common.CopyToClipboard(ws.Branch()); err != nil {
-				return messages.Toast{Message: "Failed to copy: " + err.Error(), Level: messages.ToastError}
-			}
-			return messages.Toast{Message: "Copied branch to clipboard", Level: messages.ToastInfo}
-		}},
 		{"Branch:", "[Rename]", func() tea.Msg {
 			return messages.ShowRenameWorkspaceDialog{Workspace: ws}
-		}},
-		{"Path:", "[Copy]", func() tea.Msg {
-			if err := common.CopyToClipboard(ws.Root()); err != nil {
-				return messages.Toast{Message: "Failed to copy: " + err.Error(), Level: messages.ToastError}
-			}
-			return messages.Toast{Message: "Copied path to clipboard", Level: messages.ToastInfo}
 		}},
 	}
 

@@ -258,14 +258,21 @@ func (m *Model) updateCopyHover(screenX, screenY int) {
 	}
 
 	tabBarY := borderTop + m.infoBarHeight()
-	if screenY != tabBarY {
+	if screenY == tabBarY {
+		for _, hit := range m.tabHits {
+			if hit.kind == tabHitSessionID && hit.region.Contains(localX, 0) {
+				m.copyHover, m.copyHoverActive = copyTargetSessionID, true
+				return
+			}
+		}
 		return
 	}
-	for _, hit := range m.tabHits {
-		if hit.kind == tabHitSessionID && hit.region.Contains(localX, 0) {
-			m.copyHover, m.copyHoverActive = copyTargetSessionID, true
-			return
-		}
+
+	if !m.IsInfoTabActive() {
+		return
+	}
+	if field, ok := m.infoCopyHit(localX, contentY-m.infoContentOriginY()); ok {
+		m.copyHover, m.copyHoverActive = infoCopyRows[field].target, true
 	}
 }
 
