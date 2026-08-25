@@ -14,6 +14,15 @@ import (
 
 // composeOverlays adds overlay layers (dialogs, toasts, help, etc.) to the canvas.
 func (a *App) composeOverlays(canvas *lipgloss.Canvas) {
+	// Review window. Drawn before the dialogs so a toast or a prompt raised
+	// while it is open still lands on top of it.
+	if a.reviewOverlayVisible() {
+		reviewView := a.reviewOverlay.View()
+		reviewWidth, reviewHeight := viewDimensions(reviewView)
+		x, y := a.centeredPosition(reviewWidth, reviewHeight)
+		canvas.Compose(compositor.NewStringDrawable(reviewView, x, y))
+	}
+
 	// Dialog overlay
 	if a.dialog != nil && a.dialog.Visible() {
 		dialogView := a.dialog.View()

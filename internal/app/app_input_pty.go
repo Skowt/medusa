@@ -25,8 +25,11 @@ func (a *App) handleSidebarPTYMessages(msg tea.Msg) tea.Cmd {
 // handleGitStatusTick handles the GitStatusTick message.
 func (a *App) handleGitStatusTick() []tea.Cmd {
 	var cmds []tea.Cmd
-	// Refresh git status for the active workspace (sidebar uses it)
-	if a.activeWorkspace != nil && !a.layout.SidebarHidden() {
+	// Refresh git status for the active workspace. The sidebar is no longer the
+	// only consumer: the info bar's [Review Changes] button is gated on the
+	// same status, so skipping the request while the sidebar is hidden left the
+	// button permanently absent for anyone who works with it collapsed.
+	if a.activeWorkspace != nil {
 		cmds = append(cmds, a.requestGitStatusCached(a.activeWorkspace.PrimaryWorktreeRoot()))
 	}
 	// Round-robin refresh one non-active workspace per tick for dashboard git changes.
@@ -57,11 +60,11 @@ func (a *App) handleGitStatusTick() []tea.Cmd {
 func (a *App) handleFileWatcherEvent(msg messages.FileWatcherEvent) []tea.Cmd {
 	// Always re-listen for the next event
 	cmds := []tea.Cmd{a.startFileWatcher()}
-	if !a.layout.SidebarHidden() {
-		a.statusManager.Invalidate(msg.Root)
-		a.dashboard.InvalidateStatus(msg.Root)
-		cmds = append(cmds, a.requestGitStatus(msg.Root))
-	}
+	// The sidebar is not the only consumer of this status — the info bar's
+	// [Review Changes] button and the open review window both track it — so the
+	// refresh runs whether or not the sidebar is showing.
+	a.statusManager.Invalidate(msg.Root)
+	cmds = append(cmds, a.requestGitStatus(msg.Root))
 	return cmds
 }
 

@@ -24,6 +24,7 @@ import (
 	"github.com/Skowt/medusa/internal/ui/compositor"
 	"github.com/Skowt/medusa/internal/ui/dashboard"
 	"github.com/Skowt/medusa/internal/ui/layout"
+	"github.com/Skowt/medusa/internal/ui/review"
 	"github.com/Skowt/medusa/internal/ui/sidebar"
 	"github.com/Skowt/medusa/internal/update"
 )
@@ -137,6 +138,14 @@ type App struct {
 	toast           *common.ToastModel
 	profileManager  *common.ProfileManager
 	creationOverlay *common.ProgressOverlay
+	// reviewOverlay is the change-review window, nil when closed. It is
+	// created per opening rather than kept around: it snapshots the diff at
+	// open time, and a stale snapshot would annotate lines that have moved.
+	reviewOverlay *review.Model
+	// reviewSession is the agent tab the open review will be sent to, captured
+	// at open time. The active tab can change while the window is up, and the
+	// review belongs to the agent that made the changes.
+	reviewSession string
 
 	// Dialog context
 	dialogWorkspace     *data.Workspace

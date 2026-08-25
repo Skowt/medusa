@@ -8,7 +8,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/Skowt/medusa/internal/data"
-	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
@@ -217,7 +216,7 @@ func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, cont
 	return lines
 }
 
-// renderWorkspaceLine2: profile · git changes · created day
+// renderWorkspaceLine2: repo chip · profile · created day
 func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentWidth int) string {
 	mutedStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
 	if selected {
@@ -239,21 +238,6 @@ func (m *Model) renderWorkspaceLine2(ws *data.Workspace, selected bool, contentW
 		profileName = ws.Profile
 	}
 	parts = append(parts, mutedStyle.Render(profileName))
-
-	// Git changes summary
-	root := ws.PrimaryWorktreeRoot()
-	if status, ok := m.statusCache[root]; ok && status != nil && !status.Clean {
-		gitSummary := formatGitSummary(status)
-		if gitSummary != "" {
-			gitStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-			if selected {
-				gitStyle = gitStyle.Background(common.ColorSelection)
-			}
-			parts = append(parts, gitStyle.Render(gitSummary))
-		}
-	} else {
-		parts = append(parts, mutedStyle.Render("Clean"))
-	}
 
 	// Created day (e.g. "Mon")
 	if !ws.Created.IsZero() {
@@ -298,25 +282,4 @@ func (m *Model) renderRepoChip(ws *data.Workspace) string {
 		return ws.Repos[0].Name
 	}
 	return fmt.Sprintf("%d Repos", len(ws.Repos))
-}
-
-// formatGitSummary returns a short summary of git changes, e.g. "3M 2A 1?"
-func formatGitSummary(status *git.StatusResult) string {
-	if status == nil || status.Clean {
-		return ""
-	}
-	var parts []string
-	staged := len(status.Staged)
-	unstaged := len(status.Unstaged)
-	untracked := len(status.Untracked)
-	if staged > 0 {
-		parts = append(parts, fmt.Sprintf("%d+", staged))
-	}
-	if unstaged > 0 {
-		parts = append(parts, fmt.Sprintf("%dM", unstaged))
-	}
-	if untracked > 0 {
-		parts = append(parts, fmt.Sprintf("%d?", untracked))
-	}
-	return strings.Join(parts, " ")
 }

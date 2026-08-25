@@ -188,11 +188,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	case messages.WorkspacesLoaded:
 		m.SetWorkspaces(msg.Workspaces)
 
-	case messages.GitStatusResult:
-		if msg.Err == nil {
-			m.statusCache[msg.Root] = msg.Status
-		}
-
 	case messages.WorkspaceActivated:
 		if msg.Workspace != nil {
 			m.activeRoot = msg.Workspace.Root()

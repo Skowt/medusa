@@ -106,6 +106,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.creationOverlay != nil {
 			a.creationOverlay.SetSize(a.width, a.height)
 		}
+		if a.reviewOverlay != nil {
+			a.reviewOverlay.SetSize(a.reviewOverlaySize())
+		}
 
 	case tea.MouseClickMsg:
 		if a.monitorMode {

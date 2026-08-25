@@ -30,7 +30,7 @@ func (m *Model) getBaseBranchDisplay() string {
 }
 
 // renderInfoBar renders the info bar with workspace details and action buttons.
-// Layout: [branch info] │ [path] [IDE]
+// Layout: [branch info] │ [path] [IDE] … right-aligned [Review Changes]
 // Also renders a subtle separator line below.
 func (m *Model) renderInfoBar(width int) string {
 	m.actionBarHits = m.actionBarHits[:0]
@@ -73,8 +73,17 @@ func (m *Model) renderInfoBar(width int) string {
 	ideBtn := branchStyle.Render("[IDE]")
 	ideBtnWidth := lipgloss.Width(ideBtn)
 
+	// Review button, offered only while the worktree is dirty.
+	reviewBtn := ""
+	reviewBtnWidth := 0
+	if m.gitDirty {
+		reviewBtn = lipgloss.NewStyle().Foreground(common.ColorPrimary).
+			Bold(true).Render("[Review Changes]")
+		reviewBtnWidth = lipgloss.Width(reviewBtn) + 1
+	}
+
 	// Build path info (shortened)
-	reservedForLeft := lipgloss.Width(branchInfo) + separatorWidth + 1 + ideBtnWidth
+	reservedForLeft := lipgloss.Width(branchInfo) + separatorWidth + 1 + ideBtnWidth + reviewBtnWidth
 	availableForPath := width - reservedForLeft
 	if availableForPath < 10 {
 		availableForPath = 10
@@ -85,7 +94,9 @@ func (m *Model) renderInfoBar(width int) string {
 	pathInfo = m.copyLabel(copyTargetWorkdir, pathInfo, pathWidth)
 	pathRendered := pathStyle.Render(pathInfo)
 
-	// Left content: branch │ path [IDE]
+	// Left content: branch │ path [IDE]. The review button is not part of it —
+	// it is right-aligned below, away from the three controls that describe the
+	// workspace, because it is the one that acts on the work.
 	leftContent := branchInfo + separator + pathRendered + " " + ideBtn
 
 	// The displayed path itself is the copy target.
@@ -109,8 +120,37 @@ func (m *Model) renderInfoBar(width int) string {
 		},
 	})
 
-	// Build the main line
+	// Build the main line, with the review button pinned to the right edge.
+	//
+	// The left side is clipped first when the two would collide: the path is
+	// already abbreviated and can lose a little more, whereas a button pushed
+	// past the edge is simply gone — which is the failure mode that is hardest
+	// to notice, since nothing is left to hint it should be there.
 	mainLine := leftContent
+	if reviewBtn != "" {
+		reviewWidth := lipgloss.Width(reviewBtn)
+		room := width - reviewWidth - 1
+		if room < 0 {
+			room = 0
+		}
+		left := lipgloss.NewStyle().MaxWidth(room).Render(leftContent)
+		gap := room - lipgloss.Width(left) + 1
+		if gap < 1 {
+			gap = 1
+		}
+		mainLine = left + strings.Repeat(" ", gap) + reviewBtn
+
+		m.actionBarHits = append(m.actionBarHits, actionBarButton{
+			kind:  actionBarReviewChanges,
+			label: "Review Changes",
+			region: common.HitRegion{
+				X:      lipgloss.Width(mainLine) - reviewWidth,
+				Y:      0,
+				Width:  reviewWidth,
+				Height: 1,
+			},
+		})
+	}
 
 	// Add a subtle separator line below (using dim box-drawing character)
 	separatorLine := separatorStyle.Render(strings.Repeat("─", width))
@@ -174,6 +214,10 @@ func (m *Model) actionBarCommand(kind actionBarButtonKind) tea.Cmd {
 	case actionBarOpenIDE:
 		return func() tea.Msg {
 			return messages.ActionBarOpenIDE{WorkspaceRoot: ws.Root()}
+		}
+	case actionBarReviewChanges:
+		return func() tea.Msg {
+			return messages.OpenReviewChanges{WorkspaceID: string(ws.ID())}
 		}
 	}
 	return nil

@@ -249,6 +249,9 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, func() tea.Msg { return messages.ShowCleanupTmuxDialog{} }
 
 	// Global commands
+	case key.Matches(msg, a.keymap.ReviewChanges):
+		return true, a.openReviewOverlay()
+
 	case key.Matches(msg, a.keymap.Monitor):
 		return true, a.toggleMonitorMode()
 

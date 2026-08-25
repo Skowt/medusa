@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
-	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
@@ -77,10 +76,9 @@ type toolbarButton struct {
 // Model is the Bubbletea model for the dashboard pane
 type Model struct {
 	// Data
-	workspaces  []*data.Workspace
-	rows        []Row
-	activeRoot  string // Currently active workspace root
-	statusCache map[string]*git.StatusResult
+	workspaces []*data.Workspace
+	rows       []Row
+	activeRoot string // Currently active workspace root
 
 	// UI state
 	cursor          int
@@ -121,7 +119,6 @@ func New() *Model {
 	return &Model{
 		workspaces:           []*data.Workspace{},
 		rows:                 []Row{},
-		statusCache:          make(map[string]*git.StatusResult),
 		creatingWorkspaces:   make(map[string]*data.Workspace),
 		deletingWorkspaces:   make(map[string]bool),
 		activeWorkspaceIDs:   make(map[string]bool),
@@ -179,11 +176,6 @@ func (m *Model) selectedWorkspaceID() string {
 // MarkRead clears the unread flag for a workspace.
 func (m *Model) MarkRead(wsID string) {
 	delete(m.unreadWorkspaces, wsID)
-}
-
-// InvalidateStatus removes a workspace's cached status.
-func (m *Model) InvalidateStatus(root string) {
-	delete(m.statusCache, root)
 }
 
 // SetCanFocusRight controls whether focus-right hints should be shown.

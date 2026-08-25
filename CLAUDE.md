@@ -306,6 +306,283 @@ The Codex New Agent dialog exposes a Starting Mode: Auto adds
 always enabled with `--search`; the selected Codex sandbox is passed through
 with `--sandbox`.
 
+### Change review window: `internal/ui/review`
+
+`[Review Changes]` in the center info bar (or `ctrl+a v`) opens a split-pane
+overlay — changed files left, the selected file's diff right — where the user
+annotates lines, edits files in place, and sends the result back to the agent.
+It is a self-contained sub-model like `internal/ui/diff`: it imports no app
+code and hands back a single `review.Result`.
+
+Four properties are load-bearing:
+
+1. **The review is sent as a bracketed paste, and the Enter goes separately.**
+   Written raw, every newline in the message is an Enter, so the agent gets the
+   first line as a prompt and each following line as its own — a review arrives
+   as a dozen half-sentences and the agent answers the first before reading the
+   rest. `bracketedPaste` (`internal/ui/center/model_tabs_send.go`) wraps it in
+   `ESC[200~`/`ESC[201~`; the submitting `\r` must follow *after* the closing
+   sequence, since inside the brackets it is pasted text and nothing is sent at
+   all. `SendToAgentSession` resolves the tab **by session name**, not the
+   active tab: the user can switch tabs while the window is open, and the review
+   belongs to the agent whose changes it describes.
+2. **An edit buffer refuses to write over a file that moved under it.**
+   The agent is often still running, so `editBuffer` stamps size+mtime at open
+   and re-stats before writing (`internal/ui/review/edit.go`). A refused write
+   aborts the **whole** send: the message names the files the user edited by
+   hand, and sending it while one of those edits sits unwritten would point the
+   agent at a file that still holds its own version. Silently clobbering the
+   agent's work is the worst thing this feature could do, and it would be
+   invisible. Regression cover: `TestEditBufferStalenessGuard`.
+3. **Comments anchor to real file lines, which is why `git.DiffLine` carries
+   them.** `parseDiff` seeds `OldLine`/`NewLine` from each `@@` header rather
+   than counting from the top of the diff, so the second hunk numbers correctly.
+   Two rows reach the context branch that are not content and must not consume a
+   number — the empty string `strings.Split` leaves after a trailing newline,
+   and `\ No newline at end of file` — or every row after them reports one line
+   past where it lives. A deleted row has no post-image number, so `anchorLine`
+   falls back to its old one: a comment on `:0` names nothing.
+4. **Editing a unified diff is not possible**, so `e` swaps the pane to the
+   working-tree file, keeping the gutter marks the diff supplies
+   (`changedLines`). That is what the line numbers buy beyond comments.
+
+**The editor uses `textarea` as its model but draws itself** (`view_edit.go`).
+Two things force that, and both are properties of the widget rather than
+preferences: it has no per-token styling hook (its `StyleState` applies to the
+whole field), so its rendering cannot carry syntax colour; and its viewport only
+takes content during `View`, so any scroll set before the first render is
+clamped to zero — which left the caret parked on line 120 with the pane still
+showing line 1. `editScrollTop` therefore owns scrolling and centres the caret,
+and the textarea is read back through `Value`, `Line` and `LineInfo`.
+
+**Both textareas must have `MaxHeight` and `MaxWidth` cleared.** The widget
+defaults them to 99 rows and 500 columns, and once a value reaches `MaxHeight`
+it makes Enter a **silent** no-op — no error, no bell. Every source file worth
+reviewing is longer than 99 lines, so Enter simply appeared not to be wired up,
+and a short test fixture cannot see it (`TestEnterWorksPastTheWidgetsHeightCeiling`
+uses 400 lines for exactly that reason). `MaxWidth` truncates long lines just as
+quietly, which would shorten a minified file on save. Read the caret column from
+`Column()`, not `LineInfo().ColumnOffset`: the latter is the offset within the
+*visual* row, so on a soft-wrapped line it draws the caret at the start of the
+wrap rather than where the user is typing.
+
+**The widget rewrites every tab as four spaces on load, and cannot be told not
+to** — its sanitizer is an unexported field of an internal package. Saving its
+value verbatim would reindent whole files: a spurious 400-line diff for Go, and
+for a Makefile a silent break, since there the tabs are syntax. So `editBuffer`
+keeps both `original` (raw) and `shown` (tab-expanded), and:
+
+- `Dirty` compares against **`shown`**, or every tab-indented file reads as
+  edited the moment it is opened and lands in the review as "I edited this".
+- `merged` writes a line the user did not touch back **byte-identical** from
+  `original`, and folds leading spaces back to tabs only on lines that changed,
+  only when the file is tab-indented (`usesTabIndent`), and only in the leading
+  run — spaces aligning a trailing comment are the author's.
+
+Regression cover: `edit_tabs_test.go`.
+
+**Syntax colouring is `internal/syntax`**, a shape-based tokenizer rather than
+real grammars. **chroma was tried and reverted**: it does the job properly, but
+its lexers add **4.7MB** to the binary and take ~30ms on a few-hundred-line file
+— thirty times this — which is felt as scroll lag in a view that redraws per
+keystroke. A terminal palette shows six or seven colours, and getting those
+right does not need a parser.
+
+`Highlight` takes the **block about to be drawn**, not a line: a comment or
+string spanning lines is invisible to anything fed one line at a time, and its
+body then colours as though it were code. `state` carries between lines within
+the block. A window opening *inside* such a construct still lexes from the wrong
+state — bounded and local.
+
+`wordKind` looks one token ahead for `(`, which is the single structural fact
+worth a colour of its own: without it a line is a wall of one colour, and that
+distinction was most of what made highlighting worth having. An unrecognised
+extension tokenizes as plain text rather than being guessed at. The load-bearing
+test is that highlighting never changes the text.
+
+**The view's two derived structures are cached, and have to be.** The line
+marks (`editBuffer.cached`, keyed on content) and the row list
+(`Model.rowsCache`, keyed on path + diff pointer + `commentsRev`) are each read
+several times per frame — by the gutter, the header, the rebuilt diff, the
+cursor and every hit test. Uncached, a single wheel event ran **four to five
+full diffs of the file**, which is what scroll lag felt like.
+`TestViewIsCheapEnoughToScroll` holds a frame under 8ms; it is ~1.4ms.
+Any change to the notes must bump `commentsRev`, or the rows go stale.
+
+**The editor's textarea is pinned to `noWrapWidth` so the model never wraps.**
+`CursorDown` moves by *visual* row, so with wrapping on, stepping to a line
+counts wrapped rows and stops short — jumping to line 120 of a file with long
+comments landed on line 13 — and `Column()` stops being the logical column.
+Wrapping is a display concern and this view clips.
+
+**The diff pane's cursor moves over `paneRows`, not over `DiffResult.Lines`**
+(`rows.go`). Notes are drawn between diff lines, so a cursor that only knew
+about diff lines could never land on one — the comments were visible and
+unreachable, with no way to edit or delete one once written. `renderDiffRows`
+walks the same list, so what is drawn and what is selectable cannot drift apart.
+`e` on a note reopens it (removing the original first, so attaching does not
+duplicate), `d` deletes it, and an emptied note is a deletion — the same meaning
+an empty rename has elsewhere in medusa.
+
+**`ctrl+enter` is the one submit gesture**: it attaches the note being typed,
+and from anywhere else sends the review. `alt+enter` is bound alongside it
+because ctrl+enter is not deliverable everywhere — a terminal without the Kitty
+keyboard protocol sends a bare CR for both enter and ctrl+enter, so the binding
+would be dead there with nothing to suggest why. Enter stays a newline in both
+text panes.
+
+**Click targets are recorded while drawing, never recomputed** (`rowMap` in
+`mouse.go`). A comment wraps to as many rows as its text needs, a removal draws
+rows of its own, and the editor inserts lines the buffer does not have — so
+screen-row-to-item is a product of rendering, and a second implementation of it
+would be wrong the first time either renderer changed. Clicks arrive in screen
+coordinates and the window works in its own, so **the app rebases them**
+(`localizeReviewMouse`): it is the only thing that knows where it centred the
+window, and duplicating that arithmetic in the window is how the two drift.
+
+**A note's text starts in the same column as the code it annotates**, with its
+bar in the diff's marker column (`commentRow` mirrors `renderDiffLine`'s
+layout). Indented anywhere else it reads as stray text dropped into the middle
+of the file rather than as a note about a line. The comment editor is drawn the
+same way and for the same reason the file editor is: the widget paints its own
+prompt column and highlights the caret line across the whole field, which put a
+stray bar and a black band through the diff.
+
+**The line diff is Myers, via `go-udiff`** (`linediff.go`), not something local.
+It replaced a hand-rolled quadratic LCS with an area budget, which past the cap
+gave up and marked the whole changed window as modified — so an ordinary file
+with two edits ninety lines apart drew every line between them as changed
+(91×91 exceeds a 4000 cap). A real diff has no such cliff, and no constant to
+tune. `TestDiffIsFastOnALargeFile` keeps it inside a keystroke on 20k lines,
+since the marks are recomputed every frame.
+
+**`cancelIdentical` is load-bearing.** An edit script is not unique, and the
+line-level conversion readily emits `delete b, insert b, insert NEW` for what
+the user experienced as inserting one line — taken at face value that reports
+two changed lines. Trimming the lines identical at both ends of a change leaves
+only what differs, and is also what makes the rewrite pairing safe: everything
+reaching `addedOrModified` genuinely differs. Deletions are carried forward in
+`carry` rather than written to `marks` eagerly, because the line they attach to
+has not been emitted yet and writing ahead of it is overwritten the moment it
+is. Deletions have no
+row of their own left in the buffer, so they attach to the line that closed over
+them, and removals with no following line attach to the last — dropped instead,
+deleting a block was the one edit that left no trace at all.
+
+**Both marker tiers are live diffs over the buffer's current lines** — nothing
+reads the git diff's line numbers, which are fixed when the window opens. Using
+them meant an unsaved insertion left every marker below it pointing at whatever
+slid into its slot: the indicator stayed with the *number* instead of with the
+line. `editBuffer` holds the committed content (`git.FileAtHead`, read once at
+open) so `BaseMarks` can diff against it every frame without touching git;
+`Marks` diffs against what was opened, for the user's own edits.
+
+**An unsaved buffer rebuilds its file's diff** (`live.go`). A git diff describes
+what is on disk, so a buffer typed into and not saved is invisible in it —
+pressing esc showed the diff exactly as it was before the user started, which
+reads as their work having been thrown away. `displayDiff` is the single
+accessor every view must use: the pane, its row list and its header have to
+agree, or the cursor navigates one diff while another is drawn under it.
+
+`lineMark.Replaced` is why a rewrite can be both things at once: **one** `~` in
+the editor's gutter, and `-old` / `+new` in a diff view. Dropping it made a
+rewritten line read as a pure insertion with the replaced text simply gone.
+
+**The gutter reads as a diff, and `lineMark.RemovedBefore` carries the removed
+*text*, not a count.** `+` is a line that was not there, `−` one that is gone,
+`~` one that was rewritten — the vocabulary the reader already has, where a bar
+said only *that* something changed. A deleted line is drawn where it used to be,
+with its text and a blank number column: a count ("1 line removed") names
+nothing the reader can look up, since the line is no longer in the buffer to
+scroll back to, and numbering it with its neighbour's position would be a lie.
+The user's own edits are bright and win the column; a line the agent added that
+they have not touched is the same `+` muted — two tiers rather than two glyphs,
+so the meaning of `+` stays single.
+
+**A removal adjacent to an addition is paired into one modification**
+(`addedOrModified`). An LCS has no notion of "changed": rewriting a line is a
+delete plus an insert, so fixing a typo drew a green bar *and* a red "1 line
+removed" rule — two rows and two colours for one keystroke. Counts follow the
+same rule (`editCounts`: `~` modified, `+` added, `−` removed, non-zero parts
+only), because reporting a rewrite as both doubles every edit.
+
+The editor header counts lines **the user** has changed, recomputed each frame
+from the buffer (`DirtyLineCount`). It used to report the diff's added-line
+count, which never moved however much was typed: a number that does not respond
+to editing is worse than no number, since it reads as a broken live value.
+
+Opening a file lands the cursor on the first row *of* the hunk while the
+viewport starts at the `@@` header: a header is not a line of the file, so
+opening on it makes the very first `c` or `e` fail for a reason the user could
+not have anticipated.
+
+**Every row of a pane must be exactly the pane's width** (`joinPaneRows`).
+`lipgloss.JoinHorizontal` sizes a block to its widest line, and the outer frame
+then wraps every joined line that no longer fits — which is how the comment
+editor's box ended up drawn across the file list with the window twice its
+height. For the same reason the editor is prefixed rows rather than a nested
+bordered box: a lipgloss border inside hand-built rows is re-measured by the
+frame's own `Width()`. Note `Width()` is the *total* rendered width, border and
+padding included, so the panes get `bodyWidth() = m.width - 4`.
+
+Two rendering details that were wrong first time and are cheap to get wrong
+again: `---`/`+++` file headers open with the same characters a diff marker
+does, so `trimDiffMarker` must be applied only to add/delete/context rows; and
+the file list's counts use `−` (U+2212, three bytes, one column), so its widths
+must be measured with `lipgloss.Width`, never `len`. The same byte-vs-column
+trap applies to any test that locates a button with `strings.Index` — the info
+bar contains `←` and `│`, which puts a byte offset four columns right of the
+glyph.
+
+The window opens on each file's **first hunk**, not row zero: a diff starts with
+`diff --git`/`index`/`---`/`+++`, which repeat what the window header already
+says. `gitDirty` gates the button and is pushed from the app
+(`center.SetGitDirty`) wherever the sidebar's status is set — including the
+workspace-switch paths, or a previous workspace's button sits on a clean one.
+
+The button is **right-aligned in the info bar**, and the left side (branch,
+path, IDE) is what gives way when the two collide: the path is already
+abbreviated and can lose a little more, whereas a button pushed past the edge is
+simply gone — the failure hardest to notice, since nothing is left to hint it
+should be there. `TestReviewButtonIsFlushRight` sweeps widths down to 40 columns.
+
+**Neither git-status path may gate on the sidebar.** `handleGitStatusTick` and
+`handleFileWatcherEvent` both used to skip the active workspace's refresh while
+`layout.SidebarHidden()`, since the sidebar was the only consumer. It no longer
+is: the button and the live review window are gated on that same status, so with
+the sidebar collapsed neither could ever turn on and the button was simply
+absent. `TestGitStatusRefreshIsNotGatedOnTheSidebar` guards it.
+
+**The view is live, and merges rather than replaces** (`refresh.go`). It tracks
+the agent off `messages.GitStatusResult` — the *debounced* signal — never off
+raw `FileWatcherEvent`s: a busy agent touches files far faster than a full
+re-diff of the workspace runs. `handleFileWatcherEvent` requests that status
+when the review window is open even if the sidebar is hidden, or the window
+freezes on the diff as it stood when it was opened. `Refresh` drops a request
+that arrives mid-read and records `refreshPending` instead, so a burst collapses
+into one follow-up read rather than a queue the window is permanently behind.
+
+Everything the user has produced has to survive a refresh, and a reload knows
+about none of it:
+
+- **Comments and cursor re-anchor by text, not by line number.** Both hold the
+  content they were placed against, and `findQuotedLine` moves them to the
+  *nearest* match — nearest because files repeat lines (a closing brace, a blank
+  line) and the first textual match is often not the one the user chose.
+  Restoring by number instead leaves the reader staring at whatever the agent
+  just pushed into that slot, and drifts a line further on every insertion.
+- **A note whose quoted line is gone is kept and marked `Stale`**, rendered
+  muted and sent with "(you have since changed this line)". Dropping it loses
+  the user's typing; sending it silently makes the agent hunt for text that is
+  not there.
+- **A file the agent reverts stays in the list**, marked `Gone`, and its pane
+  shows its orphaned comments — a row held open purely to preserve notes has to
+  show them, or keeping it is indistinguishable from having dropped them.
+- **Edit buffers are keyed by path and never touched**, and `markEditConflicts`
+  flags one whose file the agent has rewritten (`!` on the row). The write is
+  refused at save time regardless; the marker is what stops the user typing
+  another paragraph into a buffer that can no longer be written.
+
 ### Workspaces pane ordering
 
 Workspaces and group sections in the dashboard are reorderable by dragging a

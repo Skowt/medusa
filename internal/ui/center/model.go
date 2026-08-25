@@ -209,8 +209,13 @@ type Model struct {
 	tmuxConfig tmuxConfig
 
 	// Action bar state
-	actionBarHits   []actionBarButton
-	actionBarY      int // Y position of action bar within content
+	actionBarHits []actionBarButton
+	actionBarY    int // Y position of action bar within content
+	// gitDirty gates the [Review Changes] button. The center model does not
+	// watch git itself; the app pushes this from the status it already
+	// collects, so the button is only offered when there is something to
+	// review.
+	gitDirty        bool
 	copyFeedback    map[copyTarget]uint64
 	copySequence    uint64
 	clipboardWrite  func(string) error
@@ -261,6 +266,7 @@ const (
 	actionBarCopyBranch actionBarButtonKind = iota
 	actionBarCopyDir
 	actionBarOpenIDE
+	actionBarReviewChanges
 )
 
 type copyTarget int

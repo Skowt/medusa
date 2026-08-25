@@ -395,3 +395,11 @@ func (m *Model) CleanupWorkspace(ws *data.Workspace) {
 		m.agentManager.CloseWorkspaceAgents(ws)
 	}
 }
+
+// SetGitDirty records whether the active workspace has uncommitted changes,
+// which is what gates the [Review Changes] button. The center model does not
+// watch git; the app pushes this from the status it already collects for the
+// sidebar.
+func (m *Model) SetGitDirty(dirty bool) {
+	m.gitDirty = dirty
+}

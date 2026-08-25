@@ -25,6 +25,17 @@ const (
 type DiffLine struct {
 	Kind    DiffLineKind
 	Content string
+	// OldLine and NewLine are the line's position in the pre- and post-image
+	// of the file, counted from each hunk header rather than from the top of
+	// the diff. A line that exists on only one side carries 0 for the other,
+	// as do headers.
+	//
+	// The rendered index is not a substitute: it restarts at no meaningful
+	// place, skips nothing for the header lines, and jumps wherever a hunk
+	// does. Anything that has to name a real place in the file — a review
+	// comment, an edit gutter — needs these.
+	OldLine int
+	NewLine int
 }
 
 // Hunk represents a single hunk in a diff
@@ -52,6 +63,33 @@ type DiffResult struct {
 // hunkPattern matches unified diff hunk headers
 // @@ -OLD_START,OLD_COUNT +NEW_START,NEW_COUNT @@ optional context
 var hunkPattern = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$`)
+
+// FileAtHead returns a file's committed content, and whether it is tracked.
+//
+// It is what lets a live view diff an *unsaved* buffer against the base: git
+// can only diff what is on disk, so anything showing edits before they are
+// written has to hold the pre-image itself. An untracked file has no committed
+// version, which is not an error — every line of it is new.
+func FileAtHead(repoPath, path string) (content string, tracked bool, err error) {
+	// RunGitRaw, not RunGitAllowFailure: the latter trims its output, which for
+	// file content silently drops the trailing newline and any leading blank
+	// line — enough to make the first and last lines read as edited.
+	out, err := RunGitRaw(repoPath, "--no-optional-locks", "show", "HEAD:"+path)
+	if err != nil {
+		// The file is new, or HEAD does not exist yet in a fresh repo. Both
+		// mean the same thing here: there is nothing to compare against.
+		return "", false, nil
+	}
+	return string(out), true, nil
+}
+
+// ParseDiff turns unified diff text into a DiffResult. It is the same parsing
+// the Get*Diff functions do, exposed so callers that already hold diff text —
+// and tests that need a diff without a repository — do not have to reproduce
+// the line numbering.
+func ParseDiff(path, content string) *DiffResult {
+	return parseDiff(path, content)
+}
 
 // GetFileDiff returns the diff for a specific file
 func GetFileDiff(repoPath, path string, mode DiffMode) (*DiffResult, error) {
@@ -126,6 +164,10 @@ func parseDiff(path, content string) *DiffResult {
 
 	lines := strings.Split(content, "\n")
 	lineIdx := 0
+	// Cursors into the pre- and post-image, re-seeded by every hunk header.
+	// Zero means "no hunk yet", which is what the leading `diff --git`/`index`
+	// preamble lines get.
+	oldLine, newLine := 0, 0
 
 	for _, line := range lines {
 		diffLine := DiffLine{Content: line}
@@ -155,11 +197,16 @@ func parseDiff(path, content string) *DiffResult {
 				}
 
 				result.Hunks = append(result.Hunks, hunk)
+				oldLine, newLine = hunk.OldStart, hunk.NewStart
 			}
 		} else if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
 			diffLine.Kind = DiffLineAdd
+			diffLine.NewLine = newLine
+			newLine++
 		} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
 			diffLine.Kind = DiffLineDelete
+			diffLine.OldLine = oldLine
+			oldLine++
 		} else if strings.HasPrefix(line, "diff ") ||
 			strings.HasPrefix(line, "index ") ||
 			strings.HasPrefix(line, "---") ||
@@ -176,6 +223,19 @@ func parseDiff(path, content string) *DiffResult {
 			diffLine.Kind = DiffLineHeader
 		} else {
 			diffLine.Kind = DiffLineContext
+			// Context exists on both sides and advances both cursors, but two
+			// lines reach here that are not content and must not be counted:
+			// the empty string strings.Split leaves behind a diff's trailing
+			// newline, and git's "\ No newline at end of file" marker. A real
+			// blank line in the file arrives as " ", never as "", so the empty
+			// string is an unambiguous tell. Numbering either would push every
+			// following line one past where it lives.
+			if newLine > 0 && line != "" && !strings.HasPrefix(line, "\\ ") {
+				diffLine.OldLine = oldLine
+				diffLine.NewLine = newLine
+				oldLine++
+				newLine++
+			}
 		}
 
 		result.Lines = append(result.Lines, diffLine)

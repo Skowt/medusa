@@ -227,9 +227,6 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	if a.statusManager != nil {
 		a.statusManager.Invalidate(oldPrimaryRoot)
 	}
-	if a.dashboard != nil {
-		a.dashboard.InvalidateStatus(oldPrimaryRoot)
-	}
 
 	// 7. Persist tab state, toast, and reload.
 	var cmds []tea.Cmd
