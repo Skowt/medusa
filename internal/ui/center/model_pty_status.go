@@ -239,13 +239,6 @@ func (m *Model) TerminalLayer() *compositor.VTermLayer {
 	if tab.Terminal == nil {
 		return nil
 	}
-	// While a restart is in flight the vterm holds the dead session's screen
-	// (and then an empty one). Returning nil drops the pane onto the
-	// string-rendering path, which paints the restart placeholder instead.
-	if m.restartingLocked(tab) {
-		return nil
-	}
-
 	// Check if we can reuse the cached snapshot
 	version := tab.Terminal.Version()
 	showCursor := m.focused

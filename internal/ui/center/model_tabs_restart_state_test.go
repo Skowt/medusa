@@ -1,9 +1,7 @@
 package center
 
 import (
-	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -31,76 +29,6 @@ func restartingTestTab(t *testing.T) (*Model, *Tab) {
 	m.tabsByWorkspace[string(ws.ID())] = []*Tab{tab}
 	m.activeTabByWorkspace[string(ws.ID())] = 0
 	return m, tab
-}
-
-// TestRestartingSurvivesEmptyRepaint covers the window a restart actually
-// spans: the replacement's tmux client repaints an empty pane long before the
-// agent boots, so the tab must still read as restarting until something is
-// painted. Clearing on first output instead drops the tab back to a blank
-// pane and a STOPPED status for the rest of the agent's startup.
-func TestRestartingSurvivesEmptyRepaint(t *testing.T) {
-	m, tab := restartingTestTab(t)
-	tab.restarting = true
-	tab.restartingSince = time.Now()
-
-	// tmux's post-attach repaint of an empty pane.
-	writeTabOutput(tab, []byte("\x1b[2J\x1b[H"))
-	tab.mu.Lock()
-	restarting := m.restartingLocked(tab)
-	tab.mu.Unlock()
-	if !restarting {
-		t.Fatal("tab stopped reading as restarting after an empty repaint")
-	}
-	if m.TerminalLayer() != nil {
-		t.Fatal("TerminalLayer must return nil while restarting so the placeholder renders")
-	}
-
-	// The agent's first real frame.
-	writeTabOutput(tab, []byte("Claude"))
-	tab.mu.Lock()
-	restarting = m.restartingLocked(tab)
-	tab.mu.Unlock()
-	if restarting {
-		t.Fatal("tab still reads as restarting after the agent painted")
-	}
-	if m.TerminalLayer() == nil {
-		t.Fatal("TerminalLayer must resume once the agent has painted")
-	}
-}
-
-// TestRestartingExpires keeps a tab that never paints from claiming a restart
-// is under way forever; it has to fall back to its real (stopped) state.
-func TestRestartingExpires(t *testing.T) {
-	m, tab := restartingTestTab(t)
-	tab.restarting = true
-	tab.restartingSince = time.Now().Add(-restartingMaxDisplay - time.Second)
-
-	tab.mu.Lock()
-	restarting := m.restartingLocked(tab)
-	stillSet := tab.restarting
-	tab.mu.Unlock()
-	if restarting || stillSet {
-		t.Fatal("restarting state outlived its display bound")
-	}
-}
-
-// TestRestartingStatusLine guards the status shown mid-restart: tab.Running is
-// false during the window, which otherwise renders as STOPPED with a "restart
-// it yourself" hint while a restart is in fact already running.
-func TestRestartingStatusLine(t *testing.T) {
-	m, tab := restartingTestTab(t)
-	tab.restarting = true
-	tab.restartingSince = time.Now()
-
-	tab.mu.Lock()
-	status := m.terminalStatusLineLocked(tab)
-	tab.mu.Unlock()
-	if !strings.Contains(status, "RESTARTING") {
-		t.Fatalf("status line during restart = %q, want it to say RESTARTING", status)
-	}
-	if strings.Contains(status, "STOPPED") {
-		t.Fatalf("status line during restart = %q, want no STOPPED", status)
-	}
 }
 
 // TestRestartClearsActivityIndicator covers the workspace spinner: a restart

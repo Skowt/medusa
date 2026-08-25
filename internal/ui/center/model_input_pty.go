@@ -256,6 +256,5 @@ func writeTabOutput(tab *Tab, chunk []byte) {
 	tab.Terminal.Write(chunk)
 	flushDone()
 	perf.Count("pty_flush_bytes", int64(len(chunk)))
-	clearRestartingIfPaintedLocked(tab)
 	tab.monitorDirty = true
 }

@@ -91,8 +91,6 @@ func (m *Model) restartTab(index int) tea.Cmd {
 	tab.Agent = nil
 	tab.Running = false
 	tab.autoRestartAttempt = 0
-	tab.restarting = true
-	tab.restartingSince = time.Now()
 	tab.mu.Unlock()
 	tmuxOpts := m.getTmuxOptions()
 

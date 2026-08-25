@@ -314,28 +314,3 @@ func TestIncrementalCursorPositionedWrites(t *testing.T) {
 		t.Errorf("Expected 'Todo' at start of line")
 	}
 }
-
-// TestScreenIsBlank covers the signal medusa uses to tell "the replacement
-// agent has not drawn yet" from "it has": a cleared pane must read as blank
-// even after the escape sequences that cleared it were parsed.
-func TestScreenIsBlank(t *testing.T) {
-	v := New(20, 5)
-	if !v.ScreenIsBlank() {
-		t.Fatal("fresh terminal should be blank")
-	}
-
-	v.Write([]byte("\x1b[2J\x1b[H"))
-	if !v.ScreenIsBlank() {
-		t.Fatal("cleared terminal should be blank")
-	}
-
-	v.Write([]byte("hi"))
-	if v.ScreenIsBlank() {
-		t.Fatal("terminal with text should not be blank")
-	}
-
-	v.Write([]byte("\x1b[2J\x1b[H"))
-	if !v.ScreenIsBlank() {
-		t.Fatal("terminal cleared again should be blank")
-	}
-}
