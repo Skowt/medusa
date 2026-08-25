@@ -202,9 +202,13 @@ func InjectHooks(profileDir, hooksDir, emitBin string) error {
 			return rule
 		}
 
+		// PermissionRequest is safe to observe here: Claude Code fires it only
+		// when it is about to prompt a human — never for a call its permission
+		// rules, bypassPermissions, or auto mode already decided — and it takes
+		// a decision as stdout JSON, which medusa-hook-emit never writes.
 		for _, event := range []string{
 			"Stop", "StopFailure", "SubagentStart", "SubagentStop",
-			"SessionStart", "PreToolUse", "PostToolUse",
+			"SessionStart", "PreToolUse", "PermissionRequest", "PostToolUse",
 			"UserPromptSubmit",
 		} {
 			existing, _ := hooks[event].([]any)

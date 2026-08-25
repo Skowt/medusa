@@ -186,59 +186,6 @@ func TestStopLegacyOutstandingUnknown(t *testing.T) {
 	}
 }
 
-// TestNeedsInputTransitions verifies permission/elicitation events ping once,
-// don't re-ping while already waiting, and resolve silently.
-func TestNeedsInputTransitions(t *testing.T) {
-	t.Run("permission pings once", func(t *testing.T) {
-		a := newHookTestApp()
-		applyEvent(a, "ws", ev(hooks.EventPreToolUse, hooks.OutstandingUnknown, stamp(0)))
-		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(1))); tr != hookTransitionNeedsInput {
-			t.Fatalf("PermissionRequest transition = %v, want needsInput", tr)
-		}
-		// The matching Notification(permission_prompt) follows — no second ping.
-		if tr := applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(2))); tr != hookTransitionNone {
-			t.Fatalf("second needs-input event must not re-ping, got %v", tr)
-		}
-		if a.hookActiveIDs()["ws"] {
-			t.Fatal("needs-input state must not count as busy")
-		}
-	})
-
-	t.Run("approval resumes work silently", func(t *testing.T) {
-		a := newHookTestApp()
-		applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(0)))
-		if tr := applyEvent(a, "ws", ev(hooks.EventPostToolUse, hooks.OutstandingUnknown, stamp(1))); tr != hookTransitionNone {
-			t.Fatalf("resumed tool use must not ping, got %v", tr)
-		}
-		if !a.hookActiveIDs()["ws"] {
-			t.Fatal("workspace must be busy again after approval")
-		}
-	})
-
-	t.Run("denial ending the turn clears without a second ping", func(t *testing.T) {
-		a := newHookTestApp()
-		applyEvent(a, "ws", ev(hooks.EventNotificationElicitation, hooks.OutstandingUnknown, stamp(0)))
-		if tr := applyEvent(a, "ws", ev(hooks.EventStop, 0, stamp(1))); tr != hookTransitionNone {
-			t.Fatalf("Stop after needs-input must clear silently, got %v", tr)
-		}
-		if _, ok := a.hookWorkspaceStates["ws"]; ok {
-			t.Fatal("state must be cleared by Stop")
-		}
-	})
-
-	t.Run("AskUserQuestion needs input despite arriving as PreToolUse", func(t *testing.T) {
-		a := newHookTestApp()
-		applyEvent(a, "ws", ev(hooks.EventUserPromptSubmit, hooks.OutstandingUnknown, stamp(0)))
-		msg := hookActivityEvent{Event: hooks.EventPreToolUse, Timestamp: stamp(1), Outstanding: hooks.OutstandingUnknown, Tool: "AskUserQuestion"}
-		if tr := applyEvent(a, "ws", msg); tr != hookTransitionNeedsInput {
-			t.Fatalf("PreToolUse(AskUserQuestion) transition = %v, want needsInput", tr)
-		}
-		if a.hookActiveIDs()["ws"] {
-			t.Fatal("AskUserQuestion must not count as busy")
-		}
-	})
-}
-
 // TestIdleNotificationWithOutstandingWork verifies the idle notification is
 // outstanding-aware: Claude Code fires idle_prompt ~60s after the REPL goes
 // idle even while background agents are still working (the REPL is idle

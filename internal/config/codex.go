@@ -62,9 +62,17 @@ func EnsureCodexHome(codexHome string) error {
 // permission_prompt ping. Its Stop payload carries no background_tasks list
 // either, so the outstanding count stays unknown and a Stop reads as plain
 // ready — the same degradation as a Claude Code older than v2.1.145.
+//
+// That leaves PreToolUse and PermissionRequest carrying the whole needs-input
+// signal for Codex: a question reaches Medusa only as a tool call named
+// request_user_input (see hooks.IsQuestionTool), and an approval only as
+// PermissionRequest.
+//
+// PermissionRequest is the one event here Codex lets a hook answer, so the
+// shim below must never look like an answer — see writeCodexHookShim.
 var codexHookEvents = []string{
-	"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-	"SubagentStart", "SubagentStop", "Stop",
+	"SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
+	"PostToolUse", "SubagentStart", "SubagentStop", "Stop",
 }
 
 // codexHookShimPath returns where the launcher lives for a CODEX_HOME.
@@ -80,6 +88,14 @@ func codexHookShimPath(codexHome string) string {
 // binary's path and the socket. It also holds the two guards the command string
 // used to carry, so a non-Medusa session and a missing binary are both silent
 // no-ops.
+//
+// It ends by discarding stderr and exiting 0 rather than exec'ing, which is
+// what keeps Medusa's hooks purely observational. Codex reads exit 2 plus a
+// stderr message from a PermissionRequest hook as a *denial* of the tool call,
+// so a Go runtime panic in medusa-hook-emit — which exits 2 and prints a stack
+// trace to stderr — would otherwise block the agent's work and report Medusa's
+// crash to it as the reason. The extra process this costs per hook is not
+// worth measuring against that.
 func writeCodexHookShim(codexHome, sock, emitBin string) string {
 	if codexHome == "" || emitBin == "" {
 		return ""
@@ -92,7 +108,8 @@ func writeCodexHookShim(codexHome, sock, emitBin string) string {
 		"BIN=" + shellQuote(emitBin) + "\n" +
 		"SOCK=" + shellQuote(sock) + "\n" +
 		"[ -x \"$BIN\" ] || exit 0\n" +
-		"exec \"$BIN\" -socket \"$SOCK\" \"$@\"\n"
+		"\"$BIN\" -socket \"$SOCK\" \"$@\" 2>/dev/null\n" +
+		"exit 0\n"
 	path := codexHookShimPath(codexHome)
 	if err := atomicWriteFile(path, []byte(script), 0700); err != nil {
 		return ""

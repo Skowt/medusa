@@ -23,24 +23,15 @@ type hookActivityEvent struct {
 	Outstanding int
 	// Tool is the tool name on PreToolUse/PostToolUse.
 	Tool string
+	// AutoReviewer is resolved from the tab, not from the payload: it reports
+	// that this tab's approval requests go to an automatic reviewer instead of
+	// to the user. Only PermissionRequest reads it — see applyHookTransition.
+	AutoReviewer bool
 	// ClaudeSessionID, AgentType and Cwd are carried on SessionStart.
 	ClaudeSessionID string
 	AgentType       string
 	Cwd             string
 }
-
-// hookTransition is the user-visible outcome of applying a hook event: it
-// drives the notification sound and the unread (orange) highlight. Pings are
-// asserted by explicit state transitions — never inferred from a workspace
-// dropping out of an "active set", which is what made every stray event a
-// potential false sound.
-type hookTransition int
-
-const (
-	hookTransitionNone       hookTransition = iota
-	hookTransitionReady                     // turn complete, nothing outstanding — "what's next?"
-	hookTransitionNeedsInput                // blocked on the user (permission / question / elicitation)
-)
 
 // initHooksServer registers the hook event receiver: a Unix socket server,
 // which is the sole transport for Claude Code lifecycle events.
@@ -99,6 +90,13 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	// stale active event revives the spinner with nothing left to clear it.
 	if !shouldApplyHookEventFor(a.hookTabLastStamp, msg.SessionName, msg.Event, msg.Timestamp) {
 		return nil
+	}
+
+	// PermissionRequest alone cannot say whether a human was asked; the tab's
+	// own launch options can. Resolve that here, where tab identity is already
+	// in hand, so the transition rules stay a pure function of the message.
+	if info, ok := infoBySession[msg.SessionName]; ok {
+		msg.AutoReviewer = info.AutoReviewer
 	}
 
 	transition := applyHookTransition(a.hookTabStates, a.hookTabOutstanding, msg.SessionName, msg)
@@ -166,121 +164,12 @@ func (a *App) handleSessionStart(wsID string, msg hookActivityEvent) []tea.Cmd {
 	return nil
 }
 
-// setHookOutstandingFor records the latest authoritative background-task count
-// for a key. OutstandingUnknown (legacy shell hooks) leaves the previous
-// knowledge untouched; zero deletes the entry to keep the map from growing.
-func setHookOutstandingFor(outstandingByKey map[string]int, key string, outstanding int) {
-	switch {
-	case outstanding < 0:
-	case outstanding == 0:
-		delete(outstandingByKey, key)
-	default:
-		outstandingByKey[key] = outstanding
-	}
-}
-
-// restoreHookOutstanding rebuilds background-work knowledge from restored
-// states: a persisted SubagentWait means the turn ended with live background
-// tasks, so the first idle_prompt after a restart must not false-ping. The
-// exact count is unknown; 1 is enough to gate the idle until real events
 // refresh it (or the reconciler clears a dead session).
 func (a *App) restoreHookOutstanding() {
 	for wsID, evt := range a.hookWorkspaceStates {
 		if evt == hooks.EventSubagentWait {
 			a.hookOutstanding[wsID] = 1
 		}
-	}
-}
-
-// isNeedsInputState reports whether a stored state means the agent is blocked
-// on the user (question or MCP elicitation).
-func isNeedsInputState(evt hooks.EventType) bool {
-	switch evt {
-	case hooks.EventNotificationElicitation:
-		return true
-	}
-	return false
-}
-
-// applyHookStateTransition updates hookWorkspaceStates for an applied event
-// and reports the user-visible transition.
-//
-// The state is derived from payload truth, not event counting: Stop carries
-// the authoritative count of still-running background tasks (background_tasks
-// since Claude Code 2.1.145), so a turn that ends with live background agents
-// parks in SubagentWait — busy, no ping — and the auto-resumed turn's final
-// Stop clears. SubagentStop is deliberately inert: Claude Code is known to
-// fire phantom/duplicate SubagentStop events after a turn's Stop (upstream
-// #59719, #70151), and any rule that lets SubagentStop set a state creates a
-// busy value with nothing left to clear it.
-func (a *App) applyHookStateTransition(wsID string, msg hookActivityEvent) hookTransition {
-	return applyHookTransition(a.hookWorkspaceStates, a.hookOutstanding, wsID, msg)
-}
-
-func applyHookTransition(states map[string]hooks.EventType, outstanding map[string]int, key string, msg hookActivityEvent) hookTransition {
-	prev, hadPrev := states[key]
-	evt := msg.Event
-	switch {
-	case evt == hooks.EventStop || evt == hooks.EventStopFailure:
-		setHookOutstandingFor(outstanding, key, msg.Outstanding)
-		if msg.Outstanding > 0 {
-			states[key] = hooks.EventSubagentWait
-			return hookTransitionNone
-		}
-		delete(states, key)
-		// Ping only when leaving a busy state: after needs-input the user was
-		// already pinged, and with no state at all there is nothing to report.
-		if hadPrev && !isNeedsInputState(prev) {
-			return hookTransitionReady
-		}
-		return hookTransitionNone
-
-	case evt == hooks.EventSubagentStop:
-		// Inert for the state; only its outstanding count is trusted (it is
-		// authoritative and assignment-only, so a phantom SubagentStop's own
-		// payload still describes the session truthfully).
-		setHookOutstandingFor(outstanding, key, msg.Outstanding)
-		return hookTransitionNone
-
-	case evt == hooks.EventNotificationIdle:
-		// Claude fires idle_prompt ~60s after the REPL goes quiet — including
-		// while background agents still work (the REPL is idle between
-		// auto-resumes). With outstanding work it must read as still-busy, not
-		// done; the auto-resumed turn's final Stop delivers the real ping.
-		// With nothing outstanding it is the self-healing clear for any
-		// wedged busy state (missed Stop, lost event). It must never wipe a
-		// pending '!': the question dialog is still on screen.
-		if hadPrev && isNeedsInputState(prev) {
-			return hookTransitionNone
-		}
-		if outstanding[key] > 0 {
-			states[key] = hooks.EventSubagentWait
-			return hookTransitionNone
-		}
-		delete(states, key)
-		if hadPrev {
-			return hookTransitionReady
-		}
-		return hookTransitionNone
-
-	case isNeedsInputState(evt),
-		evt == hooks.EventPreToolUse && msg.Tool == "AskUserQuestion":
-		// AskUserQuestion is a question dialog, not work: it arrives as
-		// PreToolUse but blocks on the user.
-		state := evt
-		if evt == hooks.EventPreToolUse {
-			state = hooks.EventNotificationElicitation
-		}
-		states[key] = state
-		if hadPrev && isNeedsInputState(prev) {
-			return hookTransitionNone // already waiting; one ping is enough
-		}
-		return hookTransitionNeedsInput
-
-	default:
-		// Tool activity, prompt submission, subagent start: busy.
-		states[key] = evt
-		return hookTransitionNone
 	}
 }
 

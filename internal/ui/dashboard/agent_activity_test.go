@@ -18,7 +18,13 @@ func TestHasActiveAgentsHookStates(t *testing.T) {
 		{"SubagentStop", false},
 		{"SubagentWait", true},
 		{"NotificationPermission", false},
-		{"PermissionRequest", false},
+		// PermissionRequest is only ever stored when the tab routes approvals
+		// to an automatic reviewer instead of the user (Codex's
+		// --approve-for-me). That review is work in progress, so the spinner
+		// stays; a request a human must answer is stored as
+		// NotificationElicitation.
+		{"PermissionRequest", true},
+		{"NotificationElicitation", false},
 	}
 	for _, tc := range cases {
 		m := New()

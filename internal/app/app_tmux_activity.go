@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/tmux"
 )
 
@@ -13,6 +14,23 @@ type tabSessionInfo struct {
 	WorkspaceID string
 	Assistant   string
 	IsChat      bool
+	// AutoReviewer reports that the tab's approval requests are resolved by
+	// an automatic reviewer rather than by the user. Codex's --approve-for-me
+	// is that reviewer; Claude Code has no equivalent, since it fires
+	// PermissionRequest only when it is about to prompt a human.
+	AutoReviewer bool
+}
+
+// tabAutoReviewer reports whether a tab's approval requests are answered by an
+// automatic reviewer instead of by the user, which is what decides whether a
+// PermissionRequest hook means a human is waiting (see applyHookTransition).
+//
+// Codex's --approve-for-me is that reviewer, and Codex runs its PermissionRequest
+// hooks before it picks one, so the flag is the only thing separating "the agent
+// is blocked on you" from "its reviewer is thinking". Claude Code needs no
+// equivalent: it fires PermissionRequest only when it is about to prompt a human.
+func tabAutoReviewer(tab data.TabInfo) bool {
+	return strings.TrimSpace(tab.Assistant) == assistantCodex && tab.CodexAuto
 }
 
 // tabSessionInfoByName builds a map from tmux session name to workspace info.
@@ -40,10 +58,11 @@ func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 			assistant := strings.TrimSpace(tab.Assistant)
 			_, isChat := assistants[assistant]
 			infoBySession[name] = tabSessionInfo{
-				Status:      status,
-				WorkspaceID: string(ws.ID()),
-				Assistant:   assistant,
-				IsChat:      isChat,
+				Status:       status,
+				WorkspaceID:  string(ws.ID()),
+				Assistant:    assistant,
+				IsChat:       isChat,
+				AutoReviewer: tabAutoReviewer(tab),
 			}
 		}
 	}
@@ -66,6 +85,7 @@ func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 				_, isChat := assistants[assistant]
 				infoBySession[name] = tabSessionInfo{
 					Status: status, WorkspaceID: wsID, Assistant: assistant, IsChat: isChat,
+					AutoReviewer: tabAutoReviewer(tab),
 				}
 			}
 		}

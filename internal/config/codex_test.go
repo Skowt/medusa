@@ -353,6 +353,14 @@ func TestInjectCodexHooksReplacesPreShimRules(t *testing.T) {
 	}
 }
 
+// TestCodexHooksNeverDecidePermissions guards the property that makes it safe
+// for Medusa to observe PermissionRequest at all: Codex lets a hook on that
+// event answer the approval, and Medusa must only ever watch it.
+//
+// Exit 2 plus a stderr message is a *denial*, so the shim has to swallow both
+// — a Go runtime panic in medusa-hook-emit exits 2 and writes a stack trace to
+// stderr, which Codex would hand the agent as the reason its command was
+// blocked. exec would replace the shell and let that status through.
 func TestCodexHooksNeverDecidePermissions(t *testing.T) {
 	home := t.TempDir()
 	if err := InjectCodexHooks(home, t.TempDir(), "/usr/local/bin/medusa-hook-emit"); err != nil {
@@ -365,8 +373,23 @@ func TestCodexHooksNeverDecidePermissions(t *testing.T) {
 			t.Errorf("event %s must not decide: %s", event, cmd)
 		}
 	}
-	if _, ok := hooks["PermissionRequest"]; ok {
-		t.Error("Medusa must not inject a Codex PermissionRequest hook")
+	if _, ok := hooks["PermissionRequest"]; !ok {
+		t.Fatal("Medusa must observe PermissionRequest — it is Codex's only approval signal")
+	}
+
+	shim, err := os.ReadFile(filepath.Join(home, codexHookShimName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(shim)
+	if !strings.Contains(script, "2>/dev/null") {
+		t.Errorf("shim must discard stderr, or a panic reads as a denial reason:\n%s", script)
+	}
+	if !strings.HasSuffix(script, "\nexit 0\n") {
+		t.Errorf("shim must end by exiting 0:\n%s", script)
+	}
+	if strings.Contains(script, "exec \"$BIN\"") {
+		t.Errorf("shim must not exec — that returns the binary's own exit status:\n%s", script)
 	}
 }
 

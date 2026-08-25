@@ -250,9 +250,55 @@ Four properties are load-bearing:
    (`sessions/<y>/<m>/<d>/rollout-*-<id>.jsonl`): resuming an unknown id exits
    1 rather than degrading, which would drop the tab to a shell.
 
-Degradations to expect: Codex has no Notification event, so no idle_prompt or
-permission_prompt ping, and its Stop payload carries no `background_tasks`, so
-the outstanding count stays unknown and every Stop reads as ready.
+Degradations to expect: Codex has no Notification event, so no idle_prompt
+ping, and its Stop payload carries no `background_tasks`, so the outstanding
+count stays unknown and every Stop reads as ready. It has no `StopFailure`
+either, so a turn that dies on an API error leaves the tab busy until the
+3-minute reconciler clears it.
+
+Codex's eleven hook events are a subset of Claude Code's, matching name for
+name — `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`,
+`PermissionRequest`, `PostToolUse`, `SubagentStart`, `SubagentStop`, `Stop`,
+`PreCompact`, `PostCompact`. Medusa subscribes to all but the compaction pair
+and `SessionEnd`, which say nothing about whether a workspace wants attention.
+Everything else Claude Code offers (the `Notification` family, `StopFailure`,
+`Elicitation`, the file/config/task events) has no Codex counterpart at all.
+
+That leaves a Codex tab **two** needs-input signals, both of which Claude Code
+also has, so both go through one path:
+
+1. **A question the agent puts on screen** arrives as a plain `PreToolUse` —
+   Codex's `request_user_input` goes through its generic function-tool dispatch
+   with no hook-name override, so nothing but the tool name separates it from a
+   file read. `hooks.IsQuestionTool` holds both assistants' names (Claude
+   Code's is `AskUserQuestion`); missing one leaves the tab spinning as busy
+   while it waits for an answer nobody knows it wants.
+2. **An approval** arrives as `PermissionRequest` — but the two assistants do
+   not mean the same thing by it, and reading it the same way on both is what
+   would break. Claude Code fires it *only* when it is about to prompt a human;
+   a call its permission rules, `bypassPermissions`, or auto mode already
+   settled never reaches it. Codex fires it **before it picks a reviewer**, so
+   under `--approve-for-me` it also covers approvals its automatic reviewer
+   then resolves with no prompt shown. `tabAutoReviewer` is the discriminator,
+   and it is read from the tab's launch options because the payload cannot
+   answer it: `permission_mode` reflects the approval policy alone, never who
+   reviews. Ungated, an Auto tab would ping on every sandbox escape it makes —
+   and Auto is Medusa's default Codex mode.
+
+Whichever way it arrives, a needs-input signal is stored as
+`EventNotificationElicitation`, so the dashboard and the persisted
+`ActivityState` have one value to reason about. An auto-reviewed
+`PermissionRequest` is stored under its own name and counts as **busy**: the
+review is work in progress.
+
+`PermissionRequest` is also the one event either assistant lets a hook *answer*,
+which makes the Codex shim's tail load-bearing. Codex reads exit 2 plus a stderr
+message as a **denial**, so the shim discards stderr and exits 0 rather than
+`exec`ing: a Go runtime panic in `medusa-hook-emit` exits 2 and prints a stack
+trace, which would otherwise block the agent's command and hand it Medusa's
+crash as the reason. (Claude Code takes its decision as stdout JSON, which
+`medusa-hook-emit` never writes — it must not, since stdout from a Stop hook is
+fed back as context.) `TestCodexHooksNeverDecidePermissions` guards the tail.
 
 Medusa does not intercept or share either assistant's permission decisions.
 The Codex New Agent dialog exposes a Starting Mode: Auto adds

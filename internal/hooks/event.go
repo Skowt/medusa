@@ -15,6 +15,10 @@ const (
 	EventPreToolUse              EventType = "PreToolUse"
 	EventPostToolUse             EventType = "PostToolUse"
 	EventUserPromptSubmit        EventType = "UserPromptSubmit"
+	// EventPermissionRequest fires when a tool call needs an approval
+	// decision. Whether it means the *user* was asked differs by assistant —
+	// see hookActivityEvent.AutoReviewer.
+	EventPermissionRequest EventType = "PermissionRequest"
 	// EventSessionStart carries the live Claude session id so the tab's
 	// persisted id can be refreshed when it changes mid-session (e.g. /clear
 	// mints a new session). It does not affect busy/idle activity state.
@@ -43,8 +47,9 @@ type HookEvent struct {
 	// background_tasks payload list, excluding the stopping agent itself),
 	// or OutstandingUnknown when the payload did not carry the field.
 	Outstanding int
-	// Tool is Claude Code's tool_name on PreToolUse/PostToolUse. Used to
-	// recognize AskUserQuestion, which needs input rather than showing busy.
+	// Tool is the assistant's tool_name on PreToolUse/PostToolUse. Used to
+	// recognize the question tools, which need input rather than showing busy
+	// — see IsQuestionTool.
 	Tool string
 	// ClaudeSessionID is Claude Code's live session_id, carried on
 	// SessionStart so the app can refresh a tab's persisted id.
@@ -60,6 +65,24 @@ type HookEvent struct {
 	Cwd string
 }
 
+// questionTools are the tool names whose PreToolUse means the agent has put a
+// question on screen and is blocked on the user, rather than doing work.
+//
+// Both assistants deliver it the same way — as an ordinary PreToolUse for an
+// ordinary function tool — so the tool name is the only thing that separates a
+// question from a file read. Codex's request_user_input goes through its
+// generic function-tool dispatch with no hook-name override, so it arrives
+// under its own name; Claude Code's is AskUserQuestion.
+var questionTools = map[string]bool{
+	"AskUserQuestion":    true, // Claude Code
+	"request_user_input": true, // Codex
+}
+
+// IsQuestionTool reports whether a PreToolUse tool_name is a question dialog.
+func IsQuestionTool(tool string) bool {
+	return questionTools[tool]
+}
+
 // IsActiveEvent reports whether a stored state means the agent is still busy —
 // the workspace should show a spinner rather than read as ready. SubagentStop
 // is deliberately absent: the app never stores it (phantom SubagentStop events
@@ -70,6 +93,12 @@ func IsActiveEvent(evt EventType) bool {
 	switch evt {
 	case EventPreToolUse, EventPostToolUse, EventUserPromptSubmit,
 		EventSubagentStart, EventSubagentWait:
+		return true
+	case EventPermissionRequest:
+		// Only ever stored when the approval was routed to an automatic
+		// reviewer rather than the user: the review is work in progress, so
+		// the tab keeps its spinner. A request the user must answer is stored
+		// as EventNotificationElicitation instead.
 		return true
 	}
 	return false
