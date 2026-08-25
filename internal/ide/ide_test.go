@@ -92,3 +92,39 @@ func writeExec(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 }
+
+// TestFindMatchesRememberedLaunchPath covers the lookup that decides whether
+// the picker can be skipped: the remembered path must resolve to the install
+// that still exists, and an uninstalled IDE must report missing rather than
+// matching something nearby.
+func TestFindMatchesRememberedLaunchPath(t *testing.T) {
+	installs := []Install{
+		{Name: "Cursor", Location: "System", LaunchPath: "/Applications/Cursor.app"},
+		{Name: "Zed", Location: "System", LaunchPath: "/Applications/Zed.app"},
+	}
+
+	got, ok := Find(installs, "/Applications/Zed.app")
+	if !ok || got.Name != "Zed" {
+		t.Errorf("Find(Zed) = %+v, %v; want the Zed install", got, ok)
+	}
+	if _, ok := Find(installs, "/Applications/Gone.app"); ok {
+		t.Error("Find matched an install that is no longer present")
+	}
+	if _, ok := Find(installs, ""); ok {
+		t.Error("Find matched on an empty remembered path")
+	}
+}
+
+func TestNameForPath(t *testing.T) {
+	cases := map[string]string{
+		"/Applications/Cursor.app":                   "Cursor",
+		"/Users/x/Applications/IntelliJ IDEA CE.app": "IntelliJ IDEA CE",
+		"/usr/local/bin/code":                        "code",
+		"":                                           "",
+	}
+	for in, want := range cases {
+		if got := NameForPath(in); got != want {
+			t.Errorf("NameForPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

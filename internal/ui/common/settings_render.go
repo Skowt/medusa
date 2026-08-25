@@ -24,6 +24,7 @@ func (s *SettingsDialog) build() *LineBuilder {
 	s.appendCheckbox(b, settingsItemKeymap, s.showKeymapHints, "Show keymap hints")
 	s.appendCheckbox(b, settingsItemHideSidebar, s.hideSidebar, "Hide sidebar")
 	s.appendCheckbox(b, settingsItemHideTerminal, s.hideTerminal, "Hide terminal")
+	s.appendCheckbox(b, settingsItemIDEAlwaysOpen, s.ideAlwaysOpen, s.ideAlwaysOpenLabel())
 	b.Blank()
 
 	// ── Shared Config ────────────────────────────────────────
@@ -145,4 +146,14 @@ func (s *SettingsDialog) recordHit(item settingsItem, b *LineBuilder) {
 
 func itemID(item settingsItem) string {
 	return strconv.Itoa(int(item))
+}
+
+// ideAlwaysOpenLabel names the IDE the checkbox commits to when one has been
+// picked before. Without a name the setting only says what it will do once the
+// first pick happens, which is exactly what it does.
+func (s *SettingsDialog) ideAlwaysOpenLabel() string {
+	if s.ideName != "" {
+		return "Always open " + s.ideName + " without asking"
+	}
+	return "Always open the last IDE without asking"
 }

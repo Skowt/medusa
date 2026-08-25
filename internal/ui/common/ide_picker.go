@@ -18,11 +18,14 @@ type IDEInstallsDetected struct {
 	Root     string
 }
 
-// IDEPickerResult is sent when the IDE picker is closed.
+// IDEPickerResult is sent when the IDE picker is closed. DontAskAgain carries
+// the checkbox state so a confirmed pick can also turn the prompt off, and a
+// cancel leaves the stored preference untouched.
 type IDEPickerResult struct {
-	Confirmed bool
-	Install   ide.Install
-	Root      string
+	Confirmed    bool
+	Install      ide.Install
+	Root         string
+	DontAskAgain bool
 }
 
 // IDEPicker is a modal dialog for selecting which IDE install to open.
@@ -34,6 +37,7 @@ type IDEPicker struct {
 	installs []ide.Install
 	cursor   int
 	root     string
+	dontAsk  bool
 
 	hitRegions        []ideHitRegion
 	showKeymapHintsUI bool
@@ -46,7 +50,10 @@ type ideHitRegion struct {
 
 // NewIDEPicker creates a picker over installs, pre-selecting the install whose
 // LaunchPath matches rememberedPath, or the first entry if none matches.
-func NewIDEPicker(installs []ide.Install, rememberedPath, root string) *IDEPicker {
+// dontAsk seeds the "don't ask again" checkbox: the picker still opens with it
+// on when the remembered install has gone missing, so the preference is shown
+// as it stands rather than silently reset.
+func NewIDEPicker(installs []ide.Install, rememberedPath, root string, dontAsk bool) *IDEPicker {
 	cursor := 0
 	if rememberedPath != "" {
 		for i, ins := range installs {
@@ -56,7 +63,7 @@ func NewIDEPicker(installs []ide.Install, rememberedPath, root string) *IDEPicke
 			}
 		}
 	}
-	return &IDEPicker{installs: installs, cursor: cursor, root: root}
+	return &IDEPicker{installs: installs, cursor: cursor, root: root, dontAsk: dontAsk}
 }
 
 func (p *IDEPicker) Show()                        { p.visible = true }
@@ -85,16 +92,16 @@ func (p *IDEPicker) Update(msg tea.Msg) (*IDEPicker, tea.Cmd) {
 			return p, func() tea.Msg { return IDEPickerResult{Confirmed: false} }
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("enter", " "))):
-			return p, p.confirm()
+			return p, p.selectRow()
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
-			p.cursor = (p.cursor + 1) % len(p.installs)
+			p.cursor = (p.cursor + 1) % p.rowCount()
 			return p, nil
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("up", "k"))):
 			p.cursor--
 			if p.cursor < 0 {
-				p.cursor = len(p.installs) - 1
+				p.cursor = p.rowCount() - 1
 			}
 			return p, nil
 		}
@@ -121,15 +128,31 @@ func (p *IDEPicker) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 
-	// Clicking an install both selects and opens it — a click is the mouse
+	// Clicking a row both selects and acts on it — a click is the mouse
 	// equivalent of moving the cursor there and pressing enter.
 	for _, hit := range p.hitRegions {
 		if hit.region.Contains(localX, localY) {
 			p.cursor = hit.index
-			return p.confirm()
+			return p.selectRow()
 		}
 	}
 	return nil
+}
+
+// checkboxIndex is the focus position of the "don't ask again" row, which sits
+// after the last install.
+func (p *IDEPicker) checkboxIndex() int { return len(p.installs) }
+
+// rowCount is the number of focusable rows: every install plus the checkbox.
+func (p *IDEPicker) rowCount() int { return len(p.installs) + 1 }
+
+// selectRow acts on the focused row: the checkbox toggles, an install opens.
+func (p *IDEPicker) selectRow() tea.Cmd {
+	if p.cursor == p.checkboxIndex() {
+		p.dontAsk = !p.dontAsk
+		return nil
+	}
+	return p.confirm()
 }
 
 // confirm closes the picker and reports the install under the cursor.
@@ -140,8 +163,9 @@ func (p *IDEPicker) confirm() tea.Cmd {
 	p.visible = false
 	sel := p.installs[p.cursor]
 	root := p.root
+	dontAsk := p.dontAsk
 	return func() tea.Msg {
-		return IDEPickerResult{Confirmed: true, Install: sel, Root: root}
+		return IDEPickerResult{Confirmed: true, Install: sel, Root: root, DontAskAgain: dontAsk}
 	}
 }
 
@@ -191,11 +215,40 @@ func (p *IDEPicker) build() *LineBuilder {
 		}
 	}
 	b.Blank()
-	b.Append("", muted.Render("[Enter] Open • [Esc] Cancel"))
+	p.appendDontAsk(b, muted)
+
+	b.Blank()
+	// The hint follows the focus: enter opens an install but only toggles the
+	// checkbox, and a hint that says "Open" there reads as a dead key.
+	action := "[Enter] Open • [Esc] Cancel"
+	if p.cursor == p.checkboxIndex() {
+		action = "[Enter] Toggle • [Esc] Cancel"
+	}
+	b.Append("", muted.Render(action))
 
 	if p.showKeymapHintsUI {
 		b.Blank()
 		b.Append("", muted.Render("↑/↓ navigate"))
 	}
 	return b
+}
+
+// appendDontAsk renders the "don't ask again" checkbox as one more focusable
+// row after the installs, plus the note that Settings can turn the prompt back
+// on — a toggle that reads as one-way is one users won't touch.
+func (p *IDEPicker) appendDontAsk(b *LineBuilder, muted lipgloss.Style) {
+	box := "[ ]"
+	if p.dontAsk {
+		box = "[" + Icons.Clean + "]"
+	}
+	style := lipgloss.NewStyle().Foreground(ColorForeground)
+	if p.cursor == p.checkboxIndex() {
+		style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	}
+	const id = "dontask"
+	b.Append(id, style.Render(box+" Don't ask again"))
+	if r, ok := b.RegionByID(id); ok {
+		p.hitRegions = append(p.hitRegions, ideHitRegion{index: p.checkboxIndex(), region: r})
+	}
+	b.Append("", muted.Render("    Reversible in Settings"))
 }

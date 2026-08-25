@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -109,6 +110,43 @@ func TestUISettingsIDERoundTrip(t *testing.T) {
 	got := loadUISettings(path)
 	if got.IDE != "/Applications/Cursor.app" {
 		t.Errorf("IDE = %q, want %q", got.IDE, "/Applications/Cursor.app")
+	}
+}
+
+// TestUISettingsIDEAlwaysOpenRoundTrip guards the half of the IDE preference
+// that decides whether the picker opens at all. Losing it on reload turns
+// "don't ask again" into "don't ask again until you restart medusa".
+func TestUISettingsIDEAlwaysOpenRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	in := defaultUISettings()
+	in.IDE = "/Applications/Cursor.app"
+	in.IDEAlwaysOpen = true
+	if err := saveUISettings(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if !loadUISettings(path).IDEAlwaysOpen {
+		t.Error("IDEAlwaysOpen did not survive a save/load round trip")
+	}
+
+	in.IDEAlwaysOpen = false
+	if err := saveUISettings(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if loadUISettings(path).IDEAlwaysOpen {
+		t.Error("turning the preference back off did not persist")
+	}
+}
+
+// TestUISettingsIDEAlwaysOpenDefaultsOff keeps the picker as the default for
+// every config written before this setting existed.
+func TestUISettingsIDEAlwaysOpenDefaultsOff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"ui":{"ide":"/Applications/Cursor.app"}}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if loadUISettings(path).IDEAlwaysOpen {
+		t.Error("a config with no ide_always_open key must still show the picker")
 	}
 }
 

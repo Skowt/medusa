@@ -29,6 +29,7 @@ func TestSettingsDialog_ClickHitsIntendedRow(t *testing.T) {
 		false, // syncPlugins
 		"",    // sound
 		false, // tmuxPersistence
+		false, // ideAlwaysOpen
 	)
 	d.SetSize(termW, termH)
 	d.Show()
@@ -73,6 +74,9 @@ func TestSettingsDialog_ClickHitsIntendedRow(t *testing.T) {
 			func() bool { return d.hideTerminal }},
 		{"hideTerminal", settingsItemHideTerminal,
 			func() bool { return d.hideTerminal },
+			func() bool { return false }},
+		{"ideAlwaysOpen", settingsItemIDEAlwaysOpen,
+			func() bool { return d.ideAlwaysOpen },
 			func() bool { return false }},
 		{"syncPlugins", settingsItemSyncPlugins,
 			func() bool { return d.syncProfilePlugins },

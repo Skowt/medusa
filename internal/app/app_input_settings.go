@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/config"
+	"github.com/Skowt/medusa/internal/ide"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
 	"github.com/Skowt/medusa/internal/update"
@@ -21,7 +22,9 @@ func (a *App) handleShowSettingsDialog() {
 		a.config.UI.SyncProfilePlugins,
 		a.config.UI.NotificationSound,
 		a.config.UI.TmuxPersistence,
+		a.config.UI.IDEAlwaysOpen,
 	)
+	a.settingsDialog.SetIDEName(ide.NameForPath(a.config.UI.IDE))
 	a.settingsDialog.SetSize(a.width, a.height)
 	a.settingsDialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 
@@ -159,6 +162,7 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 		}
 
 		a.config.UI.NotificationSound = msg.NotificationSound
+		a.config.UI.IDEAlwaysOpen = msg.IDEAlwaysOpen
 		wasHidden := a.config.UI.HideSidebar
 		a.config.UI.HideSidebar = msg.HideSidebar
 		a.layout.SetSidebarHidden(msg.HideSidebar)

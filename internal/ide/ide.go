@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // Install is a discovered IDE installation.
@@ -123,4 +124,30 @@ func Open(install Install, folder string) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// Find returns the install whose LaunchPath matches launchPath. It reports
+// false when nothing matches, which is how a remembered choice that has since
+// been uninstalled is detected.
+func Find(installs []Install, launchPath string) (Install, bool) {
+	if launchPath == "" {
+		return Install{}, false
+	}
+	for _, ins := range installs {
+		if ins.LaunchPath == launchPath {
+			return ins, true
+		}
+	}
+	return Install{}, false
+}
+
+// NameForPath derives a display name from a remembered LaunchPath, so a
+// remembered choice can be named without re-scanning the disk. macOS bundle
+// paths lose their ".app" suffix; elsewhere the binary name is the name.
+func NameForPath(launchPath string) string {
+	if launchPath == "" {
+		return ""
+	}
+	base := filepath.Base(launchPath)
+	return strings.TrimSuffix(base, ".app")
 }

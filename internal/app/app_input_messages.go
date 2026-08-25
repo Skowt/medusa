@@ -347,13 +347,30 @@ func (a *App) handleShowCommitDialog(msg messages.ShowCommitDialog) {
 // picker (or toasts if none are found).
 func (a *App) handleActionBarOpenIDE(msg messages.ActionBarOpenIDE) tea.Cmd {
 	root := msg.WorkspaceRoot
+	// Read the preference here, on the UI thread: the command below runs on a
+	// goroutine, where touching a.config would race with a settings save.
+	remembered, skipPicker := a.config.UI.IDE, a.config.UI.IDEAlwaysOpen
 	return func() tea.Msg {
 		installs := ide.DetectInstalls()
 		if len(installs) == 0 {
 			return messages.Toast{Message: "No IDE detected (install VS Code, Cursor, or Zed)", Level: messages.ToastWarning}
 		}
+		if install, ok := rememberedIDE(installs, remembered, skipPicker); ok {
+			return openIDEMsg(install, root)
+		}
 		return common.IDEInstallsDetected{Installs: installs, Root: root}
 	}
+}
+
+// rememberedIDE reports the install the IDE button should open without asking.
+// "Don't ask again" skips the picker only while the remembered install is still
+// on disk: an IDE that has since been uninstalled falls back to asking, rather
+// than leaving the button doing nothing at all.
+func rememberedIDE(installs []ide.Install, remembered string, skipPicker bool) (ide.Install, bool) {
+	if !skipPicker {
+		return ide.Install{}, false
+	}
+	return ide.Find(installs, remembered)
 }
 
 // newSkillUsageService describes the skill-usage dashboard without starting it.

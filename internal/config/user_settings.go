@@ -29,6 +29,7 @@ type UISettings struct {
 	TmuxPersistence              bool
 	NotificationSound            string          // Sound name from /System/Library/Sounds (empty = none)
 	IDE                          string          // Remembered IDE install launch path (.app bundle on macOS, binary on Linux)
+	IDEAlwaysOpen                bool            // Open the remembered IDE straight away instead of showing the picker
 	CollapsedGroups              map[string]bool // Dashboard group collapse state, keyed by group label ("" = Ungrouped)
 	GroupOrder                   []string        // Dashboard group display order, keyed by group label ("" = Ungrouped); labels absent from it fall back to alphabetical
 }
@@ -86,6 +87,7 @@ func loadUISettings(path string) UISettings {
 			TmuxPersistence              *bool           `json:"tmux_persistence"`
 			NotificationSound            *string         `json:"notification_sound"`
 			IDE                          *string         `json:"ide"`
+			IDEAlwaysOpen                *bool           `json:"ide_always_open"`
 			CollapsedGroups              map[string]bool `json:"collapsed_groups"`
 			GroupOrder                   []string        `json:"group_order"`
 		} `json:"ui"`
@@ -159,6 +161,9 @@ func loadUISettings(path string) UISettings {
 	if raw.UI.IDE != nil {
 		settings.IDE = *raw.UI.IDE
 	}
+	if raw.UI.IDEAlwaysOpen != nil {
+		settings.IDEAlwaysOpen = *raw.UI.IDEAlwaysOpen
+	}
 	if raw.UI.CollapsedGroups != nil {
 		settings.CollapsedGroups = raw.UI.CollapsedGroups
 	}
@@ -209,6 +214,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["tmux_persistence"] = settings.TmuxPersistence
 	ui["notification_sound"] = settings.NotificationSound
 	ui["ide"] = settings.IDE
+	ui["ide_always_open"] = settings.IDEAlwaysOpen
 	delete(ui, "compound_approve")
 	ui["collapsed_groups"] = settings.CollapsedGroups
 	ui["group_order"] = settings.GroupOrder

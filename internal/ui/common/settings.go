@@ -17,6 +17,7 @@ type SettingsResult struct {
 	SyncProfilePlugins bool
 	NotificationSound  string
 	TmuxPersistence    bool
+	IDEAlwaysOpen      bool
 }
 
 // TriggerUpgradeRequest is sent when the user clicks "Install update" in settings.
@@ -34,6 +35,7 @@ const (
 	settingsItemKeymap settingsItem = iota
 	settingsItemHideSidebar
 	settingsItemHideTerminal
+	settingsItemIDEAlwaysOpen
 	settingsItemSyncPlugins // Shared Config section
 	settingsItemNotificationSound
 	settingsItemAutoStart // Tmux section
@@ -65,6 +67,10 @@ type SettingsDialog struct {
 	syncProfilePlugins bool
 	notificationSound  string
 	tmuxPersistence    bool
+	ideAlwaysOpen      bool
+	// ideName is the remembered IDE's display name, used to name the choice
+	// the checkbox commits to. Empty until an IDE has been picked once.
+	ideName string
 
 	// UI state
 	focusedItem settingsItem
@@ -91,7 +97,7 @@ type settingsHitRegion struct {
 }
 
 // NewSettingsDialog creates a new settings dialog with current values.
-func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent, syncProfilePlugins bool, notificationSound string, tmuxPersistence bool) *SettingsDialog {
+func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent, syncProfilePlugins bool, notificationSound string, tmuxPersistence, ideAlwaysOpen bool) *SettingsDialog {
 	return &SettingsDialog{
 		theme:              currentTheme,
 		showKeymapHints:    showKeymapHints,
@@ -101,6 +107,7 @@ func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideT
 		syncProfilePlugins: syncProfilePlugins,
 		notificationSound:  notificationSound,
 		tmuxPersistence:    tmuxPersistence,
+		ideAlwaysOpen:      ideAlwaysOpen,
 		focusedItem:        settingsItemKeymap,
 	}
 }
@@ -113,6 +120,7 @@ func (s *SettingsDialog) SetShowKeymapHints(show bool)      { s.showKeymapHintsU
 func (s *SettingsDialog) Cursor() *tea.Cursor               { return nil }
 func (s *SettingsDialog) SetTheme(theme ThemeID)            { s.theme = theme }
 func (s *SettingsDialog) SetNotificationSound(sound string) { s.notificationSound = sound }
+func (s *SettingsDialog) SetIDEName(name string)            { s.ideName = name }
 
 // SetUpdateInfo sets version information for the updates section.
 func (s *SettingsDialog) SetUpdateInfo(current, latest string, available bool) {
@@ -193,6 +201,10 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		s.visible = false
 		return s, func() tea.Msg { return ShowSoundPicker{} }
 
+	case settingsItemIDEAlwaysOpen:
+		s.ideAlwaysOpen = !s.ideAlwaysOpen
+		return s, nil
+
 	case settingsItemAutoStart:
 		s.autoStartAgent = !s.autoStartAgent
 		return s, nil
@@ -235,6 +247,7 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 				SyncProfilePlugins: s.syncProfilePlugins,
 				NotificationSound:  s.notificationSound,
 				TmuxPersistence:    s.tmuxPersistence,
+				IDEAlwaysOpen:      s.ideAlwaysOpen,
 			}
 		}
 
