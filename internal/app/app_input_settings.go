@@ -5,7 +5,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/ide"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
@@ -19,7 +18,6 @@ func (a *App) handleShowSettingsDialog() {
 		a.config.UI.HideSidebar,
 		a.config.UI.HideTerminal,
 		a.config.UI.AutoStartAgent,
-		a.config.UI.SyncProfilePlugins,
 		a.config.UI.NotificationSound,
 		a.config.UI.TmuxPersistence,
 		a.config.UI.IDEAlwaysOpen,
@@ -152,14 +150,6 @@ func (a *App) handleSettingsResult(msg common.SettingsResult) tea.Cmd {
 
 		a.setKeymapHintsEnabled(msg.ShowKeymapHints)
 		a.config.UI.AutoStartAgent = msg.AutoStartAgent
-
-		oldSync := a.config.UI.SyncProfilePlugins
-		a.config.UI.SyncProfilePlugins = msg.SyncProfilePlugins
-		if msg.SyncProfilePlugins && !oldSync {
-			_ = config.SyncAllProfiles(a.config.Paths.ProfilesRoot)
-		} else if !msg.SyncProfilePlugins && oldSync {
-			_ = config.UnsyncAllProfiles(a.config.Paths.ProfilesRoot)
-		}
 
 		a.config.UI.NotificationSound = msg.NotificationSound
 		a.config.UI.IDEAlwaysOpen = msg.IDEAlwaysOpen

@@ -827,6 +827,27 @@ transcript to attribute. Skill names with no `plugin:` prefix are bucketed as
 
 Per-repo workspace config lives at `.medusa/workspaces.json` (setup-workspace, run, archive). Environment variables passed to those commands include `$ROOT_WORKSPACE_PATH` plus an auto-allocated free port (`internal/process/env.go`).
 
+Profiles used to share **one** skills/plugins tree: `profiles/<name>/skills` and
+`profiles/<name>/plugins` were symlinked to `profiles/shared`. That is gone, and
+`config.HealSharedProfileLinks` (run once per start, `app.New`) migrates anyone
+still on it — it copies the shared tree into each linked profile and drops the
+symlink. Only symlinks that resolve to `profiles/shared` are touched; a profile
+with real directories, or a link the user made to somewhere else, is left alone.
+
+**The copy is not enough on its own — the plugin store records absolute paths.**
+`known_marketplaces.json` and `installed_plugins.json` name where each
+marketplace and plugin lives (`installLocation`, `installPath`), and while the
+store was shared, whichever profile wrote an entry wrote *its own* path in. So
+Work's copy could say `profiles/Default/plugins/marketplaces/...`, and Claude
+would then read a marketplace out of a directory that profile does not own —
+which breaks the moment the other profile changes it. `repointPluginPaths`
+rewrites just the profile segment of every such path, in the JSON files at the
+top of the plugins dir only: the marketplace and cache checkouts below it are
+repository content, not the store's bookkeeping.
+
+`profiles/shared` and the `skills_backup` / `plugins_backup` directories the old
+sync left behind are the user's data, so the heal leaves both on disk.
+
 ## Commits & releases
 
 Conventional-commit-lite — the `.goreleaser.yml` changelog filter depends on the prefix. See `.claude/skills/medusa-commits-and-releases/SKILL.md` for the full table and the release walkthrough.

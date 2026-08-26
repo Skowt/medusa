@@ -167,7 +167,8 @@ func ValidateProfileName(name string) error {
 		return &ValidationError{Field: "name", Message: "name must start with letter/number and contain only letters, numbers, dots, dashes, or underscores"}
 	}
 
-	// Disallow "shared" as it's reserved for shared plugins/skills
+	// Disallow "shared": profiles used to share one skills/plugins tree
+	// through profiles/shared, and that directory may still be on disk.
 	if strings.EqualFold(name, "shared") {
 		return &ValidationError{Field: "name", Message: "'shared' is a reserved name"}
 	}

@@ -26,7 +26,6 @@ func TestSettingsDialog_ClickHitsIntendedRow(t *testing.T) {
 		false, // hideSidebar
 		false, // hideTerminal
 		false, // autoStartAgent
-		false, // syncPlugins
 		"",    // sound
 		false, // tmuxPersistence
 		false, // ideAlwaysOpen
@@ -77,9 +76,6 @@ func TestSettingsDialog_ClickHitsIntendedRow(t *testing.T) {
 			func() bool { return false }},
 		{"ideAlwaysOpen", settingsItemIDEAlwaysOpen,
 			func() bool { return d.ideAlwaysOpen },
-			func() bool { return false }},
-		{"syncPlugins", settingsItemSyncPlugins,
-			func() bool { return d.syncProfilePlugins },
 			func() bool { return false }},
 		{"autoStart", settingsItemAutoStart,
 			func() bool { return d.autoStartAgent },

@@ -14,7 +14,7 @@ type Paths struct {
 	RecentsPath       string // ~/.medusa/recents.json
 	ConfigPath        string // ~/.medusa/config.json
 	ProfilesRoot      string // ~/.medusa/profiles
-	SharedProfileRoot string // ~/.medusa/profiles/shared
+	SharedProfileRoot string // ~/.medusa/profiles/shared — legacy; only read when healing old symlinks
 	HooksDir          string // ~/.medusa/hooks
 }
 
@@ -60,8 +60,6 @@ func (p *Paths) EnsureDirectories() error {
 		p.WorkspacesRoot,
 		p.MetadataRoot,
 		p.ProfilesRoot,
-		filepath.Join(p.SharedProfileRoot, "skills"),
-		filepath.Join(p.SharedProfileRoot, "plugins"),
 		p.HooksDir,
 	}
 

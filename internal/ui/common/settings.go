@@ -8,16 +8,15 @@ import (
 
 // SettingsResult is sent when the settings dialog is closed.
 type SettingsResult struct {
-	Confirmed          bool
-	Theme              ThemeID
-	ShowKeymapHints    bool
-	HideSidebar        bool
-	HideTerminal       bool
-	AutoStartAgent     bool
-	SyncProfilePlugins bool
-	NotificationSound  string
-	TmuxPersistence    bool
-	IDEAlwaysOpen      bool
+	Confirmed         bool
+	Theme             ThemeID
+	ShowKeymapHints   bool
+	HideSidebar       bool
+	HideTerminal      bool
+	AutoStartAgent    bool
+	NotificationSound string
+	TmuxPersistence   bool
+	IDEAlwaysOpen     bool
 }
 
 // TriggerUpgradeRequest is sent when the user clicks "Install update" in settings.
@@ -36,7 +35,6 @@ const (
 	settingsItemHideSidebar
 	settingsItemHideTerminal
 	settingsItemIDEAlwaysOpen
-	settingsItemSyncPlugins // Shared Config section
 	settingsItemNotificationSound
 	settingsItemAutoStart // Tmux section
 	settingsItemTmuxPersistence
@@ -59,15 +57,14 @@ type SettingsDialog struct {
 	height  int
 
 	// Settings values
-	theme              ThemeID
-	showKeymapHints    bool
-	hideSidebar        bool
-	hideTerminal       bool
-	autoStartAgent     bool
-	syncProfilePlugins bool
-	notificationSound  string
-	tmuxPersistence    bool
-	ideAlwaysOpen      bool
+	theme             ThemeID
+	showKeymapHints   bool
+	hideSidebar       bool
+	hideTerminal      bool
+	autoStartAgent    bool
+	notificationSound string
+	tmuxPersistence   bool
+	ideAlwaysOpen     bool
 	// ideName is the remembered IDE's display name, used to name the choice
 	// the checkbox commits to. Empty until an IDE has been picked once.
 	ideName string
@@ -97,18 +94,17 @@ type settingsHitRegion struct {
 }
 
 // NewSettingsDialog creates a new settings dialog with current values.
-func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent, syncProfilePlugins bool, notificationSound string, tmuxPersistence, ideAlwaysOpen bool) *SettingsDialog {
+func NewSettingsDialog(currentTheme ThemeID, showKeymapHints, hideSidebar, hideTerminal, autoStartAgent bool, notificationSound string, tmuxPersistence, ideAlwaysOpen bool) *SettingsDialog {
 	return &SettingsDialog{
-		theme:              currentTheme,
-		showKeymapHints:    showKeymapHints,
-		hideSidebar:        hideSidebar,
-		hideTerminal:       hideTerminal,
-		autoStartAgent:     autoStartAgent,
-		syncProfilePlugins: syncProfilePlugins,
-		notificationSound:  notificationSound,
-		tmuxPersistence:    tmuxPersistence,
-		ideAlwaysOpen:      ideAlwaysOpen,
-		focusedItem:        settingsItemKeymap,
+		theme:             currentTheme,
+		showKeymapHints:   showKeymapHints,
+		hideSidebar:       hideSidebar,
+		hideTerminal:      hideTerminal,
+		autoStartAgent:    autoStartAgent,
+		notificationSound: notificationSound,
+		tmuxPersistence:   tmuxPersistence,
+		ideAlwaysOpen:     ideAlwaysOpen,
+		focusedItem:       settingsItemKeymap,
 	}
 }
 
@@ -209,10 +205,6 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		s.autoStartAgent = !s.autoStartAgent
 		return s, nil
 
-	case settingsItemSyncPlugins:
-		s.syncProfilePlugins = !s.syncProfilePlugins
-		return s, nil
-
 	case settingsItemManageProfiles:
 		s.visible = false
 		return s, func() tea.Msg { return ShowProfileManager{} }
@@ -238,16 +230,15 @@ func (s *SettingsDialog) handleSelect() (*SettingsDialog, tea.Cmd) {
 		s.visible = false
 		return s, func() tea.Msg {
 			return SettingsResult{
-				Confirmed:          true,
-				Theme:              s.theme,
-				ShowKeymapHints:    s.showKeymapHints,
-				HideSidebar:        s.hideSidebar,
-				HideTerminal:       s.hideTerminal,
-				AutoStartAgent:     s.autoStartAgent,
-				SyncProfilePlugins: s.syncProfilePlugins,
-				NotificationSound:  s.notificationSound,
-				TmuxPersistence:    s.tmuxPersistence,
-				IDEAlwaysOpen:      s.ideAlwaysOpen,
+				Confirmed:         true,
+				Theme:             s.theme,
+				ShowKeymapHints:   s.showKeymapHints,
+				HideSidebar:       s.hideSidebar,
+				HideTerminal:      s.hideTerminal,
+				AutoStartAgent:    s.autoStartAgent,
+				NotificationSound: s.notificationSound,
+				TmuxPersistence:   s.tmuxPersistence,
+				IDEAlwaysOpen:     s.ideAlwaysOpen,
 			}
 		}
 

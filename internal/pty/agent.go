@@ -172,9 +172,6 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	if agentType == AgentClaude && ws.Profile != "" {
 		profileDir = filepath.Join(m.config.Paths.ProfilesRoot, ws.Profile)
 		_ = os.MkdirAll(profileDir, 0755)
-		if m.config.UI.SyncProfilePlugins {
-			_ = config.SyncProfileSharedDirs(m.config.Paths.ProfilesRoot, ws.Profile)
-		}
 	}
 
 	// A Codex tab's profileDir is its CODEX_HOME, which also carries the

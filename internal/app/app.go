@@ -430,6 +430,10 @@ func New(version, commit, date string) (*App, error) {
 		app.supervisor.Start("git.file_watcher", fileWatcher.Run, supervisor.WithBackoff(500*time.Millisecond))
 	}
 
+	// Profiles used to share one skills/plugins tree through a symlink. Give
+	// any profile still linked that way its own copy before anything reads it.
+	_ = config.HealSharedProfileLinks(cfg.Paths.ProfilesRoot)
+
 	// Inject hooks into all profiles and start the hooks socket server. The
 	// emit binary is resolved once; when missing (e.g. `go run` dev builds
 	// without `make build`), legacy shell hooks are injected instead.

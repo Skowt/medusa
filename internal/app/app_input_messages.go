@@ -124,10 +124,6 @@ func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cm
 		if err := a.config.SaveUISettings(); err != nil {
 			logging.Warn("Failed to save last profile: %v", err)
 		}
-
-		if a.config.UI.SyncProfilePlugins {
-			_ = config.SyncProfileSharedDirs(a.config.Paths.ProfilesRoot, profile)
-		}
 	}
 
 	// Update profile in-place on current workspaces

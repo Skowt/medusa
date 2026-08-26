@@ -27,11 +27,6 @@ func (s *SettingsDialog) build() *LineBuilder {
 	s.appendCheckbox(b, settingsItemIDEAlwaysOpen, s.ideAlwaysOpen, s.ideAlwaysOpenLabel())
 	b.Blank()
 
-	// ── Shared Config ────────────────────────────────────────
-	b.Append("", label.Render("Shared Config"))
-	s.appendCheckbox(b, settingsItemSyncPlugins, s.syncProfilePlugins, "Sync plugins & skills across profiles")
-	b.Blank()
-
 	// ── Agents ───────────────────────────────────────────────
 	b.Append("", label.Render("Agents"))
 	soundLabel := "None"

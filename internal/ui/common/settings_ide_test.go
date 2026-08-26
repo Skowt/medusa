@@ -9,7 +9,7 @@ import (
 
 func newIDESettingsDialog(alwaysOpen bool) *SettingsDialog {
 	d := NewSettingsDialog(ThemeTokyoNight,
-		false, false, false, false, false, "", false, alwaysOpen,
+		false, false, false, false, "", false, alwaysOpen,
 	)
 	d.SetSize(120, 60)
 	d.Show()

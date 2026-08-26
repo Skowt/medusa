@@ -12,7 +12,6 @@ type UISettings struct {
 	HideSidebar                  bool
 	HideTerminal                 bool
 	AutoStartAgent               bool
-	SyncProfilePlugins           bool
 	LastProfile                  string // Most recently selected profile name
 	LastWorkspace                string // ID of the workspace active when medusa last exited
 	LastIsolated                 bool   // Last state of "run isolated" checkbox for new workspaces
@@ -39,7 +38,6 @@ func defaultUISettings() UISettings {
 		ShowKeymapHints:       false,
 		HideTerminal:          true,
 		AutoStartAgent:        true,
-		SyncProfilePlugins:    true,
 		LastPermissionMode:    "auto",
 		LastFullscreen:        true,
 		LastAssistant:         "claude",
@@ -69,7 +67,6 @@ func loadUISettings(path string) UISettings {
 			HideSidebar                  *bool           `json:"hide_sidebar"`
 			HideTerminal                 *bool           `json:"hide_terminal"`
 			AutoStartAgent               *bool           `json:"auto_start_agent"`
-			SyncProfilePlugins           *bool           `json:"sync_profile_plugins"`
 			LastProfile                  *string         `json:"last_profile"`
 			LastWorkspace                *string         `json:"last_workspace"`
 			LastIsolated                 *bool           `json:"last_isolated"`
@@ -106,9 +103,6 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.AutoStartAgent != nil {
 		settings.AutoStartAgent = *raw.UI.AutoStartAgent
-	}
-	if raw.UI.SyncProfilePlugins != nil {
-		settings.SyncProfilePlugins = *raw.UI.SyncProfilePlugins
 	}
 	if raw.UI.LastProfile != nil {
 		settings.LastProfile = *raw.UI.LastProfile
@@ -191,7 +185,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["hide_sidebar"] = settings.HideSidebar
 	ui["hide_terminal"] = settings.HideTerminal
 	ui["auto_start_agent"] = settings.AutoStartAgent
-	ui["sync_profile_plugins"] = settings.SyncProfilePlugins
+	delete(ui, "sync_profile_plugins") // legacy field, removed with shared profile plugins/skills
 	delete(ui, "global_permissions")
 	delete(ui, "auto_add_permissions")
 	ui["last_profile"] = settings.LastProfile
