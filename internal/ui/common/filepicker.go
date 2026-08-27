@@ -40,6 +40,11 @@ type FilePicker struct {
 	statusMessage string                                      // Transient status/error message
 	validatePath  func(path string, existing []string) string // Returns error or ""
 
+	// autoSelect marks a directory as a destination rather than something to
+	// browse into: enter on a row it accepts picks that row instead of
+	// descending. Used by the repo picker so choosing a repo is one keystroke.
+	autoSelect func(path string) bool
+
 	// Focus mode
 	buttonFocused bool // Whether focus is on the button bar
 	buttonCursor  int  // Index of the focused button
@@ -114,11 +119,19 @@ func (fp *FilePicker) SetMultiSelect(enabled bool) {
 	fp.multiSelect = enabled
 }
 
-// SetValidatePath sets a validation function for multi-select mode.
-// The function receives the candidate path and the list of already-selected
-// paths. It should return an error string or "" if valid.
+// SetValidatePath sets a validation function. The function receives the
+// candidate path and the list of already-selected paths (always empty outside
+// multi-select mode). It should return an error string or "" if valid. A
+// rejected path is refused with the message shown in place, in both modes.
 func (fp *FilePicker) SetValidatePath(fn func(path string, existing []string) string) {
 	fp.validatePath = fn
+}
+
+// SetAutoSelect makes enter on a matching directory row pick that directory
+// outright instead of navigating into it, so a valid choice takes one
+// keystroke rather than "descend, then confirm".
+func (fp *FilePicker) SetAutoSelect(fn func(path string) bool) {
+	fp.autoSelect = fn
 }
 
 // SelectedPaths returns the accumulated selected paths (multi-select mode).
@@ -359,10 +372,8 @@ func (fp *FilePicker) Update(msg tea.Msg) (*FilePicker, tea.Cmd) {
 	}
 
 	// Clear status message on any navigation/input change
-	if fp.multiSelect {
-		if _, ok := msg.(tea.KeyPressMsg); ok {
-			fp.statusMessage = ""
-		}
+	if _, ok := msg.(tea.KeyPressMsg); ok {
+		fp.statusMessage = ""
 	}
 
 	// Update text input
@@ -426,6 +437,8 @@ func (fp *FilePicker) SetSize(width, height int) {
 		if fp.statusMessage != "" {
 			extra += 2
 		}
+	} else if fp.statusMessage != "" {
+		extra = 1
 	}
 	fp.maxVisible = min(10, (height-15-extra)/2)
 	if fp.maxVisible < 3 {

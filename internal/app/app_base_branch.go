@@ -3,6 +3,8 @@ package app
 import (
 	"fmt"
 
+	"github.com/Skowt/medusa/internal/logging"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
@@ -42,6 +44,7 @@ func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile, group string,
 			Profile:     profile,
 			CopyIgnored: copyIgnored,
 			Group:       group,
+			Worktree:    true,
 		}
 	}
 }
@@ -72,6 +75,7 @@ func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile, group str
 			Profile:     profile,
 			CopyIgnored: copyIgnored,
 			Group:       group,
+			Worktree:    true,
 		}
 	}
 }
@@ -127,8 +131,77 @@ func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, group, custom
 			Profile:       profile,
 			CopyIgnored:   copyIgnored,
 			Group:         group,
+			Worktree:      true,
 			CustomBranch:  customBranch,
 			FallbackRepos: fallbackRepos,
 		}
 	}
+}
+
+// resolveCheckoutBase is the no-worktree counterpart of the three functions
+// above. Nothing is branched: the workspace opens on the repo exactly as it
+// stands, so the only thing to resolve is the branch it is already on, recorded
+// so the UI has something to show.
+//
+// It does pull first, which the name understates. Opening an agent on a repo
+// that is a week behind is the common way to start work on stale code, and the
+// worktree path already fetches for exactly that reason. See pullBeforeOpen for
+// the conditions.
+func (a *App) resolveCheckoutBase(repos []data.RepoRef, name, profile, group string) tea.Cmd {
+	reposCopy := make([]data.RepoRef, len(repos))
+	copy(reposCopy, repos)
+	return func() tea.Msg {
+		if len(reposCopy) == 0 {
+			return messages.WorkspaceCreateFailed{Err: fmt.Errorf("missing repo")}
+		}
+		repoPath := reposCopy[0].Path
+		notice := pullBeforeOpen(repoPath)
+		branch, err := git.GetCurrentBranch(repoPath)
+		if err != nil {
+			branch = ""
+		}
+		return messages.WorkspaceFetchDone{
+			Name:       name,
+			Repos:      reposCopy,
+			Bases:      []string{branch},
+			Profile:    profile,
+			Group:      group,
+			Worktree:   false,
+			PullNotice: notice,
+		}
+	}
+}
+
+// pullBeforeOpen brings a repo up to date before an agent starts working in it,
+// and returns what to tell the user when it did not. An empty string means there
+// is nothing worth saying: it pulled, or there was nothing to pull.
+//
+// Three conditions gate it, and each one is a case where pulling would be worse
+// than being out of date:
+//
+//  1. **A dirty working tree is left alone.** The user has work in progress
+//     there; a pull that touches it is medusa moving their files around. They
+//     are told, so "why is this behind origin" has an answer on screen.
+//  2. **A branch with no upstream is skipped silently.** A local-only branch and
+//     a detached HEAD have nothing to pull from, and warning about it every time
+//     would be noise rather than information.
+//  3. **Only a fast-forward counts.** git.PullFastForward refuses a diverged
+//     branch rather than writing a merge commit into the user's history.
+func pullBeforeOpen(repoPath string) string {
+	status, err := git.GetStatus(repoPath)
+	if err != nil {
+		logging.Warn("Skipping pull for %s: %v", repoPath, err)
+		return ""
+	}
+	if !status.Clean {
+		return "Uncommitted changes in the repo, so it was opened without pulling"
+	}
+	if !git.HasUpstream(repoPath) {
+		return ""
+	}
+	if err := git.PullFastForward(repoPath); err != nil {
+		logging.Warn("Pull failed for %s: %v", repoPath, err)
+		return "Could not pull the repo, so it was opened as it stands"
+	}
+	return ""
 }

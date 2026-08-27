@@ -65,9 +65,11 @@ When adding a new message handler, decide first which of these layers owns it �
 - an `internal/pty.Terminal` + `internal/vterm.VTerm` pair (the PTY reader goroutine writes raw bytes; VTerm renders them),
 - a pending-output buffer with debounced flushes (`model_input_pty.go`: `updatePTYOutput` → `updatePTYFlush`).
 
-PTY readers run as long-lived goroutines. They capture the workspace ID at start; when a workspace is renamed, `MigrateWorkspaceTabs` populates `wsIDRedirects` so stale messages resolve to the new ID instead of killing the readers.
-
-Workspace rename: do NOT restart PTY readers — the redirect map handles routing and restarting races with the blocked read goroutine.
+PTY readers run as long-lived goroutines. They capture the workspace ID at start
+and embed it in every message they emit, which is why a workspace's ID must not
+change under them. It no longer can: the ID is derived from repo path plus root,
+and the only operation that used to move a root — rename — no longer touches
+disk. The redirect map that existed to reroute stale messages is gone with it.
 
 ### Fullscreen TUI mode
 
@@ -745,7 +747,82 @@ Regression cover: `dashboard_drag_test.go` and `dashboard_drag_preview_test.go`
 
 ### Workspace / worktree model: `internal/data`
 
-A `Workspace` can span multiple repos (each with its own worktree) but shares a single branch. `Workspace.Root()` is the primary worktree root; `AllRoots()` / `PrimaryWorktreeRoot()` account for multi-repo layouts. Registry at `~/.medusa/workspaces.json` is the source of truth; `data.Registry` and `data.WorkspaceStore` are both guarded by `sync.Mutex` (saveLocked/deleteLocked pattern). Orphan handling has two flavors: `OrphanMetadata` (registry knows about a dir that's gone) and `OrphanDirectory` (dir on disk with no registry entry).
+A `Workspace` is built from **one** repo. It can still *span* several — the
+model keeps `Repos` and `Worktrees` as parallel slices, `AllRoots()` /
+`PrimaryWorktreeRoot()` account for that layout, and workspaces created before
+the New Workspace flow was narrowed keep working — but nothing creates a new
+multi-repo one, and quick-duplicate refuses a multi-repo source rather than
+cloning it into another. `Workspace.Root()` is the primary worktree root.
+Registry at `~/.medusa/workspaces.json` is the source of truth; `data.Registry`
+and `data.WorkspaceStore` are both guarded by `sync.Mutex`
+(saveLocked/deleteLocked pattern). Orphan handling has two flavors:
+`OrphanMetadata` (registry knows about a dir that's gone) and `OrphanDirectory`
+(dir on disk with no registry entry).
+
+**A worktree is optional, and whether there is one decides what may be deleted.**
+The "Create a git worktree" checkbox in the New Workspace dialog is sticky
+(`config.UI.LastCreateWorktree`, default on). Ticked, creation cuts a branch
+named after the workspace and puts a worktree under the workspaces root, which
+is what the base-branch step and its fetch exist to serve. Unticked, **nothing
+is created at all**: the workspace's root *is* the source repo, it opens on
+whatever branch that repo is already on, and the base-branch step is skipped
+along with the fetch. `Runtime` records which (`RuntimeLocalCheckout` vs
+`RuntimeLocalWorktree`), and `UsesWorktree()` derives the same answer from the
+paths so a workspace written before the option existed still answers correctly.
+
+**A checkout workspace pulls before it opens** (`pullBeforeOpen`). Opening an
+agent on a repo a week behind is the common way to start work on stale code, and
+the worktree path already fetches for the same reason. Three conditions gate it,
+and each is a case where pulling would be worse than being out of date: a **dirty
+working tree** is left alone and the user is told, since the alternative is
+medusa moving their in-progress files around; a branch with **no upstream** (and
+a detached HEAD) is skipped silently, since there is nothing to pull and warning
+every time is noise; and the pull itself is `--ff-only`, so a **diverged branch**
+is declined rather than having a merge commit written into the user's history or
+conflicts left for them to resolve before they can start. The notice rides back
+on `WorkspaceFetchDone.PullNotice` and surfaces as a toast. Regression cover:
+`workspace_checkout_test.go`.
+
+Three further consequences are load-bearing:
+
+1. **Delete must not remove what medusa did not make.** `deleteWorkspace` runs
+   `removableWorktrees` first, which drops any worktree whose directory is the
+   source repo, and — as a backstop for a stored path that has come to mean
+   something else — any path still on disk that is not a worktree
+   (`git.IsWorktree`, a `.git` *file* rather than a directory). Branch deletion
+   is bound to the same test, since a checkout workspace records the branch the
+   repo happened to be on rather than one of its own. The final
+   `os.RemoveAll(ws.Root())` is gated on `UsesWorktree()`. Getting this wrong
+   deletes the user's repository.
+2. **Setup scripts are skipped for a checkout workspace.** `setup-workspace`
+   commands exist to make a *fresh* worktree usable — installing dependencies,
+   copying env files in — and the repo the user already works in is already set
+   up. `runSetupAsync` still emits `WorkspaceSetupComplete`, since the `run`
+   scripts hang off it.
+3. **The workspace ID hashes repo path plus root**, and for a checkout those are
+   the same path for every workspace over that repo — so a second one would
+   collide with the first and overwrite it. `createWorkspace` refuses it by
+   looking the ID up in the store before saving.
+
+**Rename changes a label and nothing else.** It does not move directories, does
+not rename branches, and does not restart agents. Moving the worktree to match
+the new name used to be the whole implementation, and it changed the workspace's
+root — hence its ID, every agent's working directory, and the meaning of every
+path anything had already resolved. On a checkout workspace it would have moved
+the user's repo. Since the root is untouched the ID is stable, so nothing has to
+be migrated; the tmux sessions are renamed only because their names are built
+from the workspace name, and `renameWorkspaceSessions` updates the in-memory
+records for exactly the sessions tmux confirmed, so the two cannot drift. There
+is no longer any restriction on *which* workspaces can be renamed — the old
+guards against renaming a primary checkout or a main/master branch existed
+because of what the rename did on disk. Regression cover:
+`app_rename_permissions_test.go`, `workspace_checkout_test.go`.
+
+**Auto-start applies to every workspace**, including one whose root is the
+source repo: a workspace exists because the user made it, and pointing it at a
+repo checkout is a choice they made in the New Workspace dialog. The e2e
+fixtures set `auto_start_agent: false` because they create their agent tabs
+explicitly and assert on the exact set of tmux sessions.
 
 ### Messages: `internal/messages`
 

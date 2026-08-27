@@ -18,6 +18,7 @@ type UISettings struct {
 	LastAllowUnsandboxedCommands bool   // Last state of "allow unsandboxed commands" checkbox
 	LastPermissionMode           string // Last selected starting mode (default "auto")
 	LastFullscreen               bool   // Last state of "Fullscreen TUI" checkbox (default on)
+	LastCreateWorktree           bool   // Last state of "Create a git worktree" checkbox in New Workspace (default on)
 	LastAssistant                string // Assistant the New Tab dialog opens on (claude, codex)
 	LastCodexSandbox             string // Last codex --sandbox policy
 	LastCodexStartingMode        string // Last Codex starting mode (default, auto)
@@ -40,6 +41,7 @@ func defaultUISettings() UISettings {
 		AutoStartAgent:        true,
 		LastPermissionMode:    "auto",
 		LastFullscreen:        true,
+		LastCreateWorktree:    true,
 		LastAssistant:         "claude",
 		LastCodexSandbox:      "workspace-write",
 		LastCodexStartingMode: "auto",
@@ -74,6 +76,7 @@ func loadUISettings(path string) UISettings {
 			LastAllowUnsandboxedCommands *bool           `json:"last_allow_unsandboxed_commands"`
 			LastPermissionMode           *string         `json:"last_permission_mode"`
 			LastFullscreen               *bool           `json:"last_fullscreen"`
+			LastCreateWorktree           *bool           `json:"last_create_worktree"`
 			LastAssistant                *string         `json:"last_assistant"`
 			LastCodexSandbox             *string         `json:"last_codex_sandbox"`
 			LastCodexStartingMode        *string         `json:"last_codex_starting_mode"`
@@ -124,6 +127,9 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.LastFullscreen != nil {
 		settings.LastFullscreen = *raw.UI.LastFullscreen
+	}
+	if raw.UI.LastCreateWorktree != nil {
+		settings.LastCreateWorktree = *raw.UI.LastCreateWorktree
 	}
 	if raw.UI.LastAssistant != nil && *raw.UI.LastAssistant != "" {
 		settings.LastAssistant = *raw.UI.LastAssistant
@@ -196,6 +202,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["last_allow_unsandboxed_commands"] = settings.LastAllowUnsandboxedCommands
 	ui["last_permission_mode"] = settings.LastPermissionMode
 	ui["last_fullscreen"] = settings.LastFullscreen
+	ui["last_create_worktree"] = settings.LastCreateWorktree
 	ui["last_assistant"] = settings.LastAssistant
 	ui["last_codex_sandbox"] = settings.LastCodexSandbox
 	delete(ui, "last_codex_approval")

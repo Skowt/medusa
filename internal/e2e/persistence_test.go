@@ -269,6 +269,10 @@ func writeConfig(t *testing.T, home string, persistence bool) {
 	payload := map[string]any{
 		"ui": map[string]any{
 			"tmux_persistence": persistence,
+			// These tests create their agent tabs explicitly and assert on the
+			// exact set of sessions, so an auto-started one is noise. Turning it
+			// off here keeps the fixture about what the test is measuring.
+			"auto_start_agent": false,
 		},
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")

@@ -102,10 +102,6 @@ type Tab struct {
 	// can relaunch the same process in a fresh tmux session.
 	ScriptFullCmd string
 
-	// WorkspaceRenamed is set when the workspace is renamed while this tab is active.
-	// The agent's shell still references the old directory, so it may not work correctly.
-	WorkspaceRenamed bool
-
 	// Snapshot cache for VTermLayer - avoid recreating snapshot when terminal unchanged
 	cachedSnap       *compositor.VTermSnapshot
 	cachedVersion    uint64
@@ -154,7 +150,6 @@ type Model struct {
 	// and Claude take different amounts of time — so without this the tab bar
 	// came back in completion order rather than creation order.
 	restoreOrder         map[string]map[string]int
-	wsIDRedirects        map[string]string // old workspace ID → new workspace ID (after rename)
 	focused              bool
 	canFocusRight        bool
 	monitorMode          bool
@@ -378,7 +373,6 @@ func New(cfg *config.Config) *Model {
 		activeTabByWorkspace: make(map[string]int),
 		restoredWorkspaces:   make(map[string]struct{}),
 		restoreOrder:         make(map[string]map[string]int),
-		wsIDRedirects:        make(map[string]string),
 		config:               cfg,
 		agentManager:         appPty.NewAgentManager(cfg),
 		styles:               common.DefaultStyles(),

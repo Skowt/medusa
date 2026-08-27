@@ -71,19 +71,17 @@ func (a *App) handleGroupDialogResult(id string, confirmed bool, value string, w
 			a.dialog.Show()
 			return nil, true
 		case common.UngroupedOption:
-			// Stash empty group and advance to the branch-mode dialog.
+			// Stash empty group and advance to the last step of creation.
 			workspace.Group = ""
 			a.dialogWorkspace = workspace
 			a.dialogDefaultName = defaultName
-			a.showBranchModeDialogForCreate()
-			return nil, true
+			return a.advanceToBaseBranchOrCreate(), true
 		default:
 			// Either a picked existing group OR a typed custom label from the input fallback.
 			workspace.Group = validation.SanitizeInput(value)
 			a.dialogWorkspace = workspace
 			a.dialogDefaultName = defaultName
-			a.showBranchModeDialogForCreate()
-			return nil, true
+			return a.advanceToBaseBranchOrCreate(), true
 		}
 
 	case DialogRenameGroup:
@@ -124,10 +122,27 @@ func (a *App) showGroupPickerForCreate() {
 	a.dialog.Show()
 }
 
-// showBranchModeDialogForCreate shows the branch-mode selection dialog used by
-// the Create Workspace flow. Extracted so both the profile-picker result
-// handler and the group-picker result handler can advance into it.
-func (a *App) showBranchModeDialogForCreate() {
+// advanceToBaseBranchOrCreate runs the step after the group picker. A worktree
+// needs a base branch to start from, so it gets the branch-mode dialog and this
+// returns nil. A workspace that works in the repo's own checkout has no branch
+// to create, which is also the whole point of the "pull" the base-branch step
+// does — so it skips straight to creation and this returns the command that
+// starts it.
+func (a *App) advanceToBaseBranchOrCreate() tea.Cmd {
+	ws := a.dialogWorkspace
+	if ws != nil && ws.Runtime == data.RuntimeLocalCheckout {
+		name := a.dialogDefaultName
+		a.dialogWorkspace = nil
+		a.dialogDefaultName = ""
+		// One step, because nothing advances it: the status check and the pull
+		// both happen inside the single command below. It is here at all because
+		// a pull reaches the network and can take a few seconds with nothing
+		// else on screen to say why.
+		a.creationOverlay = common.NewProgressOverlay("Creating Workspace", []string{"Updating the repo"})
+		a.creationOverlay.SetStepDetail(ws.Repos[0].Name)
+		a.creationOverlay.SetSize(a.width, a.height)
+		return a.resolveCheckoutBase(ws.Repos, name, ws.Profile, ws.Group)
+	}
 	a.dialog = common.NewSelectDialog(
 		DialogSelectBranchMode,
 		"Base Branch",
@@ -138,4 +153,5 @@ func (a *App) showBranchModeDialogForCreate() {
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()
+	return nil
 }

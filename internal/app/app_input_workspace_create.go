@@ -186,7 +186,7 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 	if a.pendingAgentLaunch != "" && msg.Workspace != nil && msg.Workspace.Root() == a.pendingAgentLaunch {
 		a.pendingAgentLaunch = ""
 		autoLaunch = true
-	} else if a.config.UI.AutoStartAgent && msg.Workspace != nil && !msg.Workspace.IsPrimaryCheckout() {
+	} else if a.config.UI.AutoStartAgent && msg.Workspace != nil {
 		autoLaunch = true
 	}
 	if autoLaunch {

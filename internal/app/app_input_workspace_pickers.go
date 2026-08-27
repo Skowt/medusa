@@ -45,9 +45,9 @@ func (a *App) handleShowQuickDuplicateDialog(msg messages.ShowQuickDuplicateDial
 
 // handleShowCreateWorkspaceDialog shows a recents picker or falls back to file picker.
 func (a *App) handleShowCreateWorkspaceDialog() {
-	// Check for recent repo combinations
+	// Check for recent repos
 	if a.recents != nil {
-		recents, _ := a.recents.List()
+		recents := singleRepoRecents(a.recents)
 		if len(recents) > 0 {
 			logging.Info("Showing recent repos dialog with %d entries", len(recents))
 			// Store snapshot so the dialog result handler uses the same list
@@ -56,11 +56,11 @@ func (a *App) handleShowCreateWorkspaceDialog() {
 			for _, entry := range recents {
 				options = append(options, formatRecentLabel(entry.Repos))
 			}
-			options = append(options, "Select repos…")
+			options = append(options, "Select a repo…")
 			a.dialog = common.NewSelectDialog(
 				DialogSelectRecentRepos,
 				"New Workspace",
-				"Choose a recent repo combination or select new repos.",
+				"Choose a recent repo or pick another one.",
 				options,
 			)
 			a.dialog.SetVerticalLayout(true)
@@ -74,40 +74,55 @@ func (a *App) handleShowCreateWorkspaceDialog() {
 	a.showRepoFilePicker()
 }
 
-// showRepoFilePicker opens the file picker for selecting repos.
+// singleRepoRecents returns the recent entries a new workspace can be built
+// from. Multi-repo combinations are filtered out rather than deleted: a
+// workspace that already spans several repos keeps working, but no new one can
+// be created that way, so offering the combination again would dead-end.
+func singleRepoRecents(store *data.RecentsStore) []data.RecentEntry {
+	entries, _ := store.List()
+	var out []data.RecentEntry
+	for _, entry := range entries {
+		if len(entry.Repos) == 1 {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+// showRepoFilePicker opens the file picker for choosing the workspace's repo.
+// It is single-select: a workspace is built from one repo, so picking one is
+// the whole step and lands straight on the name dialog.
 func (a *App) showRepoFilePicker() {
-	logging.Info("Showing Add Repos file picker")
+	logging.Info("Showing Select Repo file picker")
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "/"
 	}
 	a.filePicker = common.NewFilePicker(DialogAddRepos, home, true)
-	a.filePicker.SetTitle("Select Repos")
-	a.filePicker.SetPrimaryActionLabel("Add repo")
-	a.filePicker.SetMultiSelect(true)
-	a.filePicker.SetValidatePath(func(path string, existing []string) string {
-		if !git.IsGitRepository(path) {
-			return "Not a git repository"
-		}
-		if git.IsWorktree(path) {
-			return "Worktrees cannot be used as workspace sources"
-		}
-		for _, p := range existing {
-			if p == path {
-				return "Already added"
-			}
-			if strings.HasPrefix(path, p+"/") {
-				return "Nested inside " + filepath.Base(p)
-			}
-			if strings.HasPrefix(p, path+"/") {
-				return "Contains already-added " + filepath.Base(p)
-			}
-		}
-		return ""
+	a.filePicker.SetTitle("Select Repo")
+	a.filePicker.SetPrimaryActionLabel("Use this repo")
+	a.filePicker.SetMultiSelect(false)
+	a.filePicker.SetValidatePath(func(path string, _ []string) string {
+		return validateRepoSource(path)
+	})
+	a.filePicker.SetAutoSelect(func(path string) bool {
+		return validateRepoSource(path) == ""
 	})
 	a.filePicker.SetSize(a.width, a.height)
 	a.filePicker.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.filePicker.Show()
+}
+
+// validateRepoSource reports why path cannot be a workspace's source repo, or
+// "" when it can.
+func validateRepoSource(path string) string {
+	if !git.IsGitRepository(path) {
+		return "Not a git repository"
+	}
+	if git.IsWorktree(path) {
+		return "Worktrees cannot be used as workspace sources"
+	}
+	return ""
 }
 
 // formatRecentLabel formats a recent entry's repos as a display label.

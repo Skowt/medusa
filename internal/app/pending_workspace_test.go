@@ -16,7 +16,7 @@ func TestPendingWorkspace_CarriesGroupAndProfile(t *testing.T) {
 			"test-endpoint",
 			[]data.RepoRef{{Name: "places", Path: "/src/places"}},
 			[]string{"main"},
-			"Work", "Places", "/wsroot",
+			"Work", "Places", "/wsroot", true,
 		)
 		if ws == nil {
 			t.Fatal("pendingWorkspace returned nil")
@@ -37,7 +37,7 @@ func TestPendingWorkspace_CarriesGroupAndProfile(t *testing.T) {
 				{Name: "places", Path: "/src/places"},
 			},
 			[]string{"main", "main"},
-			"Work", "Places", "/wsroot",
+			"Work", "Places", "/wsroot", true,
 		)
 		if ws == nil {
 			t.Fatal("pendingWorkspace returned nil")
@@ -51,7 +51,7 @@ func TestPendingWorkspace_CarriesGroupAndProfile(t *testing.T) {
 	})
 
 	t.Run("no repos yields no placeholder", func(t *testing.T) {
-		if ws := pendingWorkspace("x", nil, nil, "Work", "Places", "/wsroot"); ws != nil {
+		if ws := pendingWorkspace("x", nil, nil, "Work", "Places", "/wsroot", true); ws != nil {
 			t.Errorf("pendingWorkspace(no repos) = %v, want nil", ws)
 		}
 	})

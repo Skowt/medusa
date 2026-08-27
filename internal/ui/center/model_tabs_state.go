@@ -22,19 +22,8 @@ func (m *Model) getTabs() []*Tab {
 	return m.tabsByWorkspace[m.workspaceID()]
 }
 
-// resolveWSID follows the redirect map for renamed workspaces.
-// PTY reader goroutines capture the workspace ID at start and embed it in
-// every message; after a rename the old ID must resolve to the new one.
-func (m *Model) resolveWSID(wsID string) string {
-	if redirect, ok := m.wsIDRedirects[wsID]; ok {
-		return redirect
-	}
-	return wsID
-}
-
 // getTabByID returns the tab with the given ID, or nil if not found
 func (m *Model) getTabByID(wsID string, tabID TabID) *Tab {
-	wsID = m.resolveWSID(wsID)
 	for _, tab := range m.tabsByWorkspace[wsID] {
 		if tab.ID == tabID && !tab.isClosed() {
 			return tab
@@ -48,7 +37,6 @@ func (m *Model) getTabBySession(wsID, sessionName string) *Tab {
 	if sessionName == "" {
 		return nil
 	}
-	wsID = m.resolveWSID(wsID)
 	for _, tab := range m.tabsByWorkspace[wsID] {
 		if tab == nil || tab.isClosed() {
 			continue
@@ -173,7 +161,7 @@ func (m *Model) setActiveTabIdx(idx int) {
 // tmux session. completed marks a transition from work to ready; hidden tabs
 // retain that as unread until selected.
 func (m *Model) SetTabHookState(wsID, sessionName, state string, completed bool) {
-	for _, tab := range m.tabsByWorkspace[m.resolveWSID(wsID)] {
+	for _, tab := range m.tabsByWorkspace[wsID] {
 		if tab == nil || tab.SessionName != sessionName {
 			continue
 		}
@@ -190,7 +178,7 @@ func (m *Model) noteTabsChanged() {
 }
 
 func (m *Model) isActiveTab(wsID string, tabID TabID) bool {
-	if m.workspace == nil || m.infoTabActive || m.resolveWSID(wsID) != m.workspaceID() {
+	if m.workspace == nil || m.infoTabActive || wsID != m.workspaceID() {
 		return false
 	}
 	tabs := m.getTabs()
@@ -382,12 +370,6 @@ func (m *Model) CleanupWorkspace(ws *data.Workspace) {
 	delete(m.activeTabByWorkspace, wsID)
 	delete(m.restoredWorkspaces, wsID)
 	m.forgetTabRestoreOrder(wsID)
-	// Clean up any rename redirects pointing to this workspace.
-	for oldID, newID := range m.wsIDRedirects {
-		if newID == wsID {
-			delete(m.wsIDRedirects, oldID)
-		}
-	}
 	m.noteTabsChanged()
 
 	// Also cleanup agents for this workspace

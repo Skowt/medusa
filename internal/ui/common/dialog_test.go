@@ -160,3 +160,32 @@ func TestDialogInputClickCancelAfterLongDescriptions(t *testing.T) {
 		t.Fatalf("unexpected result: %+v", res)
 	}
 }
+
+// TestWordWrapKeepsExplicitLineBreaks: a description with two parallel
+// statements is written as two lines so the reader can scan them. strings.Fields
+// used to fold the break away and reflow both into one paragraph.
+func TestWordWrapKeepsExplicitLineBreaks(t *testing.T) {
+	got := wordWrap("On: keeps your repo as it is.\nOff: works in the repo itself.", 60)
+	want := []string{"On: keeps your repo as it is.", "Off: works in the repo itself."}
+	if len(got) != len(want) {
+		t.Fatalf("wordWrap = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// A break the author did not ask for still wraps on width.
+func TestWordWrapStillWrapsOnWidth(t *testing.T) {
+	got := wordWrap("one two three four five six", 10)
+	if len(got) < 3 {
+		t.Fatalf("wordWrap = %q, want it broken across several lines", got)
+	}
+	for _, line := range got {
+		if len(line) > 10 {
+			t.Errorf("line %q exceeds the width", line)
+		}
+	}
+}

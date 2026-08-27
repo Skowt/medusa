@@ -193,3 +193,29 @@ func TestUISettingsGroupOrderDefaultsEmpty(t *testing.T) {
 		t.Errorf("GroupOrder default = %v, want nil so the dashboard keeps its alphabetical fallback", got)
 	}
 }
+
+func TestUISettingsCreateWorktreeDefaultsOn(t *testing.T) {
+	if !defaultUISettings().LastCreateWorktree {
+		t.Error("LastCreateWorktree should default to on")
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if !loadUISettings(path).LastCreateWorktree {
+		t.Error("LastCreateWorktree should default to on when missing from config")
+	}
+}
+
+// Unticking the worktree box must stick, for the same reason the fullscreen one
+// does: a stored false is a decision, not the absence of one.
+func TestUISettingsCreateWorktreeRespectsStoredFalse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	in := defaultUISettings()
+	in.LastCreateWorktree = false
+	if err := saveUISettings(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	if loadUISettings(path).LastCreateWorktree {
+		t.Error("a stored false must survive a reload")
+	}
+}

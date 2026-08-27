@@ -1,13 +1,10 @@
 package center
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
 	appPty "github.com/Skowt/medusa/internal/pty"
-	"github.com/Skowt/medusa/internal/tmux"
 )
 
 // Init initializes the center pane
@@ -123,60 +120,23 @@ func (m *Model) AgentManager() *appPty.AgentManager {
 	return m.agentManager
 }
 
-// MigrateWorkspaceTabs moves tab state from oldID to newID after a workspace rename.
-// It updates the workspace pointer, tmux session names, and adjusts the current workspace if needed.
-// oldName/newName are the workspace display names used to compute tmux session name prefixes.
-//
-// Running PTY readers are NOT restarted — they continue emitting messages with the old
-// workspace ID. The wsIDRedirects map ensures those messages are routed to the migrated
-// tabs. Restarting readers would race with the still-blocked inner read goroutine and
-// corrupt output.
-func (m *Model) MigrateWorkspaceTabs(oldID, newID string, ws *data.Workspace, oldName, newName string) {
-	oldPrefix := tmux.SessionName("medusa", oldName) + "-"
-	newPrefix := tmux.SessionName("medusa", newName) + "-"
-
-	if tabs, ok := m.tabsByWorkspace[oldID]; ok {
-		for _, tab := range tabs {
-			if tab != nil {
-				tab.Workspace = ws
-				// Mark tab as needing restart — the agent's shell still uses the old directory.
-				tab.WorkspaceRenamed = true
-				// Update tmux session name to match the renamed session.
-				if strings.HasPrefix(tab.SessionName, oldPrefix) {
-					tab.SessionName = newPrefix + strings.TrimPrefix(tab.SessionName, oldPrefix)
-				}
-				if tab.Agent != nil {
-					if strings.HasPrefix(tab.Agent.Session, oldPrefix) {
-						tab.Agent.Session = newPrefix + strings.TrimPrefix(tab.Agent.Session, oldPrefix)
-					}
-				}
+// RenameTabSessions rewrites the tmux session names recorded for a workspace's
+// tabs, given the old-to-new mapping the rename actually performed. Only
+// sessions tmux confirmed are passed in, so what the tab believes it is attached
+// to and what exists on the server stay the same thing.
+func (m *Model) RenameTabSessions(wsID string, renamed map[string]string) {
+	for _, tab := range m.tabsByWorkspace[wsID] {
+		if tab == nil {
+			continue
+		}
+		if newName, ok := renamed[tab.SessionName]; ok {
+			tab.SessionName = newName
+		}
+		if tab.Agent != nil {
+			if newName, ok := renamed[tab.Agent.Session]; ok {
+				tab.Agent.Session = newName
 			}
 		}
-		m.tabsByWorkspace[newID] = tabs
-		delete(m.tabsByWorkspace, oldID)
 	}
-	if idx, ok := m.activeTabByWorkspace[oldID]; ok {
-		m.activeTabByWorkspace[newID] = idx
-		delete(m.activeTabByWorkspace, oldID)
-	}
-	if _, ok := m.restoredWorkspaces[oldID]; ok {
-		m.restoredWorkspaces[newID] = struct{}{}
-		delete(m.restoredWorkspaces, oldID)
-	}
-	// A rename rewrites every tmux session name, so the recorded order is
-	// re-keyed from the tabs themselves rather than carried across.
-	m.forgetTabRestoreOrder(oldID)
-	m.recordTabRestoreOrderFromTabs(newID, m.tabsByWorkspace[newID])
-	// Redirect old workspace ID → new so PTY reader messages are routed correctly.
-	// Also update any existing redirects that pointed to oldID (handles chained renames).
-	for k, v := range m.wsIDRedirects {
-		if v == oldID {
-			m.wsIDRedirects[k] = newID
-		}
-	}
-	m.wsIDRedirects[oldID] = newID
-	if m.workspace != nil && string(m.workspace.ID()) == oldID {
-		m.workspace = ws
-	}
-	m.noteTabsChanged()
+	m.recordTabRestoreOrderFromTabs(wsID, m.tabsByWorkspace[wsID])
 }

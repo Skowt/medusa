@@ -198,14 +198,9 @@ func (a *App) handleDeleteProfile(msg messages.DeleteProfile) tea.Cmd {
 
 // handleShowRenameWorkspaceDialog shows the rename workspace dialog.
 func (a *App) handleShowRenameWorkspaceDialog(msg messages.ShowRenameWorkspaceDialog) tea.Cmd {
-	if msg.Workspace.IsPrimaryCheckout() {
-		return a.toast.ShowError("Cannot rename the primary checkout")
-	}
-	if msg.Workspace.IsMainBranch() {
-		return a.toast.ShowError("Cannot rename main/master branch")
-	}
 	a.dialogWorkspace = msg.Workspace
 	a.dialog = common.NewInputDialog(DialogRenameWorkspace, "Rename Workspace", msg.Workspace.Name)
+	a.dialog.SetMessage("Renames the workspace in medusa only — directories, branches and running sessions are untouched.")
 	a.dialog.SetInputValidate(func(s string) string {
 		s = validation.SanitizeInput(s)
 		if s == "" {
@@ -219,17 +214,6 @@ func (a *App) handleShowRenameWorkspaceDialog(msg messages.ShowRenameWorkspaceDi
 		}
 		return ""
 	})
-	tabsInfo, _ := a.center.GetTabsInfoForWorkspace(string(msg.Workspace.ID()))
-	hasAgentTabs := false
-	for _, t := range tabsInfo {
-		if t.Assistant != "" && t.Status != "stopped" {
-			hasAgentTabs = true
-			break
-		}
-	}
-	if hasAgentTabs {
-		a.dialog.SetMessage("Running agent sessions will be restarted.")
-	}
 	a.dialog.SetSize(a.width, a.height)
 	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
 	a.dialog.Show()
@@ -271,6 +255,16 @@ func (a *App) handleShowDeleteWorkspaceDialog(msg messages.ShowDeleteWorkspaceDi
 
 	title := "Delete Worktree"
 	body := fmt.Sprintf("Delete worktree '%s' and its branch?", msg.Workspace.Name)
+
+	if !msg.Workspace.UsesWorktree() {
+		// This one owns no directory and no branch, so saying it does would be
+		// asking the user to confirm something that will not happen.
+		title = "Remove Workspace"
+		body = fmt.Sprintf(
+			"Remove '%s' from medusa? The repo directory and its branch are left alone.",
+			msg.Workspace.Name,
+		)
+	}
 
 	if msg.Workspace.IsOrphaned() {
 		switch msg.Workspace.Orphan {

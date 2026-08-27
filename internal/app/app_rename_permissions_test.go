@@ -49,9 +49,10 @@ func newTestApp(t *testing.T) (*App, *config.Config) {
 	return app, cfg
 }
 
-// TestRenameWorkspace_KeepsBranch verifies that renaming a workspace moves the
-// folder but does not rename the git branch.
-func TestRenameWorkspace_KeepsBranch(t *testing.T) {
+// TestRenameWorkspace_LeavesTheWorktreeWhereItIs is the property the rename
+// exists to have: it changes a label. Moving the directory used to change the
+// workspace's root, and with it its ID and every agent's working directory.
+func TestRenameWorkspace_LeavesTheWorktreeWhereItIs(t *testing.T) {
 	skipIfNoGit(t)
 
 	app, _ := newTestApp(t)
@@ -77,6 +78,7 @@ func TestRenameWorkspace_KeepsBranch(t *testing.T) {
 	if err := app.workspaces.Save(ws); err != nil {
 		t.Fatalf("Save workspace: %v", err)
 	}
+	oldID := ws.ID()
 
 	newName := "renamed-ws"
 	cmds := app.handleRenameWorkspace(messages.RenameWorkspace{
@@ -87,18 +89,71 @@ func TestRenameWorkspace_KeepsBranch(t *testing.T) {
 		t.Fatal("handleRenameWorkspace returned no commands (rename likely failed)")
 	}
 
-	// Verify the new worktree directory exists.
-	newRoot := filepath.Join(worktreeDir, newName)
-	if _, err := os.Stat(newRoot); os.IsNotExist(err) {
-		t.Fatalf("expected new worktree root %s to exist", newRoot)
+	if _, err := os.Stat(worktreePath); err != nil {
+		t.Fatalf("expected worktree %s to stay where it was: %v", worktreePath, err)
+	}
+	if _, err := os.Stat(filepath.Join(worktreeDir, newName)); !os.IsNotExist(err) {
+		t.Errorf("rename created a directory named after the new name")
 	}
 
-	// Verify the git branch was NOT renamed — it should still be "my-feature".
-	output, err := git.GetCurrentBranch(newRoot)
+	stored, err := app.workspaces.Load(oldID)
+	if err != nil || stored == nil {
+		t.Fatalf("workspace should still be stored under its original ID: %v", err)
+	}
+	if stored.Name != newName {
+		t.Errorf("stored name = %q, want %q", stored.Name, newName)
+	}
+	if stored.Root() != worktreePath {
+		t.Errorf("stored root = %q, want %q", stored.Root(), worktreePath)
+	}
+
+	// The git branch is not renamed either.
+	output, err := git.GetCurrentBranch(worktreePath)
 	if err != nil {
 		t.Fatalf("GetCurrentBranch: %v", err)
 	}
 	if got := strings.TrimSpace(output); got != branchName {
 		t.Errorf("expected branch %q to be unchanged, got %q", branchName, got)
+	}
+}
+
+// TestRenameWorkspace_OnACheckoutLeavesTheRepoAlone covers the case the old
+// implementation would have been worst at: with the root being the user's own
+// repo, moving it to match the new name moves the repo.
+func TestRenameWorkspace_OnACheckoutLeavesTheRepoAlone(t *testing.T) {
+	skipIfNoGit(t)
+
+	app, _ := newTestApp(t)
+
+	repo := normalizePath(t.TempDir())
+	runGit(t, repo, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("ok\n"), 0644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "init")
+
+	ws := data.NewCheckoutWorkspace("in-place", "main", repo)
+	if err := app.workspaces.Save(ws); err != nil {
+		t.Fatalf("Save workspace: %v", err)
+	}
+
+	cmds := app.handleRenameWorkspace(messages.RenameWorkspace{
+		Workspace: ws,
+		NewName:   "renamed",
+	})
+	if len(cmds) == 0 {
+		t.Fatal("handleRenameWorkspace returned no commands (rename likely failed)")
+	}
+
+	if _, err := os.Stat(filepath.Join(repo, "README.md")); err != nil {
+		t.Fatalf("the repo should be untouched by a rename: %v", err)
+	}
+	stored, err := app.workspaces.Load(ws.ID())
+	if err != nil || stored == nil {
+		t.Fatalf("workspace should still be stored under its original ID: %v", err)
+	}
+	if stored.Name != "renamed" || stored.Root() != repo {
+		t.Errorf("stored = (%q, %q), want (%q, %q)", stored.Name, stored.Root(), "renamed", repo)
 	}
 }

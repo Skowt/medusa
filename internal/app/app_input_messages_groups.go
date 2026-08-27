@@ -197,9 +197,16 @@ func (a *App) handleToggleGroupCollapse(msg messages.ToggleGroupCollapse) tea.Cm
 }
 
 // handleDuplicateWorkspace dispatches ShowQuickDuplicateDialog seeded from the source workspace.
+//
+// A multi-repo source is refused: duplicating it would create a second
+// multi-repo workspace, which is the one thing the New Workspace flow no longer
+// offers. The existing one keeps working; it just cannot be cloned.
 func (a *App) handleDuplicateWorkspace(msg messages.DuplicateWorkspace) tea.Cmd {
 	if msg.Workspace == nil {
 		return nil
+	}
+	if msg.Workspace.IsMultiRepo() {
+		return a.toast.ShowError("Multi-repo workspaces cannot be duplicated")
 	}
 	ws := msg.Workspace
 	return func() tea.Msg {

@@ -44,20 +44,3 @@ func TestCleanupWorkspaceAllowsRestoreAgain(t *testing.T) {
 		t.Fatalf("restore after CleanupWorkspace should run again")
 	}
 }
-
-func TestMigrateWorkspaceTabsCarriesRestoreState(t *testing.T) {
-	m := newTestModel()
-	ws := runningTabsWorkspace("ws", "/repo/ws")
-	oldID := string(ws.ID())
-
-	if cmd := m.RestoreTabsFromWorkspace(ws); cmd == nil {
-		t.Fatalf("first restore should produce tab creation commands")
-	}
-
-	renamed := runningTabsWorkspace("ws2", "/repo/ws2")
-	m.MigrateWorkspaceTabs(oldID, string(renamed.ID()), renamed, "ws", "ws2")
-
-	if cmd := m.RestoreTabsFromWorkspace(renamed); cmd != nil {
-		t.Fatalf("restore after rename should still be a no-op while creation is in flight")
-	}
-}

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
@@ -13,27 +12,6 @@ import (
 	"github.com/Skowt/medusa/internal/ui/common"
 	"github.com/Skowt/medusa/internal/validation"
 )
-
-// Base Branch dialog options, in the order handleDialogResult switches on them:
-// index 0 = remote default, 1 = checked out, 2 = named branch.
-var branchModeOptions = []string{"Latest remote default", "Checked out branch", "Pick a branch"}
-
-var branchModeHints = []string{
-	"Fetches origin, then branches from this repo's default branch (main, master, or develop).",
-	"Branches from whatever this repo currently has checked out. Does not fetch.",
-	"Type a branch name. Looked up locally, then on origin.",
-}
-
-// branchPickMessage describes how a picked branch is resolved. Multi-repo
-// workspaces get the extra sentence because the partial-match rule only applies
-// to them — a single repo without the branch is an error.
-func branchPickMessage(repoCount int) string {
-	msg := "Looked up locally first, then on origin."
-	if repoCount > 1 {
-		msg += " Repos without this branch use their default branch instead."
-	}
-	return msg
-}
 
 // handleDialogResult handles dialog completion
 func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
@@ -64,34 +42,12 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 		return cmd
 	}
 
+	// Delegate to the New Workspace flow (repo → name → profile → group → base).
+	if cmd, handled := a.handleCreateDialogResult(result, workspace, defaultName); handled {
+		return cmd
+	}
+
 	switch result.ID {
-	case DialogSelectRecentRepos:
-		// Use the snapshot stored when the dialog was opened to avoid race conditions
-		recents := a.dialogRecents
-		a.dialogRecents = nil
-		if result.Index >= len(recents) {
-			// User chose "Select repos…" — open file picker
-			a.showRepoFilePicker()
-			return nil
-		}
-		// User chose a recent combo — use those repos directly
-		entry := recents[result.Index]
-		repos := make([]data.RepoRef, len(entry.Repos))
-		copy(repos, entry.Repos)
-		a.showNameWorkspaceDialog(repos)
-		return nil
-
-	case DialogAddRepos:
-		// File picker returns selected repos
-		if len(result.Values) > 0 {
-			repos := make([]data.RepoRef, len(result.Values))
-			for i, p := range result.Values {
-				repos[i] = data.RepoRef{Path: p, Name: filepath.Base(p)}
-			}
-			a.showNameWorkspaceDialog(repos)
-			return nil
-		}
-
 	case DialogAddReposToWorkspace:
 		// File picker returns repos to add to existing workspace
 		if workspace != nil && len(result.Values) > 0 {
@@ -103,52 +59,6 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			return func() tea.Msg {
 				return messages.AddReposToWorkspace{Workspace: ws, Repos: repos}
 			}
-		}
-
-	case DialogQuickDuplicate:
-		if workspace != nil && len(workspace.Repos) > 0 {
-			name := validation.SanitizeInput(result.Value)
-			if name == "" {
-				name = defaultName
-			}
-			if err := validation.ValidateWorkspaceName(name); err != nil {
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating workspace name"}
-				}
-			}
-			// Profile is already set on workspace from the dialog message — skip profile picker
-			a.dialogWorkspace = workspace
-			a.dialogDefaultName = name
-			a.dialog = common.NewSelectDialog(
-				DialogSelectBranchMode,
-				"Base Branch",
-				"Which branch should this worktree be based on?",
-				branchModeOptions,
-			)
-			a.dialog.SetOptionHints(branchModeHints)
-			a.dialog.SetSize(a.width, a.height)
-			a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-			a.dialog.Show()
-			return nil
-		}
-
-	case DialogCreateWorkspace:
-		if workspace != nil && len(workspace.Repos) > 0 {
-			name := validation.SanitizeInput(result.Value)
-			if name == "" {
-				name = defaultName
-			}
-			if err := validation.ValidateWorkspaceName(name); err != nil {
-				return func() tea.Msg {
-					return messages.Error{Err: err, Context: "validating workspace name"}
-				}
-			}
-			// Capture checkbox and re-set dialog state for chaining
-			workspace.CopyIgnored = result.CheckboxValue
-			a.dialogWorkspace = workspace
-			a.dialogDefaultName = name
-			a.showProfilePickerForCreate()
-			return nil
 		}
 
 	case DialogArchiveWorkspace:
@@ -226,33 +136,6 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			return func() tea.Msg {
 				return messages.RenameWorkspace{Workspace: ws, NewName: name}
 			}
-		}
-
-	case DialogSetProfileForCreate:
-		if workspace != nil && len(workspace.Repos) > 0 {
-			if result.Value == common.NewProfileOption {
-				// User chose "New profile..." — show the input dialog, chain back
-				a.dialogWorkspace = workspace
-				a.dialogDefaultName = defaultName
-				a.dialog = common.NewInputDialog(DialogSetProfileForCreate, "Set Profile", "Default")
-				a.dialog.SetMessage("Profile isolates Claude settings (permissions, memory) for this workspace.")
-				a.dialog.SetSize(a.width, a.height)
-				a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-				a.dialog.Show()
-				return nil
-			}
-			selectedProfile := result.Value
-			if selectedProfile == "" {
-				selectedProfile = "Default"
-			}
-			workspace.Profile = selectedProfile
-			// Track as most recently chosen profile
-			a.config.UI.LastProfile = selectedProfile
-			_ = a.config.SaveUISettings()
-			a.dialogWorkspace = workspace
-			a.dialogDefaultName = defaultName
-			a.showGroupPickerForCreate()
-			return nil
 		}
 
 	case DialogSetProfile:
@@ -335,65 +218,6 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 			}
 		}
 
-	case DialogSelectBranchMode:
-		if workspace != nil && len(workspace.Repos) > 0 {
-			name := defaultName
-			repos := workspace.Repos
-			wsProfile := workspace.Profile
-			wsGroup := workspace.Group
-			copyIgnored := workspace.CopyIgnored
-			switch result.Index {
-			case 0: // Latest remote default
-				steps := []string{"Fetching latest changes", "Creating worktree"}
-				if copyIgnored {
-					steps = append(steps, "Copying gitignored files")
-				}
-				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
-				a.creationOverlay.SetStepDetail(repos[0].Name)
-				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchRemoteBase(repos, name, wsProfile, wsGroup, copyIgnored)
-			case 1: // Checked out branch
-				steps := []string{"Resolving checked out branch", "Creating worktree"}
-				if copyIgnored {
-					steps = append(steps, "Copying gitignored files")
-				}
-				a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
-				a.creationOverlay.SetStepDetail(repos[0].Name)
-				a.creationOverlay.SetSize(a.width, a.height)
-				return a.fetchCheckedOutBase(repos, name, wsProfile, wsGroup, copyIgnored)
-			case 2: // Pick a branch
-				a.dialogWorkspace = workspace
-				a.dialogDefaultName = name
-				a.dialog = common.NewInputDialog(DialogCustomBranch, "Pick a Branch", "")
-				a.dialog.SetMessage(branchPickMessage(len(repos)))
-				a.dialog.SetSize(a.width, a.height)
-				a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-				a.dialog.Show()
-				return nil
-			}
-		}
-
-	case DialogCustomBranch:
-		customBranch := validation.SanitizeInput(result.Value)
-		if customBranch == "" {
-			return nil
-		}
-		if workspace != nil && len(workspace.Repos) > 0 {
-			name := defaultName
-			repos := workspace.Repos
-			wsProfile := workspace.Profile
-			wsGroup := workspace.Group
-			copyIgnored := workspace.CopyIgnored
-			steps := []string{"Resolving branch", "Creating worktree"}
-			if copyIgnored {
-				steps = append(steps, "Copying gitignored files")
-			}
-			a.creationOverlay = common.NewProgressOverlay("Creating Workspace", steps)
-			a.creationOverlay.SetStepDetail(repos[0].Name)
-			a.creationOverlay.SetSize(a.width, a.height)
-			return a.fetchCustomBase(repos, name, wsProfile, wsGroup, customBranch, copyIgnored)
-		}
-
 	case DialogQuit:
 		// Persist workspace tabs synchronously before shutdown.
 		a.persistAllWorkspacesNow()
@@ -420,50 +244,6 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 	}
 
 	return nil
-}
-
-// showNameWorkspaceDialog sets up the workspace name input dialog for a given set of repos.
-func (a *App) showNameWorkspaceDialog(repos []data.RepoRef) {
-	a.dialogWorkspace = &data.Workspace{Repos: repos}
-	a.dialogDefaultName = generateWorkspaceName(repos)
-	a.dialog = common.NewInputDialog(DialogCreateWorkspace, "Name Your Workspace", a.dialogDefaultName)
-	a.dialog.SetMessage("Enter a name for the workspace.")
-	a.dialog.SetInputValidate(func(s string) string {
-		s = validation.SanitizeInput(s)
-		if s == "" {
-			return ""
-		}
-		if err := validation.ValidateWorkspaceName(s); err != nil {
-			return err.Error()
-		}
-		if a.workspaceNameExists(s) {
-			return "workspace with this name already exists"
-		}
-		for _, repo := range a.dialogWorkspace.Repos {
-			if git.BranchExists(repo.Path, s) {
-				return fmt.Sprintf("branch already exists in %s", repo.Name)
-			}
-		}
-		return ""
-	})
-	a.dialog.SetCheckbox("Copy gitignored files", true)
-	a.dialog.SetSize(a.width, a.height)
-	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-	a.dialog.Show()
-}
-
-// showProfilePickerForCreate shows the profile picker during workspace creation flow.
-func (a *App) showProfilePickerForCreate() {
-	profiles := a.listProfiles()
-	if len(profiles) > 0 {
-		a.dialog = common.NewProfilePicker(DialogSetProfileForCreate, profiles, "")
-	} else {
-		a.dialog = common.NewInputDialog(DialogSetProfileForCreate, "Set Profile", "Default")
-		a.dialog.SetMessage("Profile isolates Claude settings (permissions, memory) for this workspace.")
-	}
-	a.dialog.SetSize(a.width, a.height)
-	a.dialog.SetShowKeymapHints(a.config.UI.ShowKeymapHints)
-	a.dialog.Show()
 }
 
 func (a *App) showQuitDialog() {

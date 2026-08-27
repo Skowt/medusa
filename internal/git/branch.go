@@ -126,3 +126,25 @@ func GetBranchFileDiff(repoPath, path string) (*DiffResult, error) {
 
 	return parseDiff(path, output), nil
 }
+
+// HasUpstream reports whether the repo's current branch tracks a remote branch.
+// A branch that has never been pushed, and a detached HEAD, both answer false —
+// there is nothing to pull from, and asking git to pull anyway only produces an
+// error to explain.
+func HasUpstream(repoPath string) bool {
+	_, err := RunGit(repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	return err == nil
+}
+
+// PullFastForward brings the repo's current branch up to date with its
+// upstream, and refuses anything that is not a fast-forward.
+//
+// The --ff-only is the whole point rather than a preference: this runs
+// unattended on a checkout the user works in directly, so it must not be able to
+// write a merge commit into their history or leave them with conflicts to
+// resolve before they can start. When the branch has diverged, git declines and
+// the repo is left exactly as it was.
+func PullFastForward(repoPath string) error {
+	_, err := RunGit(repoPath, "pull", "--ff-only")
+	return err
+}

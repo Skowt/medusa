@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,10 +29,16 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 		cmds = append(cmds, cmd)
 	}
 	// Show the "creating" indicator in the dashboard
-	if pending := pendingWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, a.config.Paths.WorkspacesRoot); pending != nil {
+	if pending := pendingWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, a.config.Paths.WorkspacesRoot, msg.Worktree); pending != nil {
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	}
+	if msg.PullNotice != "" {
+		notice := msg.PullNotice
+		cmds = append(cmds, func() tea.Msg {
+			return messages.Toast{Message: notice, Level: messages.ToastInfo}
+		})
 	}
 	if len(msg.FallbackRepos) > 0 {
 		notice := fmt.Sprintf(
@@ -44,7 +49,7 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 			return messages.Toast{Message: notice, Level: messages.ToastWarning}
 		})
 	}
-	cmds = append(cmds, a.createWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, msg.CopyIgnored))
+	cmds = append(cmds, a.createWorkspace(msg.Name, msg.Repos, msg.Bases, msg.Profile, msg.Group, msg.CopyIgnored, msg.Worktree))
 	return cmds
 }
 
@@ -53,7 +58,7 @@ func (a *App) handleWorkspaceFetchDone(msg messages.WorkspaceFetchDone) []tea.Cm
 // sidebar partitions rows by Group, so a placeholder without one sits under
 // Ungrouped and jumps groups the moment creation finishes. Returns nil when
 // there is nothing to show yet.
-func pendingWorkspace(name string, repos []data.RepoRef, bases []string, profile, group, workspacesRoot string) *data.Workspace {
+func pendingWorkspace(name string, repos []data.RepoRef, bases []string, profile, group, workspacesRoot string, worktree bool) *data.Workspace {
 	if name == "" || len(repos) == 0 {
 		return nil
 	}
@@ -65,9 +70,14 @@ func pendingWorkspace(name string, repos []data.RepoRef, bases []string, profile
 	}
 
 	var ws *data.Workspace
-	if len(repos) == 1 {
+	switch {
+	case !worktree:
+		// No directory is created for this one, so the placeholder has to point
+		// at the repo — the root it will actually have once it exists.
+		ws = data.NewCheckoutWorkspace(name, base(0), repos[0].Path)
+	case len(repos) == 1:
 		ws = data.NewWorkspace(name, name, base(0), repos[0].Path, filepath.Join(workspacesRoot, name))
-	} else {
+	default:
 		worktrees := make([]data.WorktreeRef, len(repos))
 		for i, repo := range repos {
 			worktrees[i] = data.WorktreeRef{
@@ -92,6 +102,19 @@ func (a *App) handleWorkspaceWorktreeDone(msg messages.WorkspaceWorktreeDone) te
 }
 
 // handleRenameWorkspace handles the RenameWorkspace message.
+//
+// A rename is a label change and nothing more. It used to move the worktree
+// directory to match, which changed the workspace's root — and with it its ID,
+// every agent's working directory, and the meaning of every path anything had
+// already resolved. Worse, a workspace built on a repo's own checkout would
+// have had the user's repo moved out from under it. Nothing on disk is touched
+// now, so nothing has to be migrated: the ID is derived from repo path plus
+// root, and neither changes.
+//
+// The tmux sessions are renamed anyway, because their names are built from the
+// workspace name and a session called after the old one is a stale label the
+// user has no way to correct. That is cosmetic — every tab attaches by the
+// stored session name, and discovery matches on the workspace ID tag.
 func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 	if msg.Workspace == nil {
 		return nil
@@ -99,145 +122,86 @@ func (a *App) handleRenameWorkspace(msg messages.RenameWorkspace) []tea.Cmd {
 
 	ws := msg.Workspace
 	newName := msg.NewName
-	oldRoot := ws.Root()
-	oldPrimaryRoot := ws.PrimaryWorktreeRoot()
-	newRoot := filepath.Join(filepath.Dir(oldRoot), newName)
-	opts := a.tmuxOptions
-	oldWsID := string(ws.ID())
-
-	// 1. Validate: workspace name and directory must not already exist.
+	oldName := ws.Name
+	if newName == oldName {
+		return nil
+	}
 	if a.workspaceNameExists(newName, ws.ID()) {
 		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Workspace '%s' already exists", newName))}
 	}
-	if _, err := os.Stat(newRoot); err == nil {
-		return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Directory '%s' already exists", filepath.Base(newRoot)))}
-	}
 
-	// 2. Move worktree folders (does not rename git branches).
-	if ws.IsMultiRepo() {
-		if err := os.MkdirAll(newRoot, 0o755); err != nil {
-			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
-		}
-		for i, wt := range ws.Worktrees {
-			newWtPath := filepath.Join(newRoot, ws.Repos[i].Name)
-			if err := git.MoveWorkspace(ws.Repos[i].Path, wt.Root, newWtPath); err != nil {
-				for j := 0; j < i; j++ {
-					_ = git.MoveWorkspace(ws.Repos[j].Path, filepath.Join(newRoot, ws.Repos[j].Name), ws.Worktrees[j].Root)
-				}
-				_ = os.Remove(newRoot)
-				return []tea.Cmd{a.toast.ShowError(fmt.Sprintf("Rename failed moving %s: %s", ws.Repos[i].Name, err.Error()))}
-			}
-		}
-		_ = os.Remove(oldRoot)
-	} else {
-		if err := git.MoveWorkspace(ws.Repos[0].Path, oldRoot, newRoot); err != nil {
-			return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
-		}
-	}
-
-	// rollbackMoves undoes all worktree moves.
-	rollbackMoves := func() {
-		if ws.IsMultiRepo() {
-			_ = os.MkdirAll(oldRoot, 0o755)
-			for i := range ws.Worktrees {
-				_ = git.MoveWorkspace(ws.Repos[i].Path, filepath.Join(newRoot, ws.Repos[i].Name), ws.Worktrees[i].Root)
-			}
-			_ = os.Remove(newRoot)
-		} else {
-			_ = git.MoveWorkspace(ws.Repos[0].Path, newRoot, oldRoot)
-		}
-	}
-
-	// 3. Update store (name and paths only, branch unchanged).
-	stored, err := a.workspaces.Load(ws.ID())
-	if err != nil {
-		rollbackMoves()
-		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
+	wsID := ws.ID()
+	stored, err := a.workspaces.Load(wsID)
+	if err != nil || stored == nil {
+		return []tea.Cmd{a.toast.ShowError("Rename failed: " + errText(err, "workspace not found"))}
 	}
 	stored.Name = newName
-	for i := range stored.Worktrees {
-		if ws.IsMultiRepo() {
-			stored.Worktrees[i].Root = filepath.Join(newRoot, stored.Repos[i].Name)
-		} else {
-			stored.Worktrees[i].Root = newRoot
-		}
-	}
 	if err := a.workspaces.Save(stored); err != nil {
-		rollbackMoves()
 		return []tea.Cmd{a.toast.ShowError("Rename failed: " + err.Error())}
 	}
-	newWs := stored
 
-	// 4b. Update registry entry (ID changed because root changed).
-	if err := a.registry.UpdateWorkspace(oldWsID, newName, string(newWs.ID())); err != nil {
+	// The ID is unchanged, so this only rewrites the registry's display name.
+	if err := a.registry.UpdateWorkspace(string(wsID), newName, string(wsID)); err != nil {
 		logging.Warn("Failed to update registry after rename: %v", err)
 	}
 
-	// 5. Migrate running agents in-place (no kill/restart).
-	newID := string(newWs.ID())
+	a.renameWorkspaceSessions(string(wsID), oldName, newName)
 
-	// 5a. Rename tmux sessions so they match the new workspace name.
-	tabsInfo, _ := a.center.GetTabsInfoForWorkspace(oldWsID)
-	oldPrefix := tmux.SessionName("medusa", ws.Name) + "-"
-	newPrefix := tmux.SessionName("medusa", newName) + "-"
-	for _, t := range tabsInfo {
-		if strings.HasPrefix(t.SessionName, oldPrefix) {
-			newSessionName := newPrefix + strings.TrimPrefix(t.SessionName, oldPrefix)
-			if err := tmux.RenameSession(t.SessionName, newSessionName, opts); err != nil {
-				logging.Warn("Failed to rename tmux session %s: %v", t.SessionName, err)
-			}
+	// Update in-memory UI state. Every holder of this workspace keeps its
+	// pointer; only the name moves.
+	ws.Name = newName
+	if a.activeWorkspace != nil && a.activeWorkspace.ID() == wsID {
+		a.activeWorkspace.Name = newName
+	}
+	for _, w := range a.allWorkspaces {
+		if w.ID() == wsID {
+			w.Name = newName
 		}
 	}
 
-	// 5b. Migrate center tabs (re-keys under new workspace ID, sets up PTY reader redirects).
-	a.center.MigrateWorkspaceTabs(oldWsID, newID, newWs, ws.Name, newName)
-
-	// 5c. Migrate agent manager state.
-	a.center.AgentManager().MigrateWorkspaceAgents(data.WorkspaceID(oldWsID), data.WorkspaceID(newID), newWs, ws.Name, newName)
-
-	// 5d. Migrate sidebar terminal tabs.
-	a.sidebarTerminal.MigrateWorkspaceTabs(oldWsID, newID, newWs)
-
-	// 6. Update in-memory UI state.
-	if a.activeWorkspace != nil && string(a.activeWorkspace.ID()) == oldWsID {
-		newWs.Profile = a.activeWorkspace.Profile
-		a.activeWorkspace = newWs
-		a.center.SetWorkspace(newWs)
-	}
-	for _, ws := range a.allWorkspaces {
-		if string(ws.ID()) == oldWsID {
-			ws.Name = newWs.Name
-			for i := range ws.Worktrees {
-				if ws.IsMultiRepo() {
-					ws.Worktrees[i].Root = filepath.Join(newRoot, ws.Repos[i].Name)
-				} else {
-					ws.Worktrees[i].Root = newRoot
-				}
-			}
-		}
-	}
-	if a.dirtyWorkspaces[oldWsID] {
-		delete(a.dirtyWorkspaces, oldWsID)
-		a.dirtyWorkspaces[newID] = true
-	}
-	if a.fileWatcher != nil {
-		a.fileWatcher.Unwatch(oldPrimaryRoot)
-		_ = a.fileWatcher.Watch(newWs.PrimaryWorktreeRoot())
-	}
-	if a.statusManager != nil {
-		a.statusManager.Invalidate(oldPrimaryRoot)
-	}
-
-	// 7. Persist tab state, toast, and reload.
 	var cmds []tea.Cmd
-	if cmd := a.persistWorkspaceTabs(newID); cmd != nil {
+	if cmd := a.persistWorkspaceTabs(string(wsID)); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	cmds = append(cmds,
-		a.toast.ShowSuccess(fmt.Sprintf("Renamed to '%s'. Restart agents to use new directory.", newWs.Name)),
+		a.toast.ShowSuccess(fmt.Sprintf("Renamed to '%s'", newName)),
 		a.loadWorkspaces(),
 	)
 	return cmds
+}
+
+// renameWorkspaceSessions renames the workspace's tmux sessions to match its new
+// name and updates every in-memory record of those names, so the two cannot
+// drift. A session that fails to rename keeps its old name in both places.
+func (a *App) renameWorkspaceSessions(wsID, oldName, newName string) {
+	oldPrefix := tmux.SessionName("medusa", oldName) + "-"
+	newPrefix := tmux.SessionName("medusa", newName) + "-"
+	tabsInfo, _ := a.center.GetTabsInfoForWorkspace(wsID)
+	renamed := make(map[string]string, len(tabsInfo))
+	for _, t := range tabsInfo {
+		if !strings.HasPrefix(t.SessionName, oldPrefix) {
+			continue
+		}
+		newSessionName := newPrefix + strings.TrimPrefix(t.SessionName, oldPrefix)
+		if err := tmux.RenameSession(t.SessionName, newSessionName, a.tmuxOptions); err != nil {
+			logging.Warn("Failed to rename tmux session %s: %v", t.SessionName, err)
+			continue
+		}
+		renamed[t.SessionName] = newSessionName
+	}
+	if len(renamed) == 0 {
+		return
+	}
+	a.center.RenameTabSessions(wsID, renamed)
+	a.center.AgentManager().RenameAgentSessions(data.WorkspaceID(wsID), renamed)
+}
+
+// errText returns err's message, or fallback when err is nil.
+func errText(err error, fallback string) string {
+	if err == nil {
+		return fallback
+	}
+	return err.Error()
 }
 
 // handleWorkspaceRenameFailed handles a failed workspace rename.

@@ -10,6 +10,10 @@ import (
 // Runtime constants for workspace execution backends
 const (
 	RuntimeLocalWorktree = "local-worktree"
+	// RuntimeLocalCheckout marks a workspace that works directly in the source
+	// repo's own checkout instead of a worktree of its own. Nothing was created
+	// on disk for it, so nothing may be deleted for it either.
+	RuntimeLocalCheckout = "local-checkout"
 )
 
 // OrphanType identifies why a workspace is orphaned.
@@ -247,12 +251,24 @@ func (w Workspace) Archived() bool {
 	return w.Status == StatusArchived
 }
 
-// IsPrimaryCheckout returns true if this is the primary checkout (root == repo path)
+// IsPrimaryCheckout returns true if this is the primary checkout (root == repo
+// path). The comparison goes through NormalizePath rather than comparing the
+// strings, because this is what gates deleting the root directory: a trailing
+// separator or a symlinked path on one side and not the other would answer
+// "this is a worktree" about the user's own repo.
 func (w Workspace) IsPrimaryCheckout() bool {
 	if len(w.Repos) == 0 || len(w.Worktrees) == 0 {
 		return false
 	}
-	return w.Worktrees[0].Root == w.Repos[0].Path
+	return NormalizePath(w.Worktrees[0].Root) == NormalizePath(w.Repos[0].Path)
+}
+
+// UsesWorktree reports whether this workspace has a git worktree of its own,
+// as opposed to pointing straight at the source repo's checkout. The paths are
+// the truth here rather than Runtime, so a workspace written before the
+// runtime tag existed still answers correctly.
+func (w Workspace) UsesWorktree() bool {
+	return len(w.Worktrees) > 0 && !w.IsPrimaryCheckout()
 }
 
 // IsMainBranch returns true if this workspace is on main or master branch
@@ -277,6 +293,15 @@ func NewWorkspace(name, branch, base, repo, root string) *Workspace {
 		ScriptMode: "nonconcurrent",
 		Env:        make(map[string]string),
 	}
+}
+
+// NewCheckoutWorkspace creates a workspace that works in the source repo's own
+// checkout. Its root IS the repo, so it owns no directory and no branch of its
+// own — see deleteWorkspace, which must not remove either.
+func NewCheckoutWorkspace(name, branch, repo string) *Workspace {
+	ws := NewWorkspace(name, branch, "", repo, repo)
+	ws.Runtime = RuntimeLocalCheckout
+	return ws
 }
 
 // NewMultiRepoWorkspace creates a multi-repo Workspace

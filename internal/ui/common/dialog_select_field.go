@@ -177,6 +177,19 @@ func wordWrap(text string, width int) []string {
 		return []string{text}
 	}
 	var lines []string
+	// An explicit newline is a break the author asked for, so it survives the
+	// wrap. Without this, strings.Fields folds it away and two parallel
+	// statements ("On: ... " / "Off: ...") reflow into one paragraph the reader
+	// has to parse rather than scan.
+	for _, para := range strings.Split(text, "\n") {
+		lines = append(lines, wrapParagraph(para, width)...)
+	}
+	return lines
+}
+
+// wrapParagraph greedily wraps one newline-free run of text.
+func wrapParagraph(text string, width int) []string {
+	var lines []string
 	var cur strings.Builder
 	for _, word := range strings.Fields(text) {
 		if cur.Len() == 0 {

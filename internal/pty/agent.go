@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -306,23 +305,15 @@ func (m *AgentManager) CloseAll() {
 	}
 }
 
-// MigrateWorkspaceAgents moves agent state from oldID to newID after a workspace rename.
-// It updates the workspace pointer and tmux session names on each agent without closing terminals.
-// oldName/newName are workspace display names used to compute tmux session name prefixes.
-func (m *AgentManager) MigrateWorkspaceAgents(oldID, newID data.WorkspaceID, ws *data.Workspace, oldName, newName string) {
+// RenameAgentSessions rewrites the tmux session names recorded for a
+// workspace's agents, given the old-to-new mapping the rename performed.
+func (m *AgentManager) RenameAgentSessions(wsID data.WorkspaceID, renamed map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	oldPrefix := tmux.SessionName("medusa", oldName) + "-"
-	newPrefix := tmux.SessionName("medusa", newName) + "-"
-	if agents, ok := m.agents[oldID]; ok {
-		for _, agent := range agents {
-			agent.Workspace = ws
-			if strings.HasPrefix(agent.Session, oldPrefix) {
-				agent.Session = newPrefix + strings.TrimPrefix(agent.Session, oldPrefix)
-			}
+	for _, agent := range m.agents[wsID] {
+		if newName, ok := renamed[agent.Session]; ok {
+			agent.Session = newName
 		}
-		m.agents[newID] = agents
-		delete(m.agents, oldID)
 	}
 }
 

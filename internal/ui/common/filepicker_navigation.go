@@ -164,12 +164,27 @@ func (fp *FilePicker) confirmCurrentDirectory() (*FilePicker, tea.Cmd) {
 	if fp.multiSelect {
 		return fp.multiSelectAdd(fp.currentPath)
 	}
+	return fp.singleSelect(fp.currentPath)
+}
+
+// singleSelect validates a path and returns it as the picker's result. The
+// validation is the same one multi-select runs on add: without it, single-select
+// would happily hand back a directory that is not a repo at all, and the caller
+// would only find out once creation failed.
+func (fp *FilePicker) singleSelect(path string) (*FilePicker, tea.Cmd) {
+	fp.statusMessage = ""
+	if fp.validatePath != nil {
+		if errMsg := fp.validatePath(path, nil); errMsg != "" {
+			fp.statusMessage = errMsg
+			return fp, nil
+		}
+	}
 	fp.visible = false
 	return fp, func() tea.Msg {
 		return DialogResult{
 			ID:        fp.id,
 			Confirmed: true,
-			Value:     fp.currentPath,
+			Value:     path,
 		}
 	}
 }
@@ -231,6 +246,12 @@ func (fp *FilePicker) handleEnter() (*FilePicker, tea.Cmd) {
 		entry := fp.entries[fp.filteredIdx[fp.cursor]]
 		if entry.IsDir() {
 			newPath := filepath.Join(fp.currentPath, entry.Name())
+			if fp.autoSelect != nil && fp.autoSelect(newPath) {
+				if fp.multiSelect {
+					return fp.multiSelectAdd(newPath)
+				}
+				return fp.singleSelect(newPath)
+			}
 			fp.currentPath = newPath
 			fp.input.SetValue(fp.inputBasePath())
 			fp.input.CursorEnd()
@@ -267,14 +288,7 @@ func (fp *FilePicker) handleEnter() (*FilePicker, tea.Cmd) {
 					if fp.multiSelect {
 						return fp.multiSelectAdd(path)
 					}
-					fp.visible = false
-					return fp, func() tea.Msg {
-						return DialogResult{
-							ID:        fp.id,
-							Confirmed: true,
-							Value:     path,
-						}
-					}
+					return fp.singleSelect(path)
 				}
 				fp.currentPath = path
 				fp.input.SetValue(fp.inputBasePath())

@@ -227,7 +227,7 @@ func (a *App) listProfiles() []string {
 // handleShowRenameProfileDialog shows the rename profile input dialog.
 func (a *App) handleCreateWorkspace(msg messages.CreateWorkspace) []tea.Cmd {
 	var cmds []tea.Cmd
-	if pending := pendingWorkspace(msg.Name, msg.Repos, nil, "", msg.Group, a.config.Paths.WorkspacesRoot); pending != nil {
+	if pending := pendingWorkspace(msg.Name, msg.Repos, nil, "", msg.Group, a.config.Paths.WorkspacesRoot, true); pending != nil {
 		if cmd := a.dashboard.SetWorkspaceCreating(pending, true); cmd != nil {
 			cmds = append(cmds, cmd)
 		}

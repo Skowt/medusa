@@ -25,3 +25,27 @@ func TestNextStatusCycle(t *testing.T) {
 		t.Fatalf("NextStatus(unknown) = %q, want %q", next, StatusStarted)
 	}
 }
+
+// TestIsPrimaryCheckout_ToleratesPathSpelling guards the gate on deleting the
+// root directory: the two paths reach a workspace from different places, and a
+// mismatch in spelling alone would report the user's repo as a worktree.
+func TestIsPrimaryCheckout_ToleratesPathSpelling(t *testing.T) {
+	ws := Workspace{
+		Repos:     []RepoRef{{Path: "/src/repo"}},
+		Worktrees: []WorktreeRef{{Root: "/src/repo/"}},
+	}
+	if !ws.IsPrimaryCheckout() {
+		t.Error("a trailing separator must not make the repo look like a worktree")
+	}
+	if ws.UsesWorktree() {
+		t.Error("UsesWorktree must agree with IsPrimaryCheckout")
+	}
+
+	other := Workspace{
+		Repos:     []RepoRef{{Path: "/src/repo"}},
+		Worktrees: []WorktreeRef{{Root: "/src/worktrees/feature"}},
+	}
+	if other.IsPrimaryCheckout() || !other.UsesWorktree() {
+		t.Error("a real worktree must still read as one")
+	}
+}

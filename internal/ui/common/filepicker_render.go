@@ -71,6 +71,13 @@ func (fp *FilePicker) renderLines() []string {
 
 	// Input (shows current path with trailing separator)
 	appendLines(fp.input.View())
+	// Single-select has no selected list to hang a rejection off, so the
+	// message goes under the input — a refused choice that says nothing reads
+	// as the picker having ignored the keystroke.
+	if !fp.multiSelect && fp.statusMessage != "" {
+		warnStyle := lipgloss.NewStyle().Foreground(ColorWarning)
+		lines = append(lines, warnStyle.Render("  "+fp.statusMessage))
+	}
 	appendBlank(1)
 
 	// Entries - render as muted vertical list (only when filter is active)

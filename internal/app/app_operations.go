@@ -176,8 +176,10 @@ func forceRemoveAll(path string) error {
 	return os.RemoveAll(path)
 }
 
-// createWorkspace creates a new workspace (single or multi-repo).
-func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string, profile, group string, copyIgnored bool) tea.Cmd {
+// createWorkspace creates a new workspace. With worktree false nothing is
+// created on disk at all: the workspace is a label over the source repo's own
+// checkout, so no branch is cut and no directory is made.
+func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string, profile, group string, copyIgnored, worktree bool) tea.Cmd {
 	return func() (msg tea.Msg) {
 		var ws *data.Workspace
 		defer func() {
@@ -201,6 +203,19 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 			return messages.WorkspaceCreateFailed{
 				Err: fmt.Errorf("workspace '%s' already exists", name),
 			}
+		}
+
+		if !worktree {
+			// The repo is the root, and the root is half of what identifies a
+			// workspace — so a second one over the same repo hashes to the same
+			// ID and would overwrite the first.
+			ws = data.NewCheckoutWorkspace(name, bases[0], repos[0].Path)
+			if existing, lErr := a.workspaces.Load(ws.ID()); lErr == nil && existing != nil {
+				return messages.WorkspaceCreateFailed{
+					Err: fmt.Errorf("workspace '%s' already uses this repo directly", existing.Name),
+				}
+			}
+			return a.registerWorkspace(ws, repos, profile, group, false, nil)
 		}
 
 		// Validate branch doesn't exist in any repo
@@ -267,55 +282,63 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 			ws = data.NewMultiRepoWorkspace(name, repos, worktrees)
 		}
 
-		ws.CopyIgnored = copyIgnored
-
-		// Set profile on workspace (before save so it persists)
-		if profile != "" {
-			ws.Profile = profile
-		}
-
-		// Set group on workspace (before save so it persists)
-		if group != "" {
-			ws.Group = group
-		}
-
-		// Save workspace
-		if err := a.workspaces.Save(ws); err != nil {
-			// Rollback
+		rollback := func() {
 			if len(repos) == 1 {
 				_ = git.RemoveWorkspace(repos[0].Path, ws.Worktrees[0].Root)
 				_ = git.DeleteBranch(repos[0].Path, name)
 				_ = os.RemoveAll(ws.Root())
-			} else {
-				specs := make([]git.RepoSpec, len(repos))
-				for i, repo := range repos {
-					specs[i] = git.RepoSpec{
-						RepoPath:      repo.Path,
-						WorkspacePath: ws.Worktrees[i].Root,
-						Branch:        name,
-					}
-				}
-				git.RemoveGroupWorkspace(specs)
+				return
 			}
-			return messages.WorkspaceCreateFailed{Workspace: ws, Err: err}
+			specs := make([]git.RepoSpec, len(repos))
+			for i, repo := range repos {
+				specs[i] = git.RepoSpec{
+					RepoPath:      repo.Path,
+					WorkspacePath: ws.Worktrees[i].Root,
+					Branch:        name,
+				}
+			}
+			git.RemoveGroupWorkspace(specs)
 		}
 
-		// Register in registry
-		if err := a.registry.AddWorkspace(ws.Name, string(ws.ID()), profile); err != nil {
-			logging.Warn("Failed to register workspace: %v", err)
-		}
-
-		// Add to recents
-		if err := a.recents.Add(repos); err != nil {
-			logging.Warn("Failed to update recents: %v", err)
-		}
-
-		// If gitignored files need copying, signal the overlay to advance first.
-		if copyIgnored {
-			return messages.WorkspaceWorktreeDone{Workspace: ws, Repos: repos}
-		}
-		return messages.WorkspaceCreated{Workspace: ws}
+		return a.registerWorkspace(ws, repos, profile, group, copyIgnored, rollback)
 	}
+}
+
+// registerWorkspace saves a freshly built workspace, records it in the registry
+// and the recents list, and returns the message that ends creation. rollback
+// undoes whatever was made on disk if the save fails; it is nil for a workspace
+// that made nothing.
+func (a *App) registerWorkspace(ws *data.Workspace, repos []data.RepoRef, profile, group string, copyIgnored bool, rollback func()) tea.Msg {
+	ws.CopyIgnored = copyIgnored
+
+	// Set profile and group on the workspace before saving so they persist.
+	if profile != "" {
+		ws.Profile = profile
+	}
+	if group != "" {
+		ws.Group = group
+	}
+
+	if err := a.workspaces.Save(ws); err != nil {
+		if rollback != nil {
+			rollback()
+		}
+		return messages.WorkspaceCreateFailed{Workspace: ws, Err: err}
+	}
+
+	if err := a.registry.AddWorkspace(ws.Name, string(ws.ID()), profile); err != nil {
+		logging.Warn("Failed to register workspace: %v", err)
+	}
+
+	if err := a.recents.Add(repos); err != nil {
+		logging.Warn("Failed to update recents: %v", err)
+	}
+
+	// If gitignored files need copying, signal the overlay to advance first.
+	if copyIgnored {
+		return messages.WorkspaceWorktreeDone{Workspace: ws, Repos: repos}
+	}
+	return messages.WorkspaceCreated{Workspace: ws}
 }
 
 // copyIgnoredFilesCmd copies gitignored files from source repos into the workspace worktrees.
@@ -345,9 +368,19 @@ func waitForGitFile(workspacePath string) {
 	}
 }
 
-// runSetupAsync runs setup scripts asynchronously and returns a WorkspaceSetupComplete message
+// runSetupAsync runs setup scripts asynchronously and returns a
+// WorkspaceSetupComplete message.
+//
+// A workspace over the repo's own checkout is skipped: setup-workspace commands
+// exist to make a *fresh* worktree usable — installing dependencies, copying env
+// files in — and the repo the user already works in is already set up. Running
+// them there would at best repeat work and at worst overwrite files they have.
+// The message is still emitted, since the run scripts hang off it.
 func (a *App) runSetupAsync(ws *data.Workspace) tea.Cmd {
 	return func() tea.Msg {
+		if ws != nil && !ws.UsesWorktree() {
+			return messages.WorkspaceSetupComplete{Workspace: ws}
+		}
 		if err := a.scripts.RunSetup(ws); err != nil {
 			return messages.WorkspaceSetupComplete{Workspace: ws, Err: err}
 		}
@@ -376,26 +409,25 @@ func (a *App) deleteWorkspace(ws *data.Workspace, silent ...bool) tea.Cmd {
 	return func() tea.Msg {
 		var branchWarning string
 
-		// Remove all worktrees (uniform layout: always iterate)
-		specs := make([]git.RepoSpec, len(ws.Repos))
-		for i, repo := range ws.Repos {
-			specs[i] = git.RepoSpec{
-				RepoPath:      repo.Path,
-				RepoName:      repo.Name,
-				WorkspacePath: ws.Worktrees[i].Root,
-				Branch:        ws.Worktrees[i].Branch,
+		// Only worktrees medusa made are removed. A workspace pointed straight
+		// at a repo's own checkout owns neither the directory nor the branch, so
+		// deleting it here would delete the user's repo — see removableWorktrees,
+		// which is the guard rather than a convenience.
+		specs := removableWorktrees(ws)
+		if len(specs) > 0 {
+			_, branchErrs := git.RemoveGroupWorkspace(specs)
+			if len(branchErrs) > 0 {
+				msgs := make([]string, len(branchErrs))
+				for i, e := range branchErrs {
+					msgs[i] = e.Error()
+				}
+				branchWarning = "Failed to delete branches: " + joinStrings(msgs, "; ")
 			}
 		}
-		_, branchErrs := git.RemoveGroupWorkspace(specs)
-		if len(branchErrs) > 0 {
-			msgs := make([]string, len(branchErrs))
-			for i, e := range branchErrs {
-				msgs[i] = e.Error()
-			}
-			branchWarning = "Failed to delete branches: " + joinStrings(msgs, "; ")
+		// Clean up the workspace root directory, unless the root is a repo.
+		if root := ws.Root(); root != "" && ws.UsesWorktree() {
+			_ = os.RemoveAll(root)
 		}
-		// Clean up the workspace root directory
-		_ = os.RemoveAll(ws.Root())
 
 		_ = a.workspaces.Delete(ws.ID())
 		_ = a.registry.RemoveWorkspace(string(ws.ID()))
@@ -406,4 +438,38 @@ func (a *App) deleteWorkspace(ws *data.Workspace, silent ...bool) tea.Cmd {
 			Silent:        isSilent,
 		}
 	}
+}
+
+// removableWorktrees returns the specs for the worktrees of ws that git may
+// remove, dropping any whose directory is the source repo itself or is not a
+// worktree on disk. Both checks matter: the first catches a workspace created
+// with the worktree box unticked, and the second is the backstop for anything
+// whose stored path has since come to mean something else. Deleting a branch is
+// bound to the same test, since a checkout workspace records the branch the repo
+// happened to be on rather than one of its own.
+func removableWorktrees(ws *data.Workspace) []git.RepoSpec {
+	var specs []git.RepoSpec
+	for i, repo := range ws.Repos {
+		if i >= len(ws.Worktrees) {
+			break
+		}
+		root := ws.Worktrees[i].Root
+		if root == "" || data.NormalizePath(root) == data.NormalizePath(repo.Path) {
+			continue
+		}
+		// A path still on disk that is not a worktree is not ours to remove.
+		// One already gone is fine to pass through: git prunes the registration
+		// and the branch goes with it.
+		if info, err := os.Stat(root); err == nil && info.IsDir() && !git.IsWorktree(root) {
+			logging.Warn("Refusing to delete %s: not a git worktree", root)
+			continue
+		}
+		specs = append(specs, git.RepoSpec{
+			RepoPath:      repo.Path,
+			RepoName:      repo.Name,
+			WorkspacePath: root,
+			Branch:        ws.Worktrees[i].Branch,
+		})
+	}
+	return specs
 }
