@@ -27,18 +27,6 @@ func (a *App) routeOverlayInput(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		}
 	}
 
-	// Review window. It goes ahead of the dialogs because it is a working
-	// surface rather than a prompt: while it is up almost every key is content
-	// for a comment or an edit, and anything below that reads keys as commands
-	// would steal them.
-	if a.reviewOverlayVisible() {
-		*cmds = append(*cmds, a.updateReviewOverlay(msg)...)
-		switch msg.(type) {
-		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg:
-			return true
-		}
-	}
-
 	// Handle dialog input if visible
 	if a.dialog != nil && a.dialog.Visible() {
 		newDialog, cmd := a.dialog.Update(msg)

@@ -250,15 +250,6 @@ func (a *App) handleGitStatusResult(msg messages.GitStatusResult) tea.Cmd {
 	a.dashboard = newDashboard
 	if a.activeWorkspace != nil && msg.Root == a.activeWorkspace.PrimaryWorktreeRoot() {
 		a.sidebar.SetGitStatus(msg.Status)
-		a.center.SetGitDirty(msg.Status != nil && !msg.Status.Clean)
-		// GitStatusResult is the debounced signal, so the review window tracks
-		// the agent off this rather than off raw file events: a busy agent
-		// touches files far faster than a full re-diff of the workspace runs.
-		if a.reviewOverlayVisible() {
-			if refresh := a.reviewOverlay.Refresh(); refresh != nil {
-				return tea.Batch(cmd, refresh)
-			}
-		}
 	}
 	return cmd
 }

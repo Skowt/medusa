@@ -23,7 +23,6 @@ type KeyMap struct {
 	RunScript      key.Binding
 	Help           key.Binding
 	Monitor        key.Binding
-	ReviewChanges  key.Binding
 
 	// Dashboard
 	Enter        key.Binding
@@ -111,10 +110,6 @@ func DefaultKeyMap() KeyMap {
 		Monitor: key.NewBinding(
 			key.WithKeys("m"),
 			key.WithHelp("m", "monitor"),
-		),
-		ReviewChanges: key.NewBinding(
-			key.WithKeys("v"),
-			key.WithHelp("v", "review changes"),
 		),
 
 		// Dashboard

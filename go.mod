@@ -7,7 +7,6 @@ require (
 	charm.land/bubbletea/v2 v2.0.0-rc.2.0.20251216153312-819e2e89c62e
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251205162909-7869489d8971
 	github.com/atotto/clipboard v0.1.4
-	github.com/aymanbagabas/go-udiff v0.3.1
 	github.com/charmbracelet/ultraviolet v0.0.0-20251212194010-b927aa605560
 	github.com/charmbracelet/x/ansi v0.11.3
 	github.com/clipperhouse/displaywidth v0.6.1

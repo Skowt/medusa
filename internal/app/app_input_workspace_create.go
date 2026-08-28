@@ -315,20 +315,12 @@ func (a *App) handleWorkspacePreviewed(msg messages.WorkspacePreviewed) []tea.Cm
 	if startCmd := a.syncActiveWorkspacesToDashboard(); startCmd != nil {
 		cmds = append(cmds, startCmd)
 	}
-	// The dirty flag follows the status on every switch. Left behind, the
-	// previous workspace's [Review Changes] button would sit on a clean one and
-	// open a window with nothing in it.
+	// The sidebar's status follows the workspace on every switch. Left behind,
+	// it would describe the previous one.
 	if msg.Workspace != nil && a.statusManager != nil {
-		if cached := a.statusManager.GetCached(msg.Workspace.PrimaryWorktreeRoot()); cached != nil {
-			a.sidebar.SetGitStatus(cached)
-			a.center.SetGitDirty(!cached.Clean)
-		} else {
-			a.sidebar.SetGitStatus(nil)
-			a.center.SetGitDirty(false)
-		}
+		a.sidebar.SetGitStatus(a.statusManager.GetCached(msg.Workspace.PrimaryWorktreeRoot()))
 	} else {
 		a.sidebar.SetGitStatus(nil)
-		a.center.SetGitDirty(false)
 	}
 
 	newDashboard, cmd := a.dashboard.Update(msg)

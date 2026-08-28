@@ -40,9 +40,3 @@ type ActionBarOpenMR struct {
 type ShowCommitDialog struct {
 	WorkspaceRoot string
 }
-
-// OpenReviewChanges requests the interactive review window for a workspace.
-// Raised by the info bar's [Review Changes] button and by the prefix binding.
-type OpenReviewChanges struct {
-	WorkspaceID string
-}

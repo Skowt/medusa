@@ -63,10 +63,6 @@ func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		if cmd := a.handleActionBarOpenIDE(msg); cmd != nil {
 			*cmds = append(*cmds, cmd)
 		}
-	case messages.OpenReviewChanges:
-		if cmd := a.openReviewOverlay(); cmd != nil {
-			*cmds = append(*cmds, cmd)
-		}
 	case messages.ActionBarMergeToMain:
 		*cmds = append(*cmds, a.handleActionBarMergeToMain(msg))
 	case messages.ActionBarCommitResult:
