@@ -201,3 +201,59 @@ func TestBuildEventLineCwdOnlyOnSessionStart(t *testing.T) {
 		t.Errorf("Stop must not carry a cwd, got %v", m["cwd"])
 	}
 }
+
+// TestBuildEventLineStopIgnoresMonitorTasks verifies an artifact watch does not
+// count as outstanding work. Publishing an artifact auto-arms a live-update
+// subscription, which Claude Code reports as a background task of type
+// "monitor" with status "running" for as long as the session stays subscribed.
+// Counting it parked every Stop in SubagentWait, so the workspace's spinner ran
+// until the user killed the watch and the 3-minute reconciler cleared it.
+//
+// Payload shape captured from a real Stop hook, Claude Code 2.x.
+func TestBuildEventLineStopIgnoresMonitorTasks(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	stdin := []byte(`{
+		"hook_event_name": "Stop",
+		"background_tasks": [
+			{"id": "s6zu9vj9m", "type": "monitor", "status": "running",
+			 "description": "live updates for artifact https://claude.ai/code/artifact/abc (auto-armed on publish)"}
+		],
+		"session_crons": []
+	}`)
+	m := decodeLine(t, BuildEventLine("Stop", "medusa-ws1-tab1", stdin, now))
+	if got, ok := num(t, m, "outstanding"); !ok || got != 0 {
+		t.Errorf("outstanding = %d (present=%v), want 0 — a watch is not work", got, ok)
+	}
+}
+
+// TestBuildEventLineStopCountsWorkAlongsideAMonitor verifies the exclusion is
+// scoped to the monitor: real background work in the same payload still counts,
+// so a watch cannot mask a running subagent into a false "ready" ping.
+func TestBuildEventLineStopCountsWorkAlongsideAMonitor(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	stdin := []byte(`{
+		"hook_event_name": "Stop",
+		"background_tasks": [
+			{"id": "m1", "type": "monitor",  "status": "running"},
+			{"id": "a1", "type": "subagent", "status": "running"},
+			{"id": "b1", "type": "bash",     "status": "running"},
+			{"id": "a2", "type": "subagent", "status": "completed"}
+		]
+	}`)
+	m := decodeLine(t, BuildEventLine("Stop", "medusa-ws1-tab1", stdin, now))
+	if got, ok := num(t, m, "outstanding"); !ok || got != 2 {
+		t.Errorf("outstanding = %d (present=%v), want 2", got, ok)
+	}
+}
+
+// TestBuildEventLineStopCountsUnknownTaskTypes pins the denylist direction: a
+// type medusa has never seen still counts, because over-counting self-heals on
+// the next Stop while under-counting pings "ready" mid-work.
+func TestBuildEventLineStopCountsUnknownTaskTypes(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	stdin := []byte(`{"background_tasks": [{"id": "x1", "type": "something-new", "status": "running"}]}`)
+	m := decodeLine(t, BuildEventLine("Stop", "medusa-ws1-tab1", stdin, now))
+	if got, ok := num(t, m, "outstanding"); !ok || got != 1 {
+		t.Errorf("outstanding = %d (present=%v), want 1", got, ok)
+	}
+}

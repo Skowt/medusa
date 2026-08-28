@@ -22,6 +22,7 @@ type emitPayload struct {
 // (present on Stop/SubagentStop since Claude Code v2.1.145).
 type backgroundTask struct {
 	ID     string `json:"id"`
+	Type   string `json:"type"`
 	Status string `json:"status"`
 }
 
@@ -53,6 +54,22 @@ var terminalTaskStatuses = map[string]bool{
 	"killed":    true,
 }
 
+// nonWorkTaskTypes are background_tasks entries that do not represent the
+// agent working. A "monitor" is a live-update subscription — an artifact watch
+// is one, auto-armed by publishing an artifact — and it reports
+// status "running" for as long as the session stays subscribed, which is until
+// the user stops it. Counting one parks the workspace in SubagentWait on every
+// Stop, so the spinner never clears and only the 3-minute staleness reconciler
+// ends it, minutes after the watch is finally killed.
+//
+// Types are denied rather than allowed, matching the rule for statuses: an
+// unrecognised type still counts, because over-counting self-heals on the next
+// Stop while under-counting fires a false "ready" ping in the middle of work.
+// The sibling session_crons list is excluded by simply never being parsed.
+var nonWorkTaskTypes = map[string]bool{
+	"monitor": true,
+}
+
 // carriesOutstanding reports whether an event's payload is authoritative for
 // the outstanding-background-work count.
 func carriesOutstanding(event string) bool {
@@ -71,9 +88,9 @@ func carriesOutstanding(event string) bool {
 // On Stop/StopFailure/SubagentStop the payload's background_tasks list is
 // reduced to an `outstanding` count of still-running tasks. A SubagentStop
 // excludes its own agent_id — Claude Code lists the stopping agent as still
-// "running" in its own payload. session_crons are deliberately ignored: a
-// recurring cron would keep the workspace "busy" forever even though Claude is
-// waiting for input between runs. When the payload predates background_tasks
+// "running" in its own payload. Monitor tasks are excluded too (see
+// nonWorkTaskTypes), as are session_crons: both stay "running" while Claude
+// sits waiting for input, so either would keep the workspace busy forever. When the payload predates background_tasks
 // (Claude Code < 2.1.145) the field is omitted so the app treats it as
 // unknown rather than zero.
 //
@@ -106,6 +123,9 @@ func BuildEventLine(event, session string, stdin []byte, now time.Time) []byte {
 			outstanding := 0
 			for _, task := range payload.BackgroundTasks {
 				if task.ID != "" && task.ID == payload.AgentID {
+					continue
+				}
+				if nonWorkTaskTypes[task.Type] {
 					continue
 				}
 				if terminalTaskStatuses[task.Status] {

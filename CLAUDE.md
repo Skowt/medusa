@@ -198,6 +198,19 @@ with no hook event for 3 minutes. Background-task awareness
 needs **Claude Code v2.1.145+** (`background_tasks` in Stop payloads); older
 versions degrade to ping-on-Stop.
 
+**Not every `background_tasks` entry is the agent working.** Each carries a
+`type`, and a `monitor` is a live-update subscription — publishing an Artifact
+auto-arms one for it — which reports `status: "running"` for as long as the
+session stays subscribed, i.e. until the user stops it. Counting one parked
+every Stop in `SubagentWait`, so the workspace spun forever and only the
+3-minute reconciler ended it, minutes after the watch was finally killed.
+`nonWorkTaskTypes` (`internal/hooks/emit.go`) excludes it, alongside the
+sibling `session_crons` list, which is excluded by never being parsed: both
+stay "running" while Claude sits waiting for input. Types are **denied, not
+allowed**, matching the rule for statuses — an unrecognised type still counts,
+because over-counting self-heals on the next Stop while under-counting fires a
+false "ready" ping mid-work.
+
 ### Codex tabs
 
 A tab's assistant is picked in the New Tab dialog's "Assistant" cycler, which
