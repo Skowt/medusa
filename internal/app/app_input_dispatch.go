@@ -30,7 +30,7 @@ func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		*cmds = append(*cmds, a.handleWorkspaceDeleted(msg)...)
 	case messages.OrphanWorkspaceDeleted:
 		if msg.Workspace != nil {
-			if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), false); cmd != nil {
+			if cmd := a.dashboard.SetWorkspaceDeleting(string(msg.Workspace.ID()), false); cmd != nil {
 				*cmds = append(*cmds, cmd)
 			}
 		}

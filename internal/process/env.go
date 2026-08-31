@@ -33,7 +33,7 @@ func (b *EnvBuilder) BuildEnv(ws *data.Workspace) []string {
 
 	// Add port allocation
 	if b.portAllocator != nil {
-		port, rangeEnd := b.portAllocator.PortRange(ws.Root())
+		port, rangeEnd := b.portAllocator.PortRange(string(ws.ID()))
 		env = append(env,
 			fmt.Sprintf("WORKSPACE_PORT=%d", port),
 			fmt.Sprintf("WORKSPACE_PORT_RANGE=%d-%d", port, rangeEnd),
@@ -58,7 +58,7 @@ func (b *EnvBuilder) BuildEnvMap(ws *data.Workspace) map[string]string {
 	envMap["ROOT_WORKSPACE_PATH"] = ws.PrimaryRepo().Path
 
 	if b.portAllocator != nil {
-		port, rangeEnd := b.portAllocator.PortRange(ws.Root())
+		port, rangeEnd := b.portAllocator.PortRange(string(ws.ID()))
 		envMap["WORKSPACE_PORT"] = fmt.Sprintf("%d", port)
 		envMap["WORKSPACE_PORT_RANGE"] = fmt.Sprintf("%d-%d", port, rangeEnd)
 	}

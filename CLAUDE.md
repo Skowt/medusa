@@ -67,9 +67,10 @@ When adding a new message handler, decide first which of these layers owns it �
 
 PTY readers run as long-lived goroutines. They capture the workspace ID at start
 and embed it in every message they emit, which is why a workspace's ID must not
-change under them. It no longer can: the ID is derived from repo path plus root,
-and the only operation that used to move a root — rename — no longer touches
-disk. The redirect map that existed to reroute stale messages is gone with it.
+change under them. It no longer can: the ID is minted once at creation and
+stored (`data.Workspace.StableID`), so nothing recomputes it from anything that
+could move. The redirect map that existed to reroute stale messages is gone
+with it.
 
 ### Fullscreen TUI mode
 
@@ -535,20 +536,50 @@ Three further consequences are load-bearing:
    copying env files in — and the repo the user already works in is already set
    up. `runSetupAsync` still emits `WorkspaceSetupComplete`, since the `run`
    scripts hang off it.
-3. **The workspace ID hashes repo path plus root**, and for a checkout those are
-   the same path for every workspace over that repo — so a second one would
-   collide with the first and overwrite it. `createWorkspace` refuses it by
-   looking the ID up in the store before saving.
+3. **The workspace ID is minted at creation, not derived from paths.** It used
+   to hash repo path plus root, and for a checkout those are the same path for
+   every workspace over that repo — so the second one collided with the first
+   and overwrote its store entry. `data.Workspace.StableID` is written once by
+   `mintWorkspaceID` (repo, root and *name*) and never recomputed, so a rename
+   cannot move it either. The path-derived hash survives as the fallback in
+   `ID()` for every workspace stored before the field existed, and
+   `WorkspaceStore.Save` pins that derived value into `StableID` on the next
+   write. The mint is a pure function rather than a random value because the
+   dashboard renders a placeholder workspace while creation is in flight, and
+   the placeholder has to carry the ID the finished workspace will have.
+
+   **The consequence is that a root no longer identifies a workspace**, and
+   anything that keys off one is wrong the moment two workspaces share a repo.
+   Converted with the mint: the dashboard's creating/deleting maps, its active
+   row, cursor re-anchoring, drag and hover state, `ReorderWorkspaces` /
+   `CreateGroupForWorkspace`, the pending auto-launch and profile-launch
+   handoffs, `ScriptRunner.running`, and `PortAllocator` — two checkout
+   workspaces sharing a port range meant their run scripts fought over it.
+   Roots are still the right key for genuinely path-scoped things: the git
+   status cache, the file watcher, and the orphan-directory scan.
+   Regression cover: `internal/ui/dashboard/dashboard_shared_root_test.go`,
+   `internal/app/workspace_checkout_test.go`,
+   `internal/process/env_test.go`.
+
+   **The monitor grid's project filter is a third kind of key again** — the
+   source repo path, so one chip covers every workspace over that repo. Both
+   readers must resolve it through `monitorProjectKeyLabel`, never against a
+   root: `filterMonitorTabs` does, but `tmuxSyncWorkspaces` compared
+   `ws.Root()`, which matches only a checkout workspace. Picking any chip
+   therefore left the tmux tick polling nothing at all, and the grid froze on
+   the tab state it last had — silently, since the tiles keep rendering.
+   Regression cover: `internal/app/app_monitor_filter_test.go`.
 
 **Rename changes a label and nothing else.** It does not move directories, does
 not rename branches, and does not restart agents. Moving the worktree to match
 the new name used to be the whole implementation, and it changed the workspace's
 root — hence its ID, every agent's working directory, and the meaning of every
 path anything had already resolved. On a checkout workspace it would have moved
-the user's repo. Since the root is untouched the ID is stable, so nothing has to
-be migrated; the tmux sessions are renamed only because their names are built
-from the workspace name, and `renameWorkspaceSessions` updates the in-memory
-records for exactly the sessions tmux confirmed, so the two cannot drift. There
+the user's repo. Nothing on disk moves now, and the ID is stored rather than
+derived, so a rename cannot move it either and nothing has to be migrated; the
+tmux sessions are renamed only because their names are built from the workspace
+name, and `renameWorkspaceSessions` updates the in-memory records for exactly
+the sessions tmux confirmed, so the two cannot drift. There
 is no longer any restriction on *which* workspaces can be renamed — the old
 guards against renaming a primary checkout or a main/master branch existed
 because of what the rename did on disk. Regression cover:

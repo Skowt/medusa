@@ -26,30 +26,30 @@ func startupWorkspace(name string) *data.Workspace {
 
 // The workspace medusa was on when it exited is the one it comes back to,
 // wherever it sits in the list.
-func TestStartupWorkspaceRootPrefersLast(t *testing.T) {
+func TestStartupWorkspaceIDPrefersLast(t *testing.T) {
 	first, last := startupWorkspace("first"), startupWorkspace("last")
 	a := newStartupApp(t, string(last.ID()), first, last)
-	if got := a.startupWorkspaceRoot(); got != last.Root() {
-		t.Fatalf("startupWorkspaceRoot = %q, want %q", got, last.Root())
+	if got := a.startupWorkspaceID(); got != string(last.ID()) {
+		t.Fatalf("startupWorkspaceID = %q, want %q", got, last.ID())
 	}
 }
 
 // A remembered workspace that is gone, archived, or orphaned must not leave
 // medusa on the welcome screen: it falls back to the top of the list.
-func TestStartupWorkspaceRootFallsBackToFirst(t *testing.T) {
+func TestStartupWorkspaceIDFallsBackToFirst(t *testing.T) {
 	first, second := startupWorkspace("first"), startupWorkspace("second")
 
 	t.Run("no memory", func(t *testing.T) {
 		a := newStartupApp(t, "", first, second)
-		if got := a.startupWorkspaceRoot(); got != first.Root() {
-			t.Fatalf("startupWorkspaceRoot = %q, want %q", got, first.Root())
+		if got := a.startupWorkspaceID(); got != string(first.ID()) {
+			t.Fatalf("startupWorkspaceID = %q, want %q", got, first.ID())
 		}
 	})
 
 	t.Run("workspace deleted", func(t *testing.T) {
 		a := newStartupApp(t, "gone", first, second)
-		if got := a.startupWorkspaceRoot(); got != first.Root() {
-			t.Fatalf("startupWorkspaceRoot = %q, want %q", got, first.Root())
+		if got := a.startupWorkspaceID(); got != string(first.ID()) {
+			t.Fatalf("startupWorkspaceID = %q, want %q", got, first.ID())
 		}
 	})
 
@@ -57,8 +57,8 @@ func TestStartupWorkspaceRootFallsBackToFirst(t *testing.T) {
 		archived := startupWorkspace("archived")
 		archived.Status = data.StatusArchived
 		a := newStartupApp(t, string(archived.ID()), first, archived)
-		if got := a.startupWorkspaceRoot(); got != first.Root() {
-			t.Fatalf("startupWorkspaceRoot = %q, want %q", got, first.Root())
+		if got := a.startupWorkspaceID(); got != string(first.ID()) {
+			t.Fatalf("startupWorkspaceID = %q, want %q", got, first.ID())
 		}
 	})
 
@@ -66,8 +66,8 @@ func TestStartupWorkspaceRootFallsBackToFirst(t *testing.T) {
 		archived := startupWorkspace("archived")
 		archived.Status = data.StatusArchived
 		a := newStartupApp(t, string(archived.ID()), archived)
-		if got := a.startupWorkspaceRoot(); got != "" {
-			t.Fatalf("startupWorkspaceRoot = %q, want the welcome screen", got)
+		if got := a.startupWorkspaceID(); got != "" {
+			t.Fatalf("startupWorkspaceID = %q, want the welcome screen", got)
 		}
 	})
 }

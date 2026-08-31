@@ -235,7 +235,7 @@ func TestOrderedGroupMembers_SkipsArchivedAndOrphans(t *testing.T) {
 	m.SetWorkspaces([]*data.Workspace{live, archived, orphan})
 
 	got := m.orderedGroupMembers("shipping")
-	want := []string{live.Root()}
+	want := []string{string(live.ID())}
 	if !sameOrder(got, want) {
 		t.Errorf("members = %v, want %v: sections with their own sort must not join manual ordering", got, want)
 	}

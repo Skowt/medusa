@@ -113,7 +113,7 @@ func (m *Model) currentSectionKeys() []string {
 	return m.sectionOrder(groupMembers)
 }
 
-// orderedGroupMembers returns the roots of one group's members in display
+// orderedGroupMembers returns the IDs of one group's members in display
 // order. Like currentSectionKeys it reads m.workspaces rather than m.rows, so a
 // collapsed group is a valid drop target.
 func (m *Model) orderedGroupMembers(group string) []string {
@@ -126,19 +126,19 @@ func (m *Model) orderedGroupMembers(group string) []string {
 	}
 	sortWorkspacesForDisplay(members)
 
-	roots := make([]string, 0, len(members))
+	ids := make([]string, 0, len(members))
 	for _, ws := range members {
-		roots = append(roots, ws.Root())
+		ids = append(ids, string(ws.ID()))
 	}
-	return roots
+	return ids
 }
 
-// projectedGroupRoots returns the roots of group as a drag in progress would
-// leave them: the dragged workspace removed from wherever it sits and inserted
-// at its projected index. The commit reads this rather than the rendered rows so
-// a drop into a collapsed group — which renders no member rows at all — commits
-// the same order an expanded one would.
-func (m *Model) projectedGroupRoots(group string, dragged string, idx int) []string {
+// projectedGroupMembers returns the IDs of group's members as a drag in
+// progress would leave them: the dragged workspace removed from wherever it
+// sits and inserted at its projected index. The commit reads this rather than
+// the rendered rows so a drop into a collapsed group — which renders no member
+// rows at all — commits the same order an expanded one would.
+func (m *Model) projectedGroupMembers(group string, dragged string, idx int) []string {
 	return insertAt(without(m.orderedGroupMembers(group), dragged), idx, dragged)
 }
 
@@ -159,7 +159,7 @@ func (m *Model) projectDraggedWorkspace(groupMembers map[string][]*data.Workspac
 	var dragged *data.Workspace
 	for key, members := range groupMembers {
 		for i, ws := range members {
-			if ws == nil || ws.Root() != m.drag.srcRoot {
+			if ws == nil || string(ws.ID()) != m.drag.srcID {
 				continue
 			}
 			dragged = ws
@@ -219,13 +219,13 @@ func orderable(ws *data.Workspace) bool {
 	return ws != nil && !ws.Archived() && !ws.IsOrphaned()
 }
 
-// workspaceByRoot finds a workspace by its root, or nil.
-func (m *Model) workspaceByRoot(root string) *data.Workspace {
-	if root == "" {
+// workspaceByID finds a workspace by its ID, or nil.
+func (m *Model) workspaceByID(id string) *data.Workspace {
+	if id == "" {
 		return nil
 	}
 	for _, ws := range m.workspaces {
-		if ws != nil && ws.Root() == root {
+		if ws != nil && string(ws.ID()) == id {
 			return ws
 		}
 	}

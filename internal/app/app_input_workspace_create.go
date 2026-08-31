@@ -32,11 +32,11 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	}
 
 	// Determine which workspace will be auto-activated (to skip eager restore for it).
-	var autoActivateRoot string
+	var autoActivateID string
 	if a.pendingAutoLaunch != "" {
-		autoActivateRoot = a.pendingAutoLaunch
+		autoActivateID = a.pendingAutoLaunch
 	} else if a.showWelcome && a.activeWorkspace == nil && len(a.allWorkspaces) > 0 {
-		autoActivateRoot = a.startupWorkspaceRoot()
+		autoActivateID = a.startupWorkspaceID()
 	}
 
 	// Eagerly restore agent tabs for all workspaces on startup.
@@ -46,7 +46,7 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 		if ws.IsOrphaned() || ws.Archived() {
 			continue
 		}
-		if autoActivateRoot != "" && ws.Root() == autoActivateRoot {
+		if autoActivateID != "" && string(ws.ID()) == autoActivateID {
 			continue
 		}
 		if workspaceHasLiveTabs(ws) {
@@ -59,9 +59,9 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	// Auto-activate a newly created workspace for auto-launch.
 	if a.pendingAutoLaunch != "" {
 		for _, ws := range a.allWorkspaces {
-			if ws.Root() == a.pendingAutoLaunch {
+			if string(ws.ID()) == a.pendingAutoLaunch {
 				a.pendingAutoLaunch = ""
-				a.pendingAgentLaunch = ws.Root()
+				a.pendingAgentLaunch = string(ws.ID())
 				w := ws
 				cmds = append(cmds, func() tea.Msg {
 					return messages.WorkspaceActivated{
@@ -71,10 +71,10 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 				break
 			}
 		}
-	} else if autoActivateRoot != "" {
+	} else if autoActivateID != "" {
 		// Auto-activate the first eligible workspace on initial startup
 		for _, ws := range a.allWorkspaces {
-			if ws.Root() == autoActivateRoot {
+			if string(ws.ID()) == autoActivateID {
 				w := ws
 				cmds = append(cmds, func() tea.Msg {
 					return messages.WorkspaceActivated{
@@ -89,11 +89,11 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	return cmds
 }
 
-// startupWorkspaceRoot picks the workspace to open on a cold start: the one
-// that was active when medusa last exited, falling back to the first eligible
+// startupWorkspaceID picks the workspace to open on a cold start: the one that
+// was active when medusa last exited, falling back to the first eligible
 // workspace in the list when that one is gone, archived, orphaned, or belongs
 // to another profile.
-func (a *App) startupWorkspaceRoot() string {
+func (a *App) startupWorkspaceID() string {
 	var first string
 	for _, ws := range a.allWorkspaces {
 		if ws.IsOrphaned() || ws.Archived() {
@@ -101,10 +101,10 @@ func (a *App) startupWorkspaceRoot() string {
 		}
 		if a.config != nil && a.config.UI.LastWorkspace != "" &&
 			string(ws.ID()) == a.config.UI.LastWorkspace {
-			return ws.Root()
+			return string(ws.ID())
 		}
 		if first == "" {
-			first = ws.Root()
+			first = string(ws.ID())
 		}
 	}
 	return first
@@ -183,7 +183,7 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 
 	// Auto-start agent when activating a workspace with no tabs.
 	autoLaunch := false
-	if a.pendingAgentLaunch != "" && msg.Workspace != nil && msg.Workspace.Root() == a.pendingAgentLaunch {
+	if a.pendingAgentLaunch != "" && msg.Workspace != nil && string(msg.Workspace.ID()) == a.pendingAgentLaunch {
 		a.pendingAgentLaunch = ""
 		autoLaunch = true
 	} else if a.config.UI.AutoStartAgent && msg.Workspace != nil {

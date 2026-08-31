@@ -88,3 +88,28 @@ func TestEnvBuilder_NilPortAllocator(t *testing.T) {
 		}
 	}
 }
+
+// Two workspaces over one repo with no worktree of their own share a root, so
+// keying the port allocation off the root handed both run scripts the same
+// port and they fought over it.
+func TestEnvBuilder_CheckoutWorkspacesGetSeparatePorts(t *testing.T) {
+	builder := NewEnvBuilder(NewPortAllocator(6200, 10))
+
+	first := data.NewCheckoutWorkspace("first", "main", "/home/user/repo")
+	second := data.NewCheckoutWorkspace("second", "main", "/home/user/repo")
+	if first.Root() != second.Root() {
+		t.Fatalf("fixture is wrong: roots %q and %q differ", first.Root(), second.Root())
+	}
+
+	firstPort := builder.BuildEnvMap(first)["WORKSPACE_PORT"]
+	secondPort := builder.BuildEnvMap(second)["WORKSPACE_PORT"]
+	if firstPort == secondPort {
+		t.Fatalf("both workspaces were given port %s", firstPort)
+	}
+
+	// The same workspace must keep its port across calls — a run script that
+	// restarts has to come back on the port it advertised.
+	if again := builder.BuildEnvMap(first)["WORKSPACE_PORT"]; again != firstPort {
+		t.Errorf("port moved from %s to %s on the second call", firstPort, again)
+	}
+}

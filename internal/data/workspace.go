@@ -103,6 +103,15 @@ type Workspace struct {
 	Created time.Time `json:"created"`
 	storeID WorkspaceID
 
+	// StableID is the workspace's identity outright, minted once when the
+	// workspace is created and never recomputed. Deriving the ID from repo
+	// path plus root instead — which is still the fallback below, for every
+	// workspace written before this field existed — cannot tell two workspaces
+	// apart when they share a root, and a workspace that owns no worktree has
+	// the source repo as its root. Two of those over one repo hashed to the
+	// same ID and the second overwrote the first in the store.
+	StableID WorkspaceID `json:"id,omitempty"`
+
 	// Repos and worktrees (parallel slices, same length)
 	Repos     []RepoRef     `json:"repos"`
 	Worktrees []WorktreeRef `json:"worktrees"`
@@ -166,8 +175,14 @@ func (w Workspace) IsOrphaned() bool {
 // WorkspaceID is a unique identifier based on repo+root hash
 type WorkspaceID string
 
-// ID returns a unique identifier for the workspace based on its primary repo and root paths
+// ID returns the workspace's unique identifier: the minted StableID when it
+// has one, and otherwise the old hash of primary repo path plus root, so a
+// workspace stored before StableID existed keeps the ID everything already
+// refers to.
 func (w Workspace) ID() WorkspaceID {
+	if w.StableID != "" {
+		return w.StableID
+	}
 	if len(w.Repos) == 0 || len(w.Worktrees) == 0 {
 		return workspaceIDFromIdentity(w.Name)
 	}
@@ -280,7 +295,8 @@ func (w Workspace) IsMainBranch() bool {
 // NewWorkspace creates a new single-repo Workspace with the current timestamp and defaults
 func NewWorkspace(name, branch, base, repo, root string) *Workspace {
 	return &Workspace{
-		Name: name,
+		Name:     name,
+		StableID: mintWorkspaceID(repo, root, name),
 		Repos: []RepoRef{
 			{Path: repo, Name: filepath.Base(repo)},
 		},
@@ -306,7 +322,7 @@ func NewCheckoutWorkspace(name, branch, repo string) *Workspace {
 
 // NewMultiRepoWorkspace creates a multi-repo Workspace
 func NewMultiRepoWorkspace(name string, repos []RepoRef, worktrees []WorktreeRef) *Workspace {
-	return &Workspace{
+	ws := &Workspace{
 		Name:       name,
 		Repos:      repos,
 		Worktrees:  worktrees,
@@ -316,9 +332,31 @@ func NewMultiRepoWorkspace(name string, repos []RepoRef, worktrees []WorktreeRef
 		ScriptMode: "nonconcurrent",
 		Env:        make(map[string]string),
 	}
+	if len(repos) > 0 {
+		ws.StableID = mintWorkspaceID(repos[0].Path, ws.Root(), name)
+	}
+	return ws
 }
 
 func workspaceIDFromIdentity(identity string) WorkspaceID {
 	hash := sha1.Sum([]byte(identity))
 	return WorkspaceID(hex.EncodeToString(hash[:8]))
+}
+
+// mintWorkspaceID produces the identity a newly created workspace is stamped
+// with. It folds the name in on top of repo and root, because a workspace that
+// owns no worktree has the source repo as its root and those two alone are
+// therefore identical for every such workspace over one repo.
+//
+// The value is deliberately a pure function of its inputs rather than a random
+// one: the dashboard builds a placeholder workspace to render while creation is
+// in flight, and the placeholder has to carry the same ID as the workspace that
+// eventually replaces it. Uniqueness still holds, because two live workspaces
+// may not share a name.
+//
+// It is stored in StableID at creation and never recomputed, so a later rename
+// does not move it — which matters because PTY reader goroutines capture the ID
+// when they start and stamp it on every message they emit.
+func mintWorkspaceID(repo, root, name string) WorkspaceID {
+	return workspaceIDFromIdentity("minted\n" + workspaceIdentity(repo, root) + "\n" + name)
 }

@@ -46,7 +46,7 @@ type ScriptRunner struct {
 	mu            sync.Mutex
 	portAllocator *PortAllocator
 	envBuilder    *EnvBuilder
-	running       map[string]*exec.Cmd // workspace root -> running process
+	running       map[string]*exec.Cmd // workspace ID -> running process
 }
 
 // NewScriptRunner creates a new script runner
@@ -179,20 +179,22 @@ func (r *ScriptRunner) RunScript(ws *data.Workspace, scriptType ScriptType) (*ex
 		return nil, err
 	}
 
-	// Capture the workspace root up-front so the monitor goroutine doesn't
-	// race with concurrent mutations of ws (Workspace.Root is a value receiver,
-	// so calling it copies every field — including ones callers may write).
-	wsRoot := ws.Root()
+	// Capture the workspace ID up-front so the monitor goroutine doesn't race
+	// with concurrent mutations of ws (Workspace.ID is a value receiver, so
+	// calling it copies every field — including ones callers may write). The ID
+	// rather than the root, because workspaces with no worktree of their own
+	// share the source repo as their root and would share an entry here.
+	wsID := string(ws.ID())
 
 	r.mu.Lock()
-	r.running[wsRoot] = cmd
+	r.running[wsID] = cmd
 	r.mu.Unlock()
 
 	// Monitor in background
 	safego.Go("process.script_wait", func() {
 		_ = cmd.Wait()
 		r.mu.Lock()
-		delete(r.running, wsRoot)
+		delete(r.running, wsID)
 		r.mu.Unlock()
 	})
 
@@ -300,7 +302,7 @@ func normalizeRunCommandNames(cmds []RunCommand) ([]RunCommand, []string) {
 // Stop stops the running script for a workspace
 func (r *ScriptRunner) Stop(ws *data.Workspace) error {
 	r.mu.Lock()
-	cmd, ok := r.running[ws.Root()]
+	cmd, ok := r.running[string(ws.ID())]
 	r.mu.Unlock()
 
 	if !ok {
@@ -318,7 +320,7 @@ func (r *ScriptRunner) Stop(ws *data.Workspace) error {
 func (r *ScriptRunner) IsRunning(ws *data.Workspace) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	_, ok := r.running[ws.Root()]
+	_, ok := r.running[string(ws.ID())]
 	return ok
 }
 

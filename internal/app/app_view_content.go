@@ -65,7 +65,7 @@ func (a *App) goHome() {
 	a.sidebar.SetWorkspace(nil)
 	a.sidebar.SetGitStatus(nil)
 	_ = a.sidebarTerminal.SetWorkspace(nil)
-	a.dashboard.ClearActiveRoot()
+	a.dashboard.ClearActiveWorkspace()
 	a.centerBtnFocused = false
 	a.centerBtnIndex = 0
 }

@@ -39,7 +39,7 @@ func (a *App) handleGitStatusTick() []tea.Cmd {
 			idx := (a.gitStatusRR + i) % n
 			ws := a.allWorkspaces[idx]
 			// Skip the active workspace (already handled above).
-			if a.activeWorkspace != nil && ws.Root() == a.activeWorkspace.Root() {
+			if a.activeWorkspace != nil && ws.ID() == a.activeWorkspace.ID() {
 				continue
 			}
 			a.gitStatusRR = (idx + 1) % n

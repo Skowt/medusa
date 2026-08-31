@@ -130,8 +130,8 @@ func TestNewGroup_DropCreatesAGroupWithAGeneratedName(t *testing.T) {
 
 	create := dropOnNewGroup(t, m, "loose")
 
-	if create.Root != loose.Root() {
-		t.Errorf("root = %q, want the dropped workspace %q", create.Root, loose.Root())
+	if create.WorkspaceID != string(loose.ID()) {
+		t.Errorf("root = %q, want the dropped workspace %q", create.WorkspaceID, string(loose.ID()))
 	}
 	if strings.Count(create.Label, "-") != 1 {
 		t.Errorf("label = %q, want a two-word hyphenated name", create.Label)

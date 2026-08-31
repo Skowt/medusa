@@ -48,13 +48,17 @@ type DuplicateWorkspace struct {
 	Workspace *data.Workspace
 }
 
-// ReorderWorkspaces sets the manual order of one group's members. OrderedRoots
-// lists every member root of Group in its new order; any workspace named there
-// that currently belongs to another group is moved into Group as part of the
-// same commit, which is how a cross-group drag is expressed.
+// ReorderWorkspaces sets the manual order of one group's members. OrderedIDs
+// lists every member of Group by workspace ID in its new order; any workspace
+// named there that currently belongs to another group is moved into Group as
+// part of the same commit, which is how a cross-group drag is expressed.
+//
+// Members are named by ID rather than root because workspaces that own no
+// worktree share the source repo as their root, so a root names all of them at
+// once.
 type ReorderWorkspaces struct {
-	Group        string
-	OrderedRoots []string
+	Group      string
+	OrderedIDs []string
 }
 
 // CreateGroupForWorkspace moves one workspace into a brand-new group, pins that
@@ -66,9 +70,9 @@ type ReorderWorkspaces struct {
 // matters: the rename dialog has to open on a group that already has its member,
 // and batched commands arrive in no particular order.
 type CreateGroupForWorkspace struct {
-	Root  string
-	Label string
-	Order []string // section order that keeps the new group where it was dropped
+	WorkspaceID string
+	Label       string
+	Order       []string // section order that keeps the new group where it was dropped
 }
 
 // ReorderGroups sets the display order of the dashboard's group sections.

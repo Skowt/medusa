@@ -59,10 +59,11 @@ func TestCreateWorkspace_WithoutWorktreeMakesNothing(t *testing.T) {
 	}
 }
 
-// TestCreateWorkspace_WithoutWorktreeRefusesASecondOne guards the ID collision:
-// the ID hashes repo path plus root, and for a checkout those are the same for
-// every workspace over that repo, so a second one would overwrite the first.
-func TestCreateWorkspace_WithoutWorktreeRefusesASecondOne(t *testing.T) {
+// TestCreateWorkspace_WithoutWorktreeAllowsSeveralOverOneRepo is the property
+// the minted ID exists for. Every checkout workspace over a repo has that repo
+// as its root, so the old repo-plus-root hash gave them all one ID and the
+// second overwrote the first in the store.
+func TestCreateWorkspace_WithoutWorktreeAllowsSeveralOverOneRepo(t *testing.T) {
 	skipIfNoGit(t)
 
 	app, cfg := newTestApp(t)
@@ -70,12 +71,75 @@ func TestCreateWorkspace_WithoutWorktreeRefusesASecondOne(t *testing.T) {
 	repo := newCheckoutTestRepo(t)
 	repos := []data.RepoRef{{Path: repo, Name: filepath.Base(repo)}}
 
-	if _, ok := app.createWorkspace("first", repos, []string{"main"}, "", "", false, false)().(messages.WorkspaceCreated); !ok {
+	first, ok := app.createWorkspace("first", repos, []string{"main"}, "", "", false, false)().(messages.WorkspaceCreated)
+	if !ok {
 		t.Fatal("first create should have succeeded")
 	}
 	msg := app.createWorkspace("second", repos, []string{"main"}, "", "", false, false)()
-	if _, ok := msg.(messages.WorkspaceCreateFailed); !ok {
-		t.Fatalf("second create = %#v, want WorkspaceCreateFailed", msg)
+	second, ok := msg.(messages.WorkspaceCreated)
+	if !ok {
+		t.Fatalf("second create = %#v, want WorkspaceCreated", msg)
+	}
+
+	if first.Workspace.Root() != second.Workspace.Root() {
+		t.Fatalf("both workspaces should sit on the repo, got %q and %q",
+			first.Workspace.Root(), second.Workspace.Root())
+	}
+	if first.Workspace.ID() == second.Workspace.ID() {
+		t.Fatalf("both workspaces share the ID %q, so the second overwrote the first",
+			first.Workspace.ID())
+	}
+
+	// Both must survive in the store: a shared ID showed up as the first one
+	// simply being gone.
+	for _, ws := range []*data.Workspace{first.Workspace, second.Workspace} {
+		loaded, err := app.workspaces.Load(ws.ID())
+		if err != nil {
+			t.Fatalf("Load %s: %v", ws.Name, err)
+		}
+		if loaded.Name != ws.Name {
+			t.Errorf("store entry %s holds %q, want %q", ws.ID(), loaded.Name, ws.Name)
+		}
+	}
+}
+
+// TestWorkspaceID_SurvivesARename pins the reason the minted ID is stored
+// rather than recomputed. PTY reader goroutines capture the ID when they start
+// and stamp it on every message they emit, so an ID that moved with the name
+// would strand every message a running agent had in flight.
+func TestWorkspaceID_SurvivesARename(t *testing.T) {
+	ws := data.NewCheckoutWorkspace("before", "main", "/src/medusa")
+	before := ws.ID()
+	ws.Name = "after"
+	if ws.ID() != before {
+		t.Fatalf("rename moved the ID from %q to %q", before, ws.ID())
+	}
+}
+
+// TestWorkspaceID_LegacyEntriesKeepTheirDerivedID guards the migration: a
+// workspace written before StableID existed has no stored ID, and everything
+// already refers to the one derived from its paths.
+func TestWorkspaceID_LegacyEntriesKeepTheirDerivedID(t *testing.T) {
+	legacy := &data.Workspace{
+		Name:      "legacy",
+		Repos:     []data.RepoRef{{Path: "/src/medusa", Name: "medusa"}},
+		Worktrees: []data.WorktreeRef{{Root: "/wt/legacy", Branch: "legacy"}},
+	}
+	minted := data.NewWorkspace("legacy", "legacy", "main", "/src/medusa", "/wt/legacy")
+	if legacy.ID() == minted.ID() {
+		t.Fatal("a legacy entry must keep its path-derived ID, not adopt the minted one")
+	}
+
+	store := data.NewWorkspaceStore(t.TempDir())
+	derived := legacy.ID()
+	if err := store.Save(legacy); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if legacy.ID() != derived {
+		t.Fatalf("saving moved the ID from %q to %q", derived, legacy.ID())
+	}
+	if legacy.StableID != derived {
+		t.Fatalf("StableID = %q, want the derived ID %q pinned in place", legacy.StableID, derived)
 	}
 }
 

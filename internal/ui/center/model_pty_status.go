@@ -99,23 +99,6 @@ func (m *Model) HasRunningTabsInWorkspace(wsID string) bool {
 	return false
 }
 
-// GetActiveWorkspaceRoots returns all workspace root paths with active agents.
-func (m *Model) GetActiveWorkspaceRoots() []string {
-	var active []string
-	for wsID, tabs := range m.tabsByWorkspace {
-		if m.HasActiveAgentsInWorkspace(wsID) {
-			// Get the root path from one of the tabs
-			for _, tab := range tabs {
-				if tab.Workspace != nil {
-					active = append(active, tab.Workspace.Root())
-					break
-				}
-			}
-		}
-	}
-	return active
-}
-
 // GetActiveWorkspaceIDs returns all workspace IDs with active agents.
 func (m *Model) GetActiveWorkspaceIDs() []string {
 	var active []string
@@ -127,9 +110,9 @@ func (m *Model) GetActiveWorkspaceIDs() []string {
 	return active
 }
 
-// GetRunningWorkspaceRoots returns all workspace root paths with running agents.
+// GetRunningWorkspaceIDs returns the IDs of all workspaces with running agents.
 // This includes agents that are running but idle (waiting at prompt).
-func (m *Model) GetRunningWorkspaceRoots() []string {
+func (m *Model) GetRunningWorkspaceIDs() []string {
 	var running []string
 	for _, tabs := range m.tabsByWorkspace {
 		for _, tab := range tabs {
@@ -137,7 +120,7 @@ func (m *Model) GetRunningWorkspaceRoots() []string {
 				continue
 			}
 			if tab.Running && tab.Workspace != nil {
-				running = append(running, tab.Workspace.Root())
+				running = append(running, string(tab.Workspace.ID()))
 				break // Only need one per workspace
 			}
 		}

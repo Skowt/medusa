@@ -8,8 +8,9 @@ import (
 )
 
 // reorderWS builds a workspace with the repo and worktree a real one has, so
-// Root() and ID() — which the reorder handler and the store both key off — are
-// meaningful.
+// ID() — which the reorder handler and the store both key off — is meaningful.
+func wsID(ws *data.Workspace) string { return string(ws.ID()) }
+
 func reorderWS(name, group string) *data.Workspace {
 	return &data.Workspace{
 		Name:      name,
@@ -27,8 +28,8 @@ func TestHandleReorderWorkspacesAssignsAscendingKeys(t *testing.T) {
 	a.allWorkspaces = []*data.Workspace{first, second, third}
 
 	_ = a.handleReorderWorkspaces(messages.ReorderWorkspaces{
-		Group:        "shipping",
-		OrderedRoots: []string{third.Root(), first.Root(), second.Root()},
+		Group:      "shipping",
+		OrderedIDs: []string{wsID(third), wsID(first), wsID(second)},
 	})
 
 	if third.SortKey >= first.SortKey || first.SortKey >= second.SortKey {
@@ -51,8 +52,8 @@ func TestHandleReorderWorkspacesPersists(t *testing.T) {
 	a.allWorkspaces = []*data.Workspace{ws}
 
 	_ = a.handleReorderWorkspaces(messages.ReorderWorkspaces{
-		Group:        "shipping",
-		OrderedRoots: []string{ws.Root()},
+		Group:      "shipping",
+		OrderedIDs: []string{wsID(ws)},
 	})
 
 	loaded, err := a.workspaces.Load(ws.ID())
@@ -73,8 +74,8 @@ func TestHandleReorderWorkspacesMovesAcrossGroups(t *testing.T) {
 	a.config.UI.CollapsedGroups["infra"] = true
 
 	_ = a.handleReorderWorkspaces(messages.ReorderWorkspaces{
-		Group:        "shipping",
-		OrderedRoots: []string{incoming.Root(), member.Root()},
+		Group:      "shipping",
+		OrderedIDs: []string{wsID(incoming), wsID(member)},
 	})
 
 	if incoming.Group != "shipping" {
@@ -96,8 +97,8 @@ func TestHandleReorderWorkspacesKeepsNonEmptySourceGroup(t *testing.T) {
 	a.config.UI.CollapsedGroups["infra"] = true
 
 	_ = a.handleReorderWorkspaces(messages.ReorderWorkspaces{
-		Group:        "shipping",
-		OrderedRoots: []string{leaving.Root()},
+		Group:      "shipping",
+		OrderedIDs: []string{wsID(leaving)},
 	})
 
 	if !a.config.UI.CollapsedGroups["infra"] {
@@ -111,8 +112,8 @@ func TestHandleReorderWorkspacesSkipsUnknownRoots(t *testing.T) {
 	a.allWorkspaces = []*data.Workspace{ws}
 
 	_ = a.handleReorderWorkspaces(messages.ReorderWorkspaces{
-		Group:        "shipping",
-		OrderedRoots: []string{"/wt/deleted-between-drop-and-here", ws.Root()},
+		Group:      "shipping",
+		OrderedIDs: []string{"deleted-between-drop-and-here", wsID(ws)},
 	})
 
 	if ws.SortKey == 0 {
@@ -143,9 +144,9 @@ func TestHandleCreateGroupForWorkspaceMovesThenPrompts(t *testing.T) {
 	a.width, a.height = 120, 40
 
 	_ = a.handleCreateGroupForWorkspace(messages.CreateGroupForWorkspace{
-		Root:  ws.Root(),
-		Label: "wily-jackal",
-		Order: []string{"wily-jackal"},
+		WorkspaceID: wsID(ws),
+		Label:       "wily-jackal",
+		Order:       []string{"wily-jackal"},
 	})
 
 	if ws.Group != "wily-jackal" {
@@ -173,9 +174,9 @@ func TestHandleCreateGroupForWorkspaceSkipsPromptWhenTheMoveDidNotStick(t *testi
 	a.width, a.height = 120, 40
 
 	_ = a.handleCreateGroupForWorkspace(messages.CreateGroupForWorkspace{
-		Root:  "/wt/vanished",
-		Label: "wily-jackal",
-		Order: []string{"wily-jackal"},
+		WorkspaceID: "vanished",
+		Label:       "wily-jackal",
+		Order:       []string{"wily-jackal"},
 	})
 
 	if a.dialog != nil && a.dialog.Visible() {

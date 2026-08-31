@@ -23,8 +23,8 @@ func (a *App) handleReorderWorkspaces(msg messages.ReorderWorkspaces) tea.Cmd {
 	sourceGroups := make(map[string]bool)
 	var failed bool
 
-	for i, root := range msg.OrderedRoots {
-		ws := a.workspaceByRoot(root)
+	for i, id := range msg.OrderedIDs {
+		ws := a.workspaceByID(id)
 		if ws == nil {
 			// The workspace went away between the drop and here (archived from
 			// another pane, deleted on disk). Skip it; the rest still order.
@@ -78,8 +78,8 @@ func (a *App) handleReorderWorkspaces(msg messages.ReorderWorkspaces) tea.Cmd {
 func (a *App) handleCreateGroupForWorkspace(msg messages.CreateGroupForWorkspace) tea.Cmd {
 	var cmds []tea.Cmd
 	if cmd := a.handleReorderWorkspaces(messages.ReorderWorkspaces{
-		Group:        msg.Label,
-		OrderedRoots: []string{msg.Root},
+		Group:      msg.Label,
+		OrderedIDs: []string{msg.WorkspaceID},
 	}); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -89,7 +89,7 @@ func (a *App) handleCreateGroupForWorkspace(msg messages.CreateGroupForWorkspace
 		}
 	}
 
-	if ws := a.workspaceByRoot(msg.Root); ws != nil && ws.Group == msg.Label {
+	if ws := a.workspaceByID(msg.WorkspaceID); ws != nil && ws.Group == msg.Label {
 		a.showNameNewGroupDialog(msg.Label)
 	}
 	return tea.Batch(cmds...)
@@ -173,12 +173,16 @@ func (a *App) groupHasMembers(group string) bool {
 	return false
 }
 
-func (a *App) workspaceByRoot(root string) *data.Workspace {
-	if root == "" {
+// workspaceByID finds a loaded workspace by ID. Unlike findWorkspaceByID it
+// never returns a.activeWorkspace, which can be a different pointer for the
+// same workspace: the reorder path mutates and saves what it finds, and a save
+// through the wrong pointer would not reach the list the dashboard renders.
+func (a *App) workspaceByID(id string) *data.Workspace {
+	if id == "" {
 		return nil
 	}
 	for _, ws := range a.allWorkspaces {
-		if ws != nil && ws.Root() == root {
+		if ws != nil && string(ws.ID()) == id {
 			return ws
 		}
 	}

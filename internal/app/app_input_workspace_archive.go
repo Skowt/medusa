@@ -51,7 +51,7 @@ func (a *App) handleArchiveWorkspace(msg messages.ArchiveWorkspace) []tea.Cmd {
 	}
 
 	// 5. If active, go home
-	if a.activeWorkspace != nil && a.activeWorkspace.Root() == ws.Root() {
+	if a.activeWorkspace != nil && a.activeWorkspace.ID() == ws.ID() {
 		a.goHome()
 	}
 

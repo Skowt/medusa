@@ -65,29 +65,30 @@ func (m *Model) SetWorkspaceCreating(ws *data.Workspace, creating bool) tea.Cmd 
 	if ws == nil {
 		return nil
 	}
+	id := string(ws.ID())
 	if creating {
-		m.creatingWorkspaces[ws.Root()] = ws
+		m.creatingWorkspaces[id] = ws
 		m.rebuildRows()
 		for i, row := range m.rows {
-			if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == ws.Root() {
+			if row.Type == RowWorkspace && row.Workspace != nil && string(row.Workspace.ID()) == id {
 				m.cursor = i
 				break
 			}
 		}
 		return m.startSpinnerIfNeeded()
 	}
-	delete(m.creatingWorkspaces, ws.Root())
+	delete(m.creatingWorkspaces, id)
 	m.rebuildRows()
 	return nil
 }
 
 // SetWorkspaceDeleting marks a workspace as deleting (or clears it).
-func (m *Model) SetWorkspaceDeleting(root string, deleting bool) tea.Cmd {
+func (m *Model) SetWorkspaceDeleting(id string, deleting bool) tea.Cmd {
 	if deleting {
-		m.deletingWorkspaces[root] = true
+		m.deletingWorkspaces[id] = true
 		return m.startSpinnerIfNeeded()
 	}
-	delete(m.deletingWorkspaces, root)
+	delete(m.deletingWorkspaces, id)
 	return nil
 }
 
@@ -98,12 +99,12 @@ func (m *Model) rebuildRows() {
 	// — because it was collapsed, renamed, or is being dragged — would otherwise
 	// leave the cursor on whatever row took its index, and a cursor landing on a
 	// workspace row makes that row taller, shifting every row below it.
-	var prevCursorRoot, prevCursorGroup string
+	var prevCursorID, prevCursorGroup string
 	hadGroupCursor := false
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
 		switch row := m.rows[m.cursor]; {
 		case row.Type == RowWorkspace && row.Workspace != nil:
-			prevCursorRoot = row.Workspace.Root()
+			prevCursorID = string(row.Workspace.ID())
 		case row.Type == RowSectionHeader && row.IsUserGroup:
 			prevCursorGroup = labelToKey(row.Label)
 			hadGroupCursor = true
@@ -118,7 +119,7 @@ func (m *Model) rebuildRows() {
 	var orphans []*data.Workspace
 	var archived []*data.Workspace
 	all := make([]*data.Workspace, 0, len(m.workspaces)+len(m.creatingWorkspaces))
-	existingRoots := make(map[string]bool)
+	existingIDs := make(map[string]bool)
 	for _, ws := range m.workspaces {
 		if ws.Archived() {
 			archived = append(archived, ws)
@@ -128,13 +129,16 @@ func (m *Model) rebuildRows() {
 			orphans = append(orphans, ws)
 			continue
 		}
-		existingRoots[ws.Root()] = true
+		existingIDs[string(ws.ID())] = true
 		all = append(all, ws)
 	}
 
-	// Add creating workspaces that aren't in the list yet
+	// Add creating workspaces that aren't in the list yet. Keyed by ID rather
+	// than root: workspaces with no worktree of their own share the source
+	// repo as their root, so a root key would hide the placeholder behind a
+	// sibling that already exists.
 	for _, ws := range m.creatingWorkspaces {
-		if ws == nil || existingRoots[ws.Root()] {
+		if ws == nil || existingIDs[string(ws.ID())] {
 			continue
 		}
 		all = append(all, ws)
@@ -259,10 +263,10 @@ func (m *Model) rebuildRows() {
 	}
 
 	// Try to re-anchor cursor to the previously selected workspace.
-	if prevCursorRoot != "" {
+	if prevCursorID != "" {
 		found := false
 		for i, row := range m.rows {
-			if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == prevCursorRoot {
+			if row.Type == RowWorkspace && row.Workspace != nil && string(row.Workspace.ID()) == prevCursorID {
 				m.cursor = i
 				found = true
 				break

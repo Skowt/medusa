@@ -143,11 +143,11 @@ func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cm
 	// Resume a pending agent launch that was blocked on profile selection.
 	if a.pendingProfileLaunch != "" && profile != "" {
 		assistant := a.pendingProfileLaunch
-		root := a.pendingProfileLaunchRoot
+		id := a.pendingProfileLaunchID
 		a.pendingProfileLaunch = ""
-		a.pendingProfileLaunchRoot = ""
+		a.pendingProfileLaunchID = ""
 		for _, ws := range a.allWorkspaces {
-			if ws.Root() == root {
+			if string(ws.ID()) == id {
 				launch := a.lastUsedLaunch(ws, assistant)
 				cmds = append(cmds, func() tea.Msg { return launch })
 				break
@@ -155,7 +155,7 @@ func (a *App) handleSetWorkspaceProfile(msg messages.SetWorkspaceProfile) tea.Cm
 		}
 	} else {
 		a.pendingProfileLaunch = ""
-		a.pendingProfileLaunchRoot = ""
+		a.pendingProfileLaunchID = ""
 	}
 
 	return a.safeBatch(cmds...)
@@ -169,9 +169,9 @@ func (a *App) profileHasActiveWorkspaces(profile string) bool {
 		return false
 	}
 
-	runningRoots := make(map[string]bool)
-	for _, root := range a.center.GetRunningWorkspaceRoots() {
-		runningRoots[root] = true
+	runningIDs := make(map[string]bool)
+	for _, id := range a.center.GetRunningWorkspaceIDs() {
+		runningIDs[id] = true
 	}
 
 	for _, ws := range a.allWorkspaces {
@@ -181,7 +181,7 @@ func (a *App) profileHasActiveWorkspaces(profile string) bool {
 		}
 		wsID := string(ws.ID())
 
-		if runningRoots[ws.Root()] {
+		if runningIDs[wsID] {
 			return true
 		}
 		if a.center.HasTabsForWorkspace(wsID) {

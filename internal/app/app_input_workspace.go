@@ -223,7 +223,7 @@ func (a *App) handleDeleteWorkspace(msg messages.DeleteWorkspace) []tea.Cmd {
 	if cleanup := a.cleanupWorkspaceTmuxSessions(msg.Workspace); cleanup != nil {
 		cmds = append(cmds, cleanup)
 	}
-	if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), true); cmd != nil {
+	if cmd := a.dashboard.SetWorkspaceDeleting(string(msg.Workspace.ID()), true); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	cmds = append(cmds, a.deleteWorkspace(msg.Workspace))
@@ -254,7 +254,7 @@ func (a *App) handleWorkspaceCreated(msg messages.WorkspaceCreated) []tea.Cmd {
 		cmds = append(cmds, a.runSetupAsync(msg.Workspace))
 		// Mark for auto-launch after workspaces reload
 		if a.config.UI.AutoStartAgent {
-			a.pendingAutoLaunch = msg.Workspace.Root()
+			a.pendingAutoLaunch = string(msg.Workspace.ID())
 		}
 	}
 	cmds = append(cmds, a.loadWorkspaces())
@@ -315,7 +315,7 @@ func (a *App) handleWorkspaceCreateFailed(msg messages.WorkspaceCreateFailed) te
 func (a *App) handleWorkspaceDeleted(msg messages.WorkspaceDeleted) []tea.Cmd {
 	var cmds []tea.Cmd
 	if msg.Workspace != nil {
-		if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), false); cmd != nil {
+		if cmd := a.dashboard.SetWorkspaceDeleting(string(msg.Workspace.ID()), false); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 		if a.statusManager != nil {
@@ -333,7 +333,7 @@ func (a *App) handleWorkspaceDeleted(msg messages.WorkspaceDeleted) []tea.Cmd {
 		}
 		// If the deleted workspace was active, clear it so the next
 		// loadWorkspaces cycle auto-activates the nearest workspace.
-		if a.activeWorkspace != nil && a.activeWorkspace.Root() == msg.Workspace.Root() {
+		if a.activeWorkspace != nil && a.activeWorkspace.ID() == msg.Workspace.ID() {
 			a.goHome()
 		}
 	}
@@ -347,7 +347,7 @@ func (a *App) handleWorkspaceDeleted(msg messages.WorkspaceDeleted) []tea.Cmd {
 // handleWorkspaceDeleteFailed handles the WorkspaceDeleteFailed message.
 func (a *App) handleWorkspaceDeleteFailed(msg messages.WorkspaceDeleteFailed) tea.Cmd {
 	if msg.Workspace != nil {
-		if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), false); cmd != nil {
+		if cmd := a.dashboard.SetWorkspaceDeleting(string(msg.Workspace.ID()), false); cmd != nil {
 			return cmd
 		}
 	}

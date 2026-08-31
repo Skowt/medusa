@@ -195,9 +195,9 @@ func TestDrag_WorkspaceDownward_TakesTargetSlot(t *testing.T) {
 	if reorder.Group != "" {
 		t.Errorf("group = %q, want the Ungrouped key", reorder.Group)
 	}
-	want := []string{b.Root(), c.Root(), a.Root()}
-	if !sameOrder(reorder.OrderedRoots, want) {
-		t.Errorf("order = %v, want %v (the dragged row lands where the target was)", reorder.OrderedRoots, want)
+	want := []string{string(b.ID()), string(c.ID()), string(a.ID())}
+	if !sameOrder(reorder.OrderedIDs, want) {
+		t.Errorf("order = %v, want %v (the dragged row lands where the target was)", reorder.OrderedIDs, want)
 	}
 }
 
@@ -212,9 +212,9 @@ func TestDrag_WorkspaceUpward_TakesTargetSlot(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ReorderWorkspaces, got %T", msgOf(t, cmd))
 	}
-	want := []string{c.Root(), a.Root(), b.Root()}
-	if !sameOrder(reorder.OrderedRoots, want) {
-		t.Errorf("order = %v, want %v", reorder.OrderedRoots, want)
+	want := []string{string(c.ID()), string(a.ID()), string(b.ID())}
+	if !sameOrder(reorder.OrderedIDs, want) {
+		t.Errorf("order = %v, want %v", reorder.OrderedIDs, want)
 	}
 }
 
@@ -231,9 +231,9 @@ func TestDrag_WorkspaceOntoGroupHeader_MovesIntoGroupAtTop(t *testing.T) {
 	if reorder.Group != "shipping" {
 		t.Errorf("group = %q, want shipping", reorder.Group)
 	}
-	want := []string{loose.Root(), member.Root()}
-	if !sameOrder(reorder.OrderedRoots, want) {
-		t.Errorf("order = %v, want %v (a header drop lands at the top)", reorder.OrderedRoots, want)
+	want := []string{string(loose.ID()), string(member.ID())}
+	if !sameOrder(reorder.OrderedIDs, want) {
+		t.Errorf("order = %v, want %v (a header drop lands at the top)", reorder.OrderedIDs, want)
 	}
 }
 
@@ -248,9 +248,9 @@ func TestDrag_WorkspaceOntoCollapsedGroupHeader(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ReorderWorkspaces, got %T", msgOf(t, cmd))
 	}
-	want := []string{loose.Root(), member.Root()}
-	if !sameOrder(reorder.OrderedRoots, want) {
-		t.Errorf("order = %v, want %v: a collapsed group shows no member rows, so its order must come from the workspaces", reorder.OrderedRoots, want)
+	want := []string{string(loose.ID()), string(member.ID())}
+	if !sameOrder(reorder.OrderedIDs, want) {
+		t.Errorf("order = %v, want %v: a collapsed group shows no member rows, so its order must come from the workspaces", reorder.OrderedIDs, want)
 	}
 }
 

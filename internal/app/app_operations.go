@@ -206,13 +206,13 @@ func (a *App) createWorkspace(name string, repos []data.RepoRef, bases []string,
 		}
 
 		if !worktree {
-			// The repo is the root, and the root is half of what identifies a
-			// workspace — so a second one over the same repo hashes to the same
-			// ID and would overwrite the first.
+			// Nothing is created on disk: the source repo is the root. Several
+			// of these may sit over one repo, which is why the ID is minted at
+			// creation rather than derived from the root they all share.
 			ws = data.NewCheckoutWorkspace(name, bases[0], repos[0].Path)
 			if existing, lErr := a.workspaces.Load(ws.ID()); lErr == nil && existing != nil {
 				return messages.WorkspaceCreateFailed{
-					Err: fmt.Errorf("workspace '%s' already uses this repo directly", existing.Name),
+					Err: fmt.Errorf("workspace id collides with '%s'", existing.Name),
 				}
 			}
 			return a.registerWorkspace(ws, repos, profile, group, false, nil)
@@ -402,7 +402,7 @@ func (a *App) deleteWorkspace(ws *data.Workspace, silent ...bool) tea.Cmd {
 	}
 
 	// Clear UI components if deleting the active workspace
-	if a.activeWorkspace != nil && a.activeWorkspace.Root() == ws.Root() {
+	if a.activeWorkspace != nil && a.activeWorkspace.ID() == ws.ID() {
 		a.goHome()
 	}
 

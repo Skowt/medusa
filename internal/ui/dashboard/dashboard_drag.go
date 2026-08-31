@@ -24,7 +24,7 @@ const dragPromoteLines = 2
 
 // dragState tracks an in-progress row drag.
 //
-// Identities are stored as roots and group keys, never row indices:
+// Identities are stored as workspace IDs and group keys, never row indices:
 // rebuildRows runs on every workspace update, hook event and spinner tick, and
 // an index would silently come to mean whatever row had moved into its place.
 type dragState struct {
@@ -32,7 +32,7 @@ type dragState struct {
 	active bool // promoted past dragPromoteLines; below it this is still a click
 	startY int
 
-	srcRoot  string // dragWorkspace: the workspace being moved
+	srcID    string // dragWorkspace: ID of the workspace being moved
 	srcGroup string // dragGroup: the section being moved
 
 	// Projected placement. rebuildRows renders the drag as if it had already
@@ -57,7 +57,7 @@ func (m *Model) beginDragCandidate(idx, screenY int) bool {
 	row := m.rows[idx]
 	switch {
 	case row.Type == RowWorkspace && m.draggableWorkspace(row.Workspace):
-		m.drag = dragState{kind: dragWorkspace, startY: screenY, srcRoot: row.Workspace.Root()}
+		m.drag = dragState{kind: dragWorkspace, startY: screenY, srcID: string(row.Workspace.ID())}
 		return true
 	case row.Type == RowSectionHeader && m.draggableGroup(row):
 		m.drag = dragState{kind: dragGroup, startY: screenY, srcGroup: labelToKey(row.Label)}
@@ -341,7 +341,7 @@ func (m *Model) cancelDrag() bool {
 func (m *Model) deferredClick(d dragState) tea.Cmd {
 	for i, row := range m.rows {
 		switch {
-		case d.kind == dragWorkspace && row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == d.srcRoot:
+		case d.kind == dragWorkspace && row.Type == RowWorkspace && row.Workspace != nil && string(row.Workspace.ID()) == d.srcID:
 			m.cursor = i
 			return m.handleClick()
 		case d.kind == dragGroup && row.Type == RowSectionHeader && row.IsUserGroup && labelToKey(row.Label) == d.srcGroup:
@@ -354,7 +354,7 @@ func (m *Model) deferredClick(d dragState) tea.Cmd {
 
 // commitWorkspaceDrop turns the projection into a reorder message.
 func (m *Model) commitWorkspaceDrop(d dragState) tea.Cmd {
-	src := m.workspaceByRoot(d.srcRoot)
+	src := m.workspaceByID(d.srcID)
 	if src == nil {
 		m.rebuildRows()
 		return nil
@@ -362,7 +362,7 @@ func (m *Model) commitWorkspaceDrop(d dragState) tea.Cmd {
 	if d.placeNewGroup {
 		// Naming happens here because a group is only ever the label its members
 		// share: there is nothing to create but the label.
-		group, root := newGroupName(m.groupLabels()), d.srcRoot
+		group, id := newGroupName(m.groupLabels()), d.srcID
 		// The group is also pinned last, where it was dropped. Without this it
 		// would fall back to the alphabetical order every undragged group uses,
 		// and a generated name starting with an "a" would leap to the top of the
@@ -370,17 +370,17 @@ func (m *Model) commitWorkspaceDrop(d dragState) tea.Cmd {
 		order := append(without(m.currentSectionKeys(), ""), group)
 		m.rebuildRows()
 		return func() tea.Msg {
-			return messages.CreateGroupForWorkspace{Root: root, Label: group, Order: order}
+			return messages.CreateGroupForWorkspace{WorkspaceID: id, Label: group, Order: order}
 		}
 	}
-	ordered := m.projectedGroupRoots(d.placeGroup, d.srcRoot, d.placeIndex)
+	ordered := m.projectedGroupMembers(d.placeGroup, d.srcID, d.placeIndex)
 	if d.placeGroup == src.Group && sameOrder(ordered, m.orderedGroupMembers(d.placeGroup)) {
 		m.rebuildRows()
 		return nil
 	}
 	group := d.placeGroup
 	return func() tea.Msg {
-		return messages.ReorderWorkspaces{Group: group, OrderedRoots: ordered}
+		return messages.ReorderWorkspaces{Group: group, OrderedIDs: ordered}
 	}
 }
 
@@ -423,7 +423,7 @@ func (m *Model) dragAutoScroll(screenY int) {
 // isDragSourceWorkspace reports whether a workspace row is the one being
 // carried, so the renderer can show it as lifted.
 func (m *Model) isDragSourceWorkspace(ws *data.Workspace) bool {
-	return m.drag.active && m.drag.kind == dragWorkspace && ws != nil && ws.Root() == m.drag.srcRoot
+	return m.drag.active && m.drag.kind == dragWorkspace && ws != nil && string(ws.ID()) == m.drag.srcID
 }
 
 // isDragSourceGroup reports whether a group section is the one being carried.
@@ -438,9 +438,9 @@ func (m *Model) isDragSourceGroup(key string) bool {
 // hoverState tracks the row under an unpressed pointer, so the renderer can show
 // a drag handle on exactly the rows that have one.
 type hoverState struct {
-	kind  dragKind
-	root  string
-	group string
+	kind      dragKind
+	workspace string // dragWorkspace: ID of the hovered workspace
+	group     string
 }
 
 // updateHover records what an unpressed pointer is over. Hover is tracked
@@ -456,7 +456,7 @@ func (m *Model) updateHover(screenX, screenY int) {
 		row := m.rows[idx]
 		switch {
 		case row.Type == RowWorkspace && m.draggableWorkspace(row.Workspace):
-			next = hoverState{kind: dragWorkspace, root: row.Workspace.Root()}
+			next = hoverState{kind: dragWorkspace, workspace: string(row.Workspace.ID())}
 		case m.draggableGroup(row):
 			next = hoverState{kind: dragGroup, group: labelToKey(row.Label)}
 		}
@@ -470,7 +470,7 @@ func (m *Model) clearHover() {
 
 // isHoveredWorkspace reports whether a workspace row should show its handle.
 func (m *Model) isHoveredWorkspace(ws *data.Workspace) bool {
-	return m.hover.kind == dragWorkspace && ws != nil && ws.Root() == m.hover.root
+	return m.hover.kind == dragWorkspace && ws != nil && string(ws.ID()) == m.hover.workspace
 }
 
 // isHoveredGroup reports whether a group header should show its handle.

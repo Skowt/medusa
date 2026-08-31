@@ -58,8 +58,11 @@ func (p *PortAllocator) ReleasePort(workspaceRoot string) {
 	delete(p.allocated, workspaceRoot)
 }
 
-// PortRange returns the port and range size for a workspace
-func (p *PortAllocator) PortRange(workspaceRoot string) (port int, rangeEnd int) {
-	port = p.AllocatePort(workspaceRoot)
+// PortRange returns the port and range size for a workspace. The key is the
+// workspace's ID rather than its root: workspaces that own no worktree share
+// the source repo as their root, and handing two of them the same range means
+// their run scripts fight over the same port.
+func (p *PortAllocator) PortRange(workspaceID string) (port int, rangeEnd int) {
+	port = p.AllocatePort(workspaceID)
 	return port, port + p.rangeSize - 1
 }

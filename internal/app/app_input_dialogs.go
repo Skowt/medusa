@@ -28,7 +28,7 @@ func (a *App) handleDialogResult(result common.DialogResult) tea.Cmd {
 
 	if !result.Confirmed {
 		a.pendingProfileLaunch = ""
-		a.pendingProfileLaunchRoot = ""
+		a.pendingProfileLaunchID = ""
 		logging.Debug("Dialog cancelled")
 		// Return to profile manager if we were creating/renaming/deleting a profile
 		if result.ID == DialogCreateProfile || result.ID == DialogRenameProfile || result.ID == DialogDeleteProfile {

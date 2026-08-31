@@ -203,12 +203,12 @@ type App struct {
 	hookTabOutstanding map[string]int
 
 	// Auto-start agent
-	pendingAutoLaunch  string // workspace root for post-creation auto-launch
-	pendingAgentLaunch string // workspace root for activation auto-launch
+	pendingAutoLaunch  string // workspace ID for post-creation auto-launch
+	pendingAgentLaunch string // workspace ID for activation auto-launch
 
 	// Profile gate
-	pendingProfileLaunch     string
-	pendingProfileLaunchRoot string
+	pendingProfileLaunch   string
+	pendingProfileLaunchID string
 
 	// Delayed mark-read for previewed workspaces
 	markReadToken int

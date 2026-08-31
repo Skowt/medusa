@@ -57,10 +57,11 @@ var wsButtonDefs = []struct {
 // workspacePending reports whether the workspace is mid-create or mid-delete
 // (its row shows a spinner + status text instead of wrapping the name).
 func (m *Model) workspacePending(ws *data.Workspace) bool {
-	if m.deletingWorkspaces[ws.Root()] {
+	id := string(ws.ID())
+	if m.deletingWorkspaces[id] {
 		return true
 	}
-	_, creating := m.creatingWorkspaces[ws.Root()]
+	_, creating := m.creatingWorkspaces[id]
 	return creating
 }
 
@@ -114,7 +115,7 @@ func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, cont
 
 	// Status text for creating/deleting
 	statusText := ""
-	if m.deletingWorkspaces[ws.Root()] {
+	if m.deletingWorkspaces[wsID] {
 		frame := common.SpinnerFrame(m.spinnerFrame)
 		pendingStyle := m.styles.StatusPending
 		spaceStyle := lipgloss.NewStyle()
@@ -123,7 +124,7 @@ func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, cont
 			spaceStyle = spaceStyle.Background(common.ColorSelection)
 		}
 		statusText = spaceStyle.Render(" ") + pendingStyle.Render(frame+" deleting")
-	} else if _, ok := m.creatingWorkspaces[ws.Root()]; ok {
+	} else if _, ok := m.creatingWorkspaces[wsID]; ok {
 		frame := common.SpinnerFrame(m.spinnerFrame)
 		pendingStyle := m.styles.StatusPending
 		spaceStyle := lipgloss.NewStyle()
@@ -162,7 +163,7 @@ func (m *Model) renderWorkspaceNameLines(ws *data.Workspace, selected bool, cont
 	}
 
 	// Override for unread workspaces: make indicator and name orange
-	isCurrentWorkspace := ws.Root() == m.activeRoot
+	isCurrentWorkspace := wsID == m.activeID
 	hasUnread := m.unreadWorkspaces[wsID] && !isCurrentWorkspace
 
 	if hasUnread {

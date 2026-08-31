@@ -106,12 +106,23 @@ func applyTmuxEnvFromConfig(cfg *config.Config, force bool) {
 	setEnvIfNonEmpty("MEDUSA_TMUX_SYNC_INTERVAL", cfg.UI.TmuxSyncInterval)
 }
 
+// tmuxSyncWorkspaces returns the workspaces whose tab status the next tmux tick
+// polls. In monitor mode that is every workspace the grid is showing, which the
+// project filter narrows.
+//
+// The filter must be resolved through monitorProjectKeyLabel, exactly as
+// filterMonitorTabs resolves it. Its key is the source repo path, not a
+// workspace root: comparing it to ws.Root() matched nothing at all for a
+// workspace with a worktree of its own, so picking any project chip switched
+// tmux syncing off entirely and the grid froze on the tab state it last had.
 func (a *App) tmuxSyncWorkspaces() []*data.Workspace {
 	if a.monitorMode {
 		var targets []*data.Workspace
 		for _, ws := range a.allWorkspaces {
-			if a.monitorFilter != "" && ws.Root() != a.monitorFilter {
-				continue
+			if a.monitorFilter != "" {
+				if key, _ := a.monitorProjectKeyLabel(ws); key != a.monitorFilter {
+					continue
+				}
 			}
 			targets = append(targets, ws)
 		}

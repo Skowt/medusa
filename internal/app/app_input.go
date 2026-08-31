@@ -409,7 +409,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case messages.DeleteOrphanWorkspace:
 		if msg.Workspace != nil {
-			if cmd := a.dashboard.SetWorkspaceDeleting(msg.Workspace.Root(), true); cmd != nil {
+			if cmd := a.dashboard.SetWorkspaceDeleting(string(msg.Workspace.ID()), true); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			cmds = append(cmds, a.deleteOrphanWorkspace(msg.Workspace))
@@ -450,7 +450,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.LaunchAgent:
 		if msg.Workspace != nil && msg.Workspace.Profile == "" {
 			a.pendingProfileLaunch = msg.Assistant
-			a.pendingProfileLaunchRoot = msg.Workspace.Root()
+			a.pendingProfileLaunchID = string(msg.Workspace.ID())
 			a.handleShowSetWorkspaceProfileDialog(messages.ShowSetWorkspaceProfileDialog{Workspace: msg.Workspace})
 			break
 		}

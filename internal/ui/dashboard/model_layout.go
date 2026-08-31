@@ -31,8 +31,8 @@ func (m *Model) SetWorkspaces(workspaces []*data.Workspace) {
 	m.workspaces = workspaces
 	m.rebuildRows()
 	// Keep cursor on the active workspace after re-arrangement
-	if m.activeRoot != "" {
-		m.moveCursorToRoot(m.activeRoot)
+	if m.activeID != "" {
+		m.moveCursorToWorkspace(m.activeID)
 	}
 	m.clampScrollOffset()
 }
@@ -70,15 +70,16 @@ func (m *Model) cursorLineOffset() int {
 	return offset
 }
 
-// ClearActiveRoot resets the active workspace selection to "Home".
-func (m *Model) ClearActiveRoot() {
-	m.activeRoot = ""
+// ClearActiveWorkspace resets the active workspace selection to "Home".
+func (m *Model) ClearActiveWorkspace() {
+	m.activeID = ""
 }
 
-// moveCursorToRoot moves the dashboard cursor to the row matching the given root.
-func (m *Model) moveCursorToRoot(root string) {
+// moveCursorToWorkspace moves the dashboard cursor to the row with the given
+// workspace ID.
+func (m *Model) moveCursorToWorkspace(id string) {
 	for i, row := range m.rows {
-		if row.Type == RowWorkspace && row.Workspace != nil && row.Workspace.Root() == root {
+		if row.Type == RowWorkspace && row.Workspace != nil && string(row.Workspace.ID()) == id {
 			m.cursor = i
 			return
 		}

@@ -79,18 +79,37 @@ func (s *WorkspaceStore) Save(ws *Workspace) error {
 		return err
 	}
 
+	// Pin the identity of a workspace stored before StableID existed. The value
+	// does not change — ID() derived it from repo path plus root, the same as
+	// always — but writing it down freezes it, so nothing that later moves the
+	// root can move the ID out from under a running agent. It is reverted if
+	// the write fails, so the in-memory workspace never claims an identity that
+	// nothing on disk holds.
+	pinned := ws.StableID == ""
+	if pinned {
+		ws.StableID = id
+	}
+	unpin := func() {
+		if pinned {
+			ws.StableID = ""
+		}
+	}
+
 	data, err := json.MarshalIndent(ws, "", "  ")
 	if err != nil {
+		unpin()
 		return err
 	}
 
 	// Write to temp file first, then rename for atomic operation
 	tempPath := path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		unpin()
 		return err
 	}
 	if err := os.Rename(tempPath, path); err != nil {
 		_ = os.Remove(tempPath)
+		unpin()
 		return err
 	}
 	if ws.storeID != "" && ws.storeID != id {

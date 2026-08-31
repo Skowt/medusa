@@ -78,7 +78,7 @@ type Model struct {
 	// Data
 	workspaces []*data.Workspace
 	rows       []Row
-	activeRoot string // Currently active workspace root
+	activeID   string // ID of the currently active workspace
 
 	// UI state
 	cursor          int
@@ -99,8 +99,8 @@ type Model struct {
 	hover           hoverState      // Row under an unpressed pointer, for the drag handle
 
 	// Loading state
-	creatingWorkspaces map[string]*data.Workspace // Workspaces currently being created
-	deletingWorkspaces map[string]bool            // Workspaces currently being deleted
+	creatingWorkspaces map[string]*data.Workspace // Workspace ID -> workspace currently being created
+	deletingWorkspaces map[string]bool            // Workspace IDs currently being deleted
 	spinnerFrame       int                        // Current spinner animation frame
 	spinnerActive      bool                       // Whether spinner ticks are active
 
