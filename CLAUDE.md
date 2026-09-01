@@ -542,11 +542,28 @@ Three further consequences are load-bearing:
    and overwrote its store entry. `data.Workspace.StableID` is written once by
    `mintWorkspaceID` (repo, root and *name*) and never recomputed, so a rename
    cannot move it either. The path-derived hash survives as the fallback in
-   `ID()` for every workspace stored before the field existed, and
-   `WorkspaceStore.Save` pins that derived value into `StableID` on the next
-   write. The mint is a pure function rather than a random value because the
+   `ID()` for every workspace stored before the field existed, but the fallback
+   is never trusted for long: **`WorkspaceStore.Load` pins `StableID` to the
+   directory the metadata was found in.** That directory is the identity — it is
+   what the registry entry points at and what every other store call addresses —
+   while the derived hash stops reproducing it the moment the root moves, which
+   the flat-layout migration did to plenty of them. A workspace then answered to
+   an ID nothing on disk held, so deleting it as a metadata orphan removed
+   neither its store directory nor its registry entry and reported success
+   anyway: the orphan came back on the next load and survived every restart.
+   `Save` still pins on write, for a workspace that was built rather than
+   loaded. The mint is a pure function rather than a random value because the
    dashboard renders a placeholder workspace while creation is in flight, and
    the placeholder has to carry the ID the finished workspace will have.
+
+   **An orphan cleanup verifies that the entry is actually gone**
+   (`registryStillLists`, `app_operations_orphan.go`). Removing a registry ID
+   that is not there succeeds, and so does deleting a store directory that is
+   not there, so the failure above had no symptom but the toast. The check is by
+   name as well as by ID, since a mismatched ID is the one thing that would slip
+   past an ID-only check. Regression cover:
+   `internal/app/app_orphan_delete_test.go` and
+   `internal/data/workspace_store_test.go`.
 
    **The consequence is that a root no longer identifies a workspace**, and
    anything that keys off one is wrong the moment two workspaces share a repo.
@@ -569,6 +586,48 @@ Three further consequences are load-bearing:
    therefore left the tmux tick polling nothing at all, and the grid froze on
    the tab state it last had — silently, since the tiles keep rendering.
    Regression cover: `internal/app/app_monitor_filter_test.go`.
+
+**A registry entry's ID is not a guarantee that the metadata is still there, so
+`loadWorkspaces` heals the entry instead of dropping the workspace**
+(`app_operations_heal.go`). `WorkspaceStore.Save` rehomes a workspace whenever
+`ws.ID()` disagrees with the directory it was loaded from and deletes the
+directory it moved off, without telling the registry. Current medusa never
+changes an ID it has minted — the three callers that can change one
+(`loadWorkspaces`'s flat-layout migration, rename, add-repos) all repoint the
+registry — but **a build predating `StableID` recomputes the repo-plus-root
+hash instead of reading the stored `id`**, and self-hosting on medusa makes
+running one easy: any worktree sitting on an older commit builds one, and it
+manages the same `~/.medusa`. That silently moved a workspace's metadata to the
+derived hash and stranded the registry at the minted one.
+
+The workspace then disappeared *twice*: the load skipped it, and the worktree it
+owns resurfaced as an `OrphanDirectory` — "no metadata (directory orphan)" —
+whose only offered action is deleting the user's work. Recovery is only a
+registry repoint, which is why it is done rather than reported.
+
+Three properties keep the heal from doing harm of its own:
+
+1. **Only a missing file is second-guessed** (`os.IsNotExist`). Any other error
+   means the metadata is there and unreadable, where adopting some other
+   directory is a guess rather than a repair.
+2. **Name is the key, and it is not sufficient alone.** It is the only thing the
+   registry records that survives an ID change, and it is sound because two live
+   workspaces may not share a name — but the store keeps every directory the
+   registry has ever dropped, so a name is easily shared with a workspace that
+   died long ago. A candidate is adopted only when it is the single *unclaimed*
+   one left; ambiguity is narrowed by which worktree still exists on disk, and
+   anything still ambiguous is left stranded. Adopting the wrong metadata would
+   attach the entry to another workspace's worktree.
+3. **It heals stranded entries only, never unregistered store directories.** The
+   store holds far more directories than the registry has entries, so adopting
+   those would resurrect every workspace the user has ever deleted.
+
+A healed entry whose worktree is *also* gone becomes an ordinary
+`OrphanMetadata` — visible and deletable — rather than the invisible dangling
+entry it was before. Regression cover: `app_operations_test.go`'s
+`TestLoadWorkspaces_HealsRehomedMetadata`, `…_HealRefusesAnAmbiguousName`, and
+`…_HealDoesNotStealClaimedMetadata`; the first drives the real rehoming through
+`WorkspaceStore.Save` rather than faking the drift.
 
 **Rename changes a label and nothing else.** It does not move directories, does
 not rename branches, and does not restart agents. Moving the worktree to match

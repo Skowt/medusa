@@ -64,6 +64,18 @@ func (s *WorkspaceStore) Load(id WorkspaceID) (*Workspace, error) {
 	}
 
 	ws.storeID = id
+	// The directory the metadata was found in IS the workspace's identity: it
+	// is what the registry entry points at and what every other store call
+	// addresses. A file written before StableID existed carries no id, and
+	// ID()'s fallback then recomputes the old repo-plus-root hash — which stops
+	// reproducing that directory the moment the root moves (the flat-layout
+	// migration moved plenty of them). The workspace then answers to an ID
+	// nothing on disk holds, so deleting it removed neither its store entry nor
+	// its registry entry and reported success anyway. Pinning the directory
+	// here settles the identity for the whole session, and Save writes it down.
+	if ws.StableID == "" {
+		ws.StableID = id
+	}
 	applyWorkspaceDefaults(&ws)
 
 	return &ws, nil

@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,9 +24,26 @@ func (a *App) loadWorkspaces() tea.Cmd {
 			return messages.WorkspacesLoaded{Workspaces: nil}
 		}
 
+		claimed := make(map[data.WorkspaceID]bool, len(entries))
+		for _, entry := range entries {
+			claimed[data.WorkspaceID(entry.ID)] = true
+		}
+		healer := newRegistryHealer(a.workspaces, claimed)
+
 		var workspaces []*data.Workspace
 		for i, entry := range entries {
 			ws, err := a.workspaces.Load(data.WorkspaceID(entry.ID))
+			// A missing file is the one failure worth second-guessing: the
+			// metadata may have been rehomed under a different store ID rather
+			// than lost. Any other error means the file is there and unreadable,
+			// where adopting a different directory would be a guess, not a fix.
+			if os.IsNotExist(err) {
+				if healed, healedID := a.healStrandedEntry(healer, entry.Name, entry.ID); healed != nil {
+					entries[i].ID = string(healedID)
+					entry.ID = string(healedID)
+					ws, err = healed, nil
+				}
+			}
 			if err != nil {
 				logging.Warn("Failed to load workspace %s: %v", entry.Name, err)
 				continue
@@ -131,49 +147,6 @@ func (a *App) loadWorkspaces() tea.Cmd {
 
 		return messages.WorkspacesLoaded{Workspaces: workspaces}
 	}
-}
-
-// deleteOrphanWorkspace removes an orphaned workspace.
-// Metadata orphans: remove store + registry entries.
-// Directory orphans: remove the directory from disk.
-func (a *App) deleteOrphanWorkspace(ws *data.Workspace) tea.Cmd {
-	if ws == nil {
-		return func() tea.Msg {
-			return messages.OrphanWorkspaceDeleted{Workspace: ws}
-		}
-	}
-	return func() tea.Msg {
-		var err error
-		switch ws.Orphan {
-		case data.OrphanMetadata:
-			if storeErr := a.workspaces.Delete(ws.ID()); storeErr != nil {
-				err = fmt.Errorf("remove workspace store: %w", storeErr)
-			}
-			if regErr := a.registry.RemoveWorkspace(string(ws.ID())); regErr != nil && err == nil {
-				err = fmt.Errorf("remove registry entry: %w", regErr)
-			}
-		case data.OrphanDirectory:
-			if ws.OrphanPath != "" {
-				if rmErr := forceRemoveAll(ws.OrphanPath); rmErr != nil {
-					err = fmt.Errorf("remove %s: %w", ws.OrphanPath, rmErr)
-				}
-			}
-		}
-		return messages.OrphanWorkspaceDeleted{Workspace: ws, Err: err}
-	}
-}
-
-// forceRemoveAll removes path, first chmod'ing any directories under it to
-// 0o700 so os.RemoveAll can unlink their contents. Needed for Go module
-// cache trees (e.g. .gotools/pkg/mod/) which are created mode 0o555.
-func forceRemoveAll(path string) error {
-	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && d.IsDir() {
-			_ = os.Chmod(p, 0o700)
-		}
-		return nil
-	})
-	return os.RemoveAll(path)
 }
 
 // createWorkspace creates a new workspace. With worktree false nothing is
