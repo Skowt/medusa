@@ -64,6 +64,12 @@ func (a *App) handleFileWatcherEvent(msg messages.FileWatcherEvent) []tea.Cmd {
 	// or not the sidebar is showing.
 	a.statusManager.Invalidate(msg.Root)
 	cmds = append(cmds, a.requestGitStatus(msg.Root))
+	// An open review page tracks the same repository. This watcher only sees
+	// the .git directory, so it covers commits and staging; plain working-tree
+	// edits still reach the page through the review service's own tick.
+	if a.gitReview != nil {
+		a.gitReview.NotifyRootChanged(msg.Root)
+	}
 	return cmds
 }
 

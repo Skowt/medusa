@@ -22,6 +22,10 @@ type UISettings struct {
 	LastAssistant                string // Assistant the New Tab dialog opens on (claude, codex)
 	LastCodexSandbox             string // Last codex --sandbox policy
 	LastCodexStartingMode        string // Last Codex starting mode (default, auto)
+	LastReviewScope              string // Scope the review page opens on (working, branch)
+	LastReviewAutoSend           bool   // Last state of the review page's "Send as I comment" toggle
+	LastReviewSplit              bool   // Review page shows diffs side by side rather than unified
+	LastReviewTheme              string // Review page theme: "light", "dark", or "" to follow the OS
 	Theme                        string // Theme ID, defaults to "gruvbox"
 	TmuxServer                   string
 	TmuxConfigPath               string
@@ -45,6 +49,7 @@ func defaultUISettings() UISettings {
 		LastAssistant:         "claude",
 		LastCodexSandbox:      "workspace-write",
 		LastCodexStartingMode: "auto",
+		LastReviewScope:       "working",
 		Theme:                 "gruvbox",
 		TmuxServer:            "",
 		TmuxConfigPath:        "",
@@ -80,6 +85,10 @@ func loadUISettings(path string) UISettings {
 			LastAssistant                *string         `json:"last_assistant"`
 			LastCodexSandbox             *string         `json:"last_codex_sandbox"`
 			LastCodexStartingMode        *string         `json:"last_codex_starting_mode"`
+			LastReviewScope              *string         `json:"last_review_scope"`
+			LastReviewAutoSend           *bool           `json:"last_review_autosend"`
+			LastReviewSplit              *bool           `json:"last_review_split"`
+			LastReviewTheme              *string         `json:"last_review_theme"`
 			Theme                        *string         `json:"theme"`
 			TmuxServer                   *string         `json:"tmux_server"`
 			TmuxConfigPath               *string         `json:"tmux_config"`
@@ -139,6 +148,20 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.LastCodexStartingMode != nil && *raw.UI.LastCodexStartingMode != "" {
 		settings.LastCodexStartingMode = *raw.UI.LastCodexStartingMode
+	}
+	if raw.UI.LastReviewScope != nil && *raw.UI.LastReviewScope != "" {
+		settings.LastReviewScope = *raw.UI.LastReviewScope
+	}
+	if raw.UI.LastReviewAutoSend != nil {
+		settings.LastReviewAutoSend = *raw.UI.LastReviewAutoSend
+	}
+	if raw.UI.LastReviewSplit != nil {
+		settings.LastReviewSplit = *raw.UI.LastReviewSplit
+	}
+	// No `!= ""` guard here, unlike the other strings: empty is a real value for
+	// this one and means "follow the OS", which is what a fresh config wants.
+	if raw.UI.LastReviewTheme != nil {
+		settings.LastReviewTheme = *raw.UI.LastReviewTheme
 	}
 	if raw.UI.Theme != nil {
 		settings.Theme = *raw.UI.Theme
@@ -208,6 +231,10 @@ func saveUISettings(path string, settings UISettings) error {
 	delete(ui, "last_codex_approval")
 	delete(ui, "last_codex_search")
 	ui["last_codex_starting_mode"] = settings.LastCodexStartingMode
+	ui["last_review_scope"] = settings.LastReviewScope
+	ui["last_review_autosend"] = settings.LastReviewAutoSend
+	ui["last_review_split"] = settings.LastReviewSplit
+	ui["last_review_theme"] = settings.LastReviewTheme
 	ui["theme"] = settings.Theme
 	ui["tmux_server"] = settings.TmuxServer
 	ui["tmux_config"] = settings.TmuxConfigPath

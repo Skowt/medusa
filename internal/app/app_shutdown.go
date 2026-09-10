@@ -28,5 +28,8 @@ func (a *App) Shutdown() {
 		if a.skillUsage != nil {
 			_ = a.skillUsage.Close()
 		}
+		if a.gitReview != nil {
+			_ = a.gitReview.Close()
+		}
 	})
 }

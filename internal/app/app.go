@@ -12,6 +12,7 @@ import (
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/git"
+	"github.com/Skowt/medusa/internal/gitreview"
 	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
@@ -179,6 +180,10 @@ type App struct {
 	// skillUsage serves the skill-usage dashboard. It stays idle until the
 	// toolbar's [U] button is pressed for the first time.
 	skillUsage *skillstats.Service
+
+	// gitReview serves the live diff-review pages. It stays idle until
+	// [Review Changes] is pressed for the first time.
+	gitReview *gitreview.Service
 
 	// Hooks socket server (Claude Code lifecycle events)
 	hooksServer         *hooks.Server
@@ -394,6 +399,7 @@ func New(version, commit, date string) (*App, error) {
 	}
 	// Route PTY messages through the app-level pump.
 	app.center.SetMsgSink(app.enqueueExternalMsg)
+	app.wireGitReview(cfg.Paths.MetadataRoot)
 	app.sidebarTerminal.SetMsgSink(app.enqueueExternalMsg)
 	// Apply saved theme before creating styles
 	common.SetCurrentTheme(common.ThemeID(cfg.UI.Theme))

@@ -135,6 +135,11 @@ func isCriticalExternalMsg(msg tea.Msg) bool {
 	switch msg.(type) {
 	case messages.Error, messages.SidebarPTYStopped, center.PTYStopped:
 		return true
+	case messages.GitReviewSubmitted:
+		// A review is written by hand and submitted once. Dropping it under
+		// load would lose the user's comments with nothing to retry from, and
+		// the page would sit reporting "sending" forever.
+		return true
 	default:
 		return false
 	}

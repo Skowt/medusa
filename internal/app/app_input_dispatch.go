@@ -63,6 +63,18 @@ func (a *App) routeSystemMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		if cmd := a.handleActionBarOpenIDE(msg); cmd != nil {
 			*cmds = append(*cmds, cmd)
 		}
+	case messages.OpenGitReview:
+		if cmd := a.handleOpenGitReview(msg); cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
+	case messages.GitReviewPrefsChanged:
+		if cmd := a.handleGitReviewPrefsChanged(msg); cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
+	case messages.GitReviewSubmitted:
+		if cmd := a.handleGitReviewSubmitted(msg); cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
 	case messages.ActionBarMergeToMain:
 		*cmds = append(*cmds, a.handleActionBarMergeToMain(msg))
 	case messages.ActionBarCommitResult:

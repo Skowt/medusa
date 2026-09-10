@@ -219,3 +219,51 @@ func TestUISettingsCreateWorktreeRespectsStoredFalse(t *testing.T) {
 		t.Error("a stored false must survive a reload")
 	}
 }
+
+// TestReviewSettingsRoundTrip closes the loop the review page depends on: a
+// field added to UISettings but forgotten in the JSON mapping would load as its
+// zero value, so the toggle would silently stop sticking.
+func TestReviewSettingsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	fresh := loadUISettings(path)
+	if fresh.LastReviewScope != "working" {
+		t.Errorf("a fresh config opens reviews on %q, want working", fresh.LastReviewScope)
+	}
+	if fresh.LastReviewAutoSend {
+		t.Error("a fresh config has auto-send on, which would send a comment nobody asked to send")
+	}
+	if fresh.LastReviewSplit {
+		t.Error("a fresh config opens on the split view, which is not the plainer of the two")
+	}
+
+	fresh.LastReviewScope = "branch"
+	fresh.LastReviewAutoSend = true
+	fresh.LastReviewSplit = true
+	if err := saveUISettings(path, fresh); err != nil {
+		t.Fatalf("saveUISettings: %v", err)
+	}
+
+	loaded := loadUISettings(path)
+	if loaded.LastReviewScope != "branch" {
+		t.Errorf("scope did not survive: %q", loaded.LastReviewScope)
+	}
+	if !loaded.LastReviewAutoSend {
+		t.Error("auto-send did not survive")
+	}
+	if !loaded.LastReviewSplit {
+		t.Error("the split view did not survive")
+	}
+}
+
+// TestReviewScopeFallsBackWhenBlank: an empty string in the file must not become
+// the scope, or a hand-edited config would open the page on nothing.
+func TestReviewScopeFallsBackWhenBlank(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"ui":{"last_review_scope":""}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := loadUISettings(path).LastReviewScope; got != "working" {
+		t.Errorf("blank scope loaded as %q, want the working default", got)
+	}
+}

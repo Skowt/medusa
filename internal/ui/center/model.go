@@ -256,6 +256,7 @@ const (
 	actionBarCopyBranch actionBarButtonKind = iota
 	actionBarCopyDir
 	actionBarOpenIDE
+	actionBarReviewChanges
 )
 
 type copyTarget int

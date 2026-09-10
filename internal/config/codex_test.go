@@ -409,3 +409,71 @@ func ruleCommand(t *testing.T, hooks map[string][]any, event string) string {
 	cmd, _ := handler["command"].(string)
 	return cmd
 }
+
+// TestCodexNetworkAccessEnabled covers the forms Codex accepts and the ones that
+// must not count. The answer gates whether the review page promises replies, and
+// a wrong "enabled" leaves the user waiting for replies that can never arrive.
+func TestCodexNetworkAccessEnabled(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"sectioned", "[sandbox_workspace_write]\nnetwork_access = true\n", true},
+		{"dotted", "sandbox_workspace_write.network_access = true\n", true},
+		{"sectioned after other sections",
+			"[projects.\"/r\"]\ntrust_level = \"trusted\"\n\n[sandbox_workspace_write]\nnetwork_access = true\n", true},
+		{"explicitly false", "[sandbox_workspace_write]\nnetwork_access = false\n", false},
+		{"absent", "[projects.\"/r\"]\ntrust_level = \"trusted\"\n", false},
+		{"commented out", "[sandbox_workspace_write]\n# network_access = true\n", false},
+		// A bare network_access under someone else's section is not this
+		// setting, and reading it as one would wrongly promise replies.
+		{"wrong section", "[some_other_sandbox]\nnetwork_access = true\n", false},
+		{"empty", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got := CodexNetworkAccessEnabled(home); got != tc.want {
+				t.Errorf("got %v, want %v for:\n%s", got, tc.want, tc.body)
+			}
+		})
+	}
+}
+
+// TestCodexNetworkAccessMissingHomeIsFalse: no config means the default policy,
+// which blocks network.
+func TestCodexNetworkAccessMissingHomeIsFalse(t *testing.T) {
+	if CodexNetworkAccessEnabled("") {
+		t.Error("an empty CODEX_HOME reported network access")
+	}
+	if CodexNetworkAccessEnabled(filepath.Join(t.TempDir(), "nope")) {
+		t.Error("a missing config.toml reported network access")
+	}
+}
+
+// TestCodexNetworkAccessDoesNotRewriteTheFile guards the rule the trust injector
+// follows for the same reason: Codex owns config.toml and writes its own state
+// into it, so Medusa reads it and never reserializes it.
+func TestCodexNetworkAccessDoesNotRewriteTheFile(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "config.toml")
+	body := "[sandbox_workspace_write]\nnetwork_access   =    true   \n\n# keep my comment\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !CodexNetworkAccessEnabled(home) {
+		t.Error("padded value was not read")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != body {
+		t.Errorf("config.toml was modified by a read:\n%s", after)
+	}
+}

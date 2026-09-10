@@ -259,3 +259,48 @@ func containsTOMLTable(content, header string) bool {
 	}
 	return false
 }
+
+// CodexNetworkAccessEnabled reports whether a profile's Codex config grants
+// network access under the workspace-write sandbox, which is what decides
+// whether a Codex tab can reach a local server at all.
+//
+// Parsing is shallow: it looks for the one key it cares about, in either form
+// Codex accepts. A key it cannot find reads as "not enabled", which is the safe
+// answer -- a wrong "enabled" leaves the user waiting for replies that can never
+// arrive.
+func CodexNetworkAccessEnabled(codexHome string) bool {
+	if codexHome == "" {
+		return false
+	}
+	raw, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		return false
+	}
+
+	inSection := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			inSection = line == "[sandbox_workspace_write]"
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key != "network_access" && key != "sandbox_workspace_write.network_access" {
+			continue
+		}
+		// A bare network_access only counts inside the right section; the dotted
+		// form names its own section and counts anywhere.
+		if key == "network_access" && !inSection {
+			continue
+		}
+		return strings.TrimSpace(value) == "true"
+	}
+	return false
+}

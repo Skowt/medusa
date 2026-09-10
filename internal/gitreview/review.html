@@ -1,0 +1,2874 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review changes</title>
+<style>
+  /* Light is the base, dark is an override, and there are three ways to reach it:
+     the OS setting when the reader has expressed no preference, and the
+     data-theme attribute when they have. The media query is guarded against
+     data-theme="light" so an explicit choice beats the system on a dark machine
+     -- without that guard the toggle could turn dark on but never off.
+
+     The dark block is written twice, and has to be: a media query and an
+     attribute selector cannot be combined into one rule. Keeping every colour
+     the page uses in these blocks -- syntax tokens included, which used to be
+     literals in a dozen .hljs rules -- is what keeps the duplication to one list
+     instead of two palettes and a rule set. Change one, change both. */
+  :root {
+    color-scheme: light;
+    --bg: #fbfbfa; --panel: #fff; --ink: #1a1a19; --muted: #6b6b66;
+    --line: #e4e4e0; --accent: #b4592a; --shadow: 0 1px 2px rgba(0,0,0,.06);
+    --add-bg: #e6ffec; --add-ink: #04531f; --del-bg: #ffebe9; --del-ink: #7d1a12;
+    --gutter: #f6f6f4; --sel: #fff4d6; --ok: #1f7a3d; --warn: #9a6400;
+    --tok-comment: #6e7781; --tok-keyword: #cf222e; --tok-string: #0a3069;
+    --tok-number: #0550ae; --tok-title: #8250df; --tok-variable: #953800;
+    --tok-meta: #116329;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #17171a; --panel: #1f1f23; --ink: #ececee; --muted: #9a9aa2;
+      --line: #303036; --accent: #e07a4a; --shadow: 0 1px 2px rgba(0,0,0,.4);
+      --add-bg: #12261a; --add-ink: #7ee2a8; --del-bg: #2b1618; --del-ink: #ffa7a0;
+      --gutter: #1a1a1e; --sel: #33290e; --ok: #7ee2a8; --warn: #e0b45a;
+      --tok-comment: #8b949e; --tok-keyword: #ff7b72; --tok-string: #a5d6ff;
+      --tok-number: #79c0ff; --tok-title: #d2a8ff; --tok-variable: #ffa657;
+      --tok-meta: #7ee787;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #17171a; --panel: #1f1f23; --ink: #ececee; --muted: #9a9aa2;
+    --line: #303036; --accent: #e07a4a; --shadow: 0 1px 2px rgba(0,0,0,.4);
+    --add-bg: #12261a; --add-ink: #7ee2a8; --del-bg: #2b1618; --del-ink: #ffa7a0;
+    --gutter: #1a1a1e; --sel: #33290e; --ok: #7ee2a8; --warn: #e0b45a;
+    --tok-comment: #8b949e; --tok-keyword: #ff7b72; --tok-string: #a5d6ff;
+    --tok-number: #79c0ff; --tok-title: #d2a8ff; --tok-variable: #ffa657;
+    --tok-meta: #7ee787;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  button { font: inherit; cursor: pointer; }
+
+  /* ---- header ---- */
+  header {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -.01em; white-space: nowrap; }
+  .branch {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .branch b { color: var(--accent); font-weight: 600; }
+  /* The base commit is the identity of what is being compared against, so it is
+     inked like the branch; the subject is context and recedes. */
+  .branch .rev { color: var(--ink); }
+  .branch .subject { opacity: .75; }
+  .spacer { margin-left: auto; }
+  .tabs { display: inline-flex; background: var(--bg); border: 1px solid var(--line);
+          border-radius: 8px; padding: 2px; }
+  .tabs button { border: 0; background: transparent; color: var(--muted);
+                 font-weight: 550; padding: 5px 12px; border-radius: 6px; font-size: 13px;
+                 white-space: nowrap; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; }
+  /* Glyph-only, so the header does not become a third row of words. Padding is
+     tightened because a single character does not need a word's worth of it. */
+  #theme button { padding: 5px 8px; font-size: 13px; line-height: 1.15; }
+  /* A real checkbox, not a styled div: this decides where the reader's comments
+     go, so it has to read as a control and be reachable by keyboard. */
+  .mode { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+          color: var(--muted); white-space: nowrap; cursor: pointer; }
+  .mode input { accent-color: var(--accent); margin: 0; cursor: pointer; }
+  .mode.on { color: var(--accent); font-weight: 600; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); }
+  .dot.off { background: var(--del-ink); }
+  .btn {
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+    border-radius: 8px; padding: 6px 12px; font-weight: 550; font-size: 13px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.small { padding: 3px 9px; font-size: 12px; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--ink); border-color: var(--line); }
+
+  /* ---- reply-unavailable banner ---- */
+  /* Warning-toned rather than error-toned: nothing has failed, and the review
+     itself works. Only the reply channel is missing. */
+  .banner {
+    flex: 0 0 auto; display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 16px; background: var(--panel);
+    border-bottom: 1px solid var(--line); border-left: 3px solid var(--warn);
+    font-size: 13px;
+  }
+  .banner.hidden { display: none; }
+  .banner-body { flex: 1 1 auto; min-width: 0; }
+  .banner strong { color: var(--warn); }
+  .banner pre {
+    margin: 8px 0 0; padding: 8px 10px; background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    white-space: pre-wrap; overflow-x: auto;
+  }
+  .banner pre:empty { display: none; }
+
+  /* ---- shell ---- */
+  main { flex: 1 1 auto; display: flex; min-height: 0; }
+  nav {
+    flex: 0 0 300px; min-width: 200px; max-width: 46vw; overflow-y: auto;
+    border-right: 1px solid var(--line); background: var(--panel);
+    display: flex; flex-direction: column;
+  }
+  .nav-head { padding: 10px 14px; font-size: 11px; text-transform: uppercase;
+              letter-spacing: .06em; color: var(--muted); font-weight: 600;
+              border-bottom: 1px solid var(--line); }
+  .files { list-style: none; margin: 0; padding: 6px; }
+  .files li { border-radius: 7px; }
+  .files button {
+    width: 100%; text-align: left; border: 0; background: transparent; color: var(--ink);
+    padding: 5px 9px; border-radius: 7px; display: flex; gap: 6px; align-items: baseline;
+  }
+  .files button:hover { background: var(--bg); }
+  .files li.sel > button { background: var(--accent); color: #fff; }
+  .files li.sel .stat, .files li.sel .count { color: rgba(255,255,255,.82); }
+  /* A directory is scaffolding, not a thing to review, so it is quieter than
+     the files under it. The twisty column is reserved on file rows too: without
+     it every file sits half a glyph left of its own folder. */
+  .files li.dir > button { color: var(--muted); font-weight: 600; }
+  .tw { flex: 0 0 auto; width: 12px; font-size: 10px; line-height: 1.5; color: var(--muted); }
+  .files li.sel .tw { color: rgba(255,255,255,.82); }
+  .fname { flex: 1 1 auto; min-width: 0; font-size: 13px; }
+  .fname .base { display: block; word-break: break-all; }
+  .stat { font-family: ui-monospace, Menlo, monospace; font-size: 11px; white-space: nowrap; }
+  .stat .a { color: var(--ok); } .stat .d { color: var(--del-ink); }
+  .badge { background: var(--accent); color: #fff; border-radius: 999px;
+           font-size: 10px; padding: 1px 6px; font-weight: 650; }
+  /* The unread dot is the agent's colour, the same one its replies carry in a
+     card, because that is what it means: the agent has said something here and
+     nobody has looked. It is deliberately not a count -- how many things it
+     said is not the question being asked of a file you have not opened. */
+  .badge.new { background: var(--ok); color: var(--ok); font-size: 8px;
+               padding: 1px 5px; line-height: 1.4; }
+  .files li.sel .badge { background: rgba(255,255,255,.28); }
+  /* A viewed file is dimmed as well as ticked. The tick alone is easy to miss
+     when it sits in a column of forty rows; a whole row that has receded is
+     what makes the remaining work stand out. */
+  .files li.seen > button .fname { opacity: .55; }
+  .files li.seen .tw { color: var(--ok); opacity: 1; }
+  .files li.sel.seen > button .fname { opacity: .8; }
+
+  /* ---- diff ---- */
+  section.diff { flex: 1 1 auto; overflow-y: auto; padding: 0 0 120px; }
+  /* Each file is its own block, and its header sticks only while that block is
+     on screen: sticky is bounded by its containing block, so one header hands
+     over to the next as the reader scrolls past rather than piling up. */
+  section.file { position: relative; }
+  section.file + section.file { border-top: 1px solid var(--line); }
+  .file-head {
+    position: sticky; top: 0; z-index: 3; background: var(--panel);
+    border-bottom: 1px solid var(--line); padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  }
+  .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+         border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--muted);
+         font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600; }
+  .hunk-head {
+    background: var(--gutter); color: var(--muted); border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line); padding: 3px 12px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  /* The foot bar carries no label, so its border sits on the other side: it
+     closes the rows above it rather than introducing the ones below. */
+  .hunk-head.foot { border-top: 0; }
+  .hunk-acts { display: inline-flex; gap: 2px; flex: 0 0 auto; }
+  .hunk-acts button {
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    border-radius: 5px; padding: 0 6px; font-size: 9px; line-height: 16px;
+  }
+  .hunk-acts button:hover { color: var(--accent); border-color: var(--accent); }
+  /* An expanded line is context the reader asked for, not part of the change.
+     Numbering it like any other context row is the point -- a comment can be
+     left on it -- so the only distinction is that it is not tinted. */
+  tr.expanded td.ln { color: var(--muted); opacity: .75; }
+  table.rows { width: 100%; border-collapse: collapse;
+               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  table.rows td { padding: 0; vertical-align: top; }
+  td.ln {
+    /* 1ch is one digit in a monospace font, plus the cell's own padding. The
+       46px floor keeps a short file's gutter from looking cramped. */
+    width: 1%; min-width: max(46px, calc(var(--ln-ch, 3) * 1ch + 14px));
+    text-align: right; padding: 1px 8px 1px 6px;
+    color: var(--muted); background: var(--gutter); user-select: none;
+    border-right: 1px solid var(--line); font-size: 11.5px;
+  }
+  td.act {
+    width: 22px; background: var(--gutter); border-right: 1px solid var(--line);
+    user-select: none; text-align: center; color: transparent;
+    font-weight: 700; cursor: pointer;
+  }
+  tr.row:hover td.act { color: var(--accent); background: var(--bg); }
+  /* The +/- lives in its own column. Left as the first character of the code
+     cell it reads as part of the line's text, which is exactly how a reviewer
+     comes to believe an added line starts with a plus sign. */
+  td.sign {
+    width: 1%; min-width: 16px; padding: 1px 0 1px 6px; text-align: left;
+    user-select: none; font-weight: 700;
+  }
+  td.code { padding: 1px 12px 1px 6px; white-space: pre-wrap; word-break: break-word; }
+  tr.add td.code, tr.add td.sign { background: var(--add-bg); color: var(--add-ink); }
+  tr.del td.code, tr.del td.sign { background: var(--del-bg); color: var(--del-ink); }
+  tr.picked td.code, tr.picked td.sign { background: var(--sel) !important; }
+  tr.picked td.ln, tr.picked td.act { background: var(--sel); }
+  /* The bar in the left margin marks every line a comment covers, so a card is
+     visibly attached to the code it is about rather than floating near it. It
+     runs down the outermost column, clear of the hover pencil in the gutter. */
+  tr.commented td.ln:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  tr.commented.mark-done td.ln:first-child { box-shadow: inset 3px 0 0 var(--ok); }
+  tr.pending td.ln:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+
+  /* ---- split view ---- */
+  /* Fixed layout, and the two code columns are left unsized on purpose: under
+     `table-layout: fixed` the columns with no width share what is left equally,
+     which is the only way to get halves that stay equal. Asked for 50% under the
+     default auto layout they came out 551px and 508px, because auto layout
+     treats a width as a hint and gives the wider content more -- so the two
+     sides of the same change wrapped at different points. */
+  table.rows.split { table-layout: fixed; }
+  table.rows.split col.gutter { width: max(46px, calc(var(--ln-ch, 3) * 1ch + 14px)); }
+  table.rows.split col.pencil { width: 22px; }
+  table.rows.split col.marker { width: 16px; }
+  /* A visible seam down the middle. Without it, a long line on the left runs
+     straight into the right-hand gutter and the two halves stop reading as two. */
+  table.rows.split td.ln:nth-child(5) { border-left: 2px solid var(--line); }
+  /* In split view the tint goes on the cells rather than the row: the two sides
+     of one row are usually a removal and its replacement, so a row-level colour
+     could only ever be right about one of them. */
+  table.rows.split td.sign.add, table.rows.split td.code.add {
+    background: var(--add-bg); color: var(--add-ink);
+  }
+  table.rows.split td.sign.del, table.rows.split td.code.del {
+    background: var(--del-bg); color: var(--del-ink);
+  }
+  table.rows.split td.code.add.hl, table.rows.split td.code.del.hl { color: var(--ink); }
+  /* The blank half of an unpaired edit. Striped rather than empty, so it reads
+     as "nothing on this side" and not as a line that happens to be blank. */
+  table.rows.split td.void {
+    background: repeating-linear-gradient(45deg,
+      transparent, transparent 5px, var(--gutter) 5px, var(--gutter) 10px);
+    cursor: default; color: transparent;
+  }
+  table.rows.split td.act.void { color: transparent !important; }
+  table.rows.split tr.row:hover td.act.void { color: transparent; }
+  table.rows.split td.ln.expanded { color: var(--muted); opacity: .75; }
+  /* Picked, commented and pending all mark one side in split view. */
+  tr.picked-left td:nth-child(-n+4), tr.picked-right td:nth-child(n+5) {
+    background: var(--sel) !important;
+  }
+  table.rows.split td.ln.commented { box-shadow: inset 3px 0 0 var(--accent); }
+  table.rows.split td.ln.commented.mark-done { box-shadow: inset 3px 0 0 var(--ok); }
+  table.rows.split td.ln.pending { box-shadow: inset 3px 0 0 var(--warn); }
+  /* Syntax colours. The values are GitHub's, because those are the ones proven
+     legible on exactly these three backgrounds -- panel, the added tint and the
+     removed tint -- which a palette picked against white alone is not. They live
+     in the token blocks above so that one theme switch moves everything, and so
+     that these rules exist once rather than once per theme.
+
+     No italics: this is a monospace table, and a slanted comment run changes the
+     glyph advance just enough to make columns of code stop lining up. */
+  .hljs-comment, .hljs-quote { color: var(--tok-comment); }
+  .hljs-keyword, .hljs-built_in, .hljs-literal, .hljs-selector-tag,
+  .hljs-doctag, .hljs-deletion { color: var(--tok-keyword); }
+  .hljs-string, .hljs-regexp, .hljs-subst, .hljs-addition,
+  .hljs-attr, .hljs-selector-attr, .hljs-selector-pseudo { color: var(--tok-string); }
+  .hljs-number, .hljs-bullet, .hljs-link { color: var(--tok-number); }
+  .hljs-title, .hljs-name, .hljs-section, .hljs-tag, .hljs-class,
+  .hljs-type, .hljs-attribute, .hljs-selector-class, .hljs-selector-id { color: var(--tok-title); }
+  .hljs-variable, .hljs-template-variable, .hljs-symbol, .hljs-params { color: var(--tok-variable); }
+  .hljs-meta { color: var(--tok-meta); }
+  .hljs-emphasis { font-style: italic; }
+  .hljs-strong { font-weight: 700; }
+  /* A highlighted add/del row drops its green or red ink: with tokens coloured,
+     the text that is *not* a token would be the only green left on the line, and
+     the row reads as a jumble. The background tint and the sign column still say
+     which side it is. */
+  tr.add td.code.hl, tr.del td.code.hl { color: var(--ink); }
+  .empty { padding: 40px 20px; color: var(--muted); text-align: center; }
+  .note { padding: 10px 16px; color: var(--muted); font-size: 13px; }
+
+  /* ---- comments ---- */
+  .thread-cell { padding: 8px 12px 8px 68px !important; background: var(--bg); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 10px 12px; margin: 6px 0; max-width: 760px;
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px;
+    box-shadow: var(--shadow);
+  }
+  .card.resolved { border-left-color: var(--ok); opacity: .72; }
+  .card.draft { border-left-style: dashed; }
+  .who { display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
+         font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+         color: var(--muted); font-weight: 650; }
+  /* The header doubles as the collapse toggle, so it is a real button — it has
+     to be reachable by keyboard, which a click handler on a div is not. */
+  button.toggle {
+    width: 100%; border: 0; background: transparent; padding: 0; margin-bottom: 5px;
+    text-align: left; font: inherit; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--muted); font-weight: 650; cursor: pointer;
+  }
+  /* Contains the row: the anchor no longer shrinks, so on a very narrow card the
+     line could otherwise spill past the card's own edge. */
+  button.toggle { overflow: hidden; }
+  button.toggle:hover { color: var(--ink); }
+  .card.collapsed button.toggle { margin-bottom: 0; }
+  .chev { font-size: 10px; width: 10px; flex: 0 0 auto; }
+  /* The preview only exists collapsed, and must not widen the card: min-width 0
+     is what lets a flex child actually shrink enough to ellipsize. */
+  /* Shrink factor 100, so the preview surrenders its width before the anchor
+     gives up a single character: the preview is a convenience and the anchor is
+     the answer to "where", and a header clipped to "helpers..." with the line
+     range cut off has lost the more useful half. */
+  .preview {
+    flex: 1 100 auto; min-width: 0; text-transform: none; letter-spacing: 0;
+    font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* A card header is one line, always. Everything in it is either fixed-size or
+     ellipsizes: a pill allowed to wrap broke "1 reply" across two lines and made
+     a shut card taller than an open one's first line, and the anchor did the
+     same by splitting a line range down the middle. */
+  .who { flex-wrap: nowrap; }
+  .who .pill { border-radius: 999px; padding: 1px 8px; font-size: 10px;
+               flex: 0 0 auto; white-space: nowrap; }
+  /* The anchor may shrink, but only ever to an ellipsis. It shares the slack
+     with the preview, which is far longer and so gives way first. */
+  /* The anchor does not shrink at all. Allowed to, it ellipsized a line range
+     that fitted perfectly: the header is letter-spaced, so the last glyph
+     carries a fraction of trailing space, the content measured a sub-pixel over
+     an integer box, and text-overflow duly cut the ":31-48" off the end. The
+     preview absorbs the slack instead, and max-width keeps a pathological path
+     inside the card, where it can ellipsize honestly. */
+  .anchor { flex: 0 0 auto; max-width: 100%; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; }
+  .pill.user { background: var(--accent); color: #fff; }
+  .pill.agent { background: var(--ok); color: var(--panel); }
+  .pill.state { border: 1px solid var(--line); color: var(--muted); }
+  /* Resolved is the headline on a finished thread, so it is filled rather than
+     outlined -- the reply count it replaces was the loudest thing on the row. */
+  .pill.done { background: var(--ok); color: var(--panel); }
+  .body { white-space: pre-wrap; word-break: break-word; }
+  .reply { border-top: 1px dashed var(--line); margin-top: 8px; padding-top: 8px; }
+  .card .acts { display: flex; gap: 6px; margin-top: 8px; }
+  textarea {
+    width: 100%; min-height: 76px; resize: vertical; font: inherit;
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .form-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 6px;
+               font-family: ui-monospace, Menlo, monospace; }
+
+  /* ---- submit bar ---- */
+  .bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 6;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line);
+    box-shadow: 0 -2px 10px rgba(0,0,0,.10);
+  }
+  .bar.hidden { display: none; }
+  .bar .count { font-weight: 650; }
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 74px; z-index: 9;
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 9px 14px; box-shadow: var(--shadow); font-size: 13px;
+    max-width: 70vw;
+  }
+  .toast.hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="ws">Review changes</h1>
+  <span class="branch" id="branch"></span>
+  <span class="spacer"></span>
+  <div class="tabs" role="tablist" id="theme">
+    <button role="tab" data-theme="light" aria-selected="false" title="Light theme" aria-label="Light theme">&#9788;</button>
+    <button role="tab" data-theme="dark" aria-selected="false" title="Dark theme" aria-label="Dark theme">&#9790;</button>
+  </div>
+  <label class="mode" id="modelabel" title="Send each comment to the agent as you write it, instead of queueing until Submit">
+    <input type="checkbox" id="autosend"><span id="modetext">Send as I comment</span>
+  </label>
+  <div class="tabs" role="tablist" id="view">
+    <button role="tab" data-split="0" aria-selected="true" title="One column, changes in sequence">Unified</button>
+    <button role="tab" data-split="1" aria-selected="false" title="Two columns, before and after">Split</button>
+  </div>
+  <div class="tabs" role="tablist" id="scope">
+    <button role="tab" data-scope="working" aria-selected="true">Uncommitted</button>
+    <button role="tab" data-scope="branch" aria-selected="false">Since base</button>
+  </div>
+  <span class="live"><span class="dot" id="dot"></span><span id="livetext">connecting</span></span>
+  <button class="btn" id="refresh">Refresh</button>
+</header>
+
+<div class="banner hidden" id="banner">
+  <div class="banner-body">
+    <strong id="banner-title"></strong>
+    <span id="banner-text"></span>
+    <pre id="banner-fix"></pre>
+  </div>
+  <button class="btn small ghost" id="banner-close" title="Dismiss">&times;</button>
+</div>
+
+<main>
+  <nav>
+    <div class="nav-head" id="navhead">Files</div>
+    <ul class="files" id="filelist"></ul>
+  </nav>
+  <section class="diff" id="diff"></section>
+</main>
+
+<div class="bar hidden" id="bar">
+  <span class="count" id="barcount"></span>
+  <span class="branch" id="barhint">Comments are queued here until you submit them.</span>
+  <span class="spacer"></span>
+  <button class="btn" id="discard">Discard drafts</button>
+  <button class="btn primary" id="submit">Submit review</button>
+</div>
+<div class="toast hidden" id="toast"></div>
+
+<!-- Vendored, served from this session's own URL: see highlight.min.js.README
+     for why it is not a CDN link. Blocking rather than deferred, so the first
+     paint is already coloured; everything below guards on the global anyway, so
+     a bundle that failed to load costs colour and nothing else. -->
+<script src="highlight.js"></script>
+<script>
+"use strict";
+
+// The session token is the last path segment of the page's own URL, so the page
+// needs no server-side templating and no separate config request.
+const API = location.pathname.replace(/\/$/, "") + "/api";
+
+const state = {
+  snapshot: null,
+  threads: [],
+  file: null,       // selected path
+  scope: "working",
+  picking: null,    // {path, anchor, from, to} while a range is being dragged
+  form: null,       // {path, side, start, end, quote, draft}
+  // Open reply boxes, keyed by thread id, holding what has been typed into
+  // them. Both this and form.draft exist for one reason: the pane is rebuilt on
+  // every poll, and a textarea whose text lives only in the DOM loses it.
+  replies: {},
+  // Which textarea to focus after the next render, when it is one that has just
+  // been opened rather than one the reader is already in.
+  focusKey: null,
+  // Files with agent replies the reader has not seen, path -> Set of thread ids.
+  // It is page state and nothing else: "have I read this" is a fact about the
+  // person looking, not about the review, and a second tab is a second reader.
+  unread: {},
+  // Side-by-side rather than unified. Server-remembered, like the send mode: the
+  // page is served from a fresh ephemeral port every restart, so the browser has
+  // nowhere durable of its own to keep it.
+  split: false,
+  // "light", "dark", or "" to follow the OS -- which is what the page did before
+  // there was a toggle, and still does until the reader picks one.
+  theme: "",
+  // One entry per file on the page: its element, its measured height, and
+  // whether its rows are currently built. See renderDiff.
+  sections: {},
+  // Set while a click is scrolling to a file, so the scroll-spy does not fight
+  // the scroll it caused.
+  scrollingTo: null,
+  landed: false,
+  order: [],
+  orderStamp: null,
+  dragging: false,
+  notice: null,     // last snapshot caveat shown, so it is not re-toasted every poll
+  bannerDismissed: false,
+  // Which directories are shut, keyed by path. Held in the page for the same
+  // reason thread collapse is: the navigator is rebuilt on every poll, and a
+  // state rebuilt from the snapshot would spring every folder open again.
+  // Collapsed is the set, so a directory the page has never seen starts open --
+  // a tree that hides the changes on first load defeats the point of it.
+  dirsCollapsed: new Set(),
+  // Files the server says are read. Resolved there, not here: a mark is pinned
+  // to the digest of the diff it was made against, and the page has no business
+  // holding that.
+  viewed: new Set(),
+  // How far the context has been opened around each hunk, keyed by
+  // path + hunk index, alongside the file lines fetched to fill it. Both are
+  // dropped for a file whose digest moves, since expanded context from a diff
+  // that no longer exists would be showing lines the file does not have.
+  expand: {},   // path -> hunk index -> {up, down}; see saveExpansion
+  lineCache: {},
+  lineTotal: {},
+  hl: {},       // path -> "hunk:up:down" -> per-row HTML
+  fileDigests: {},
+  // Whether a comment goes to the agent the moment it is written. The server
+  // owns it, so a reload or a second tab cannot leave the reader believing
+  // comments were sent while they were quietly queueing.
+  autoSend: false,
+  // Collapse is remembered per thread id rather than as a flag on the thread,
+  // because the diff repaints every couple of seconds and a flag rebuilt from
+  // the server would snap every card back open under the reader's cursor.
+  // Two sets, not one: the default depends on whether a thread is resolved, so
+  // "no opinion" has to be distinguishable from "the reader collapsed this".
+  expanded: new Set(),
+  collapsed: new Set(),
+};
+
+// isCollapsed decides a card's state. A resolved thread starts collapsed — it is
+// done, and the point of resolving is to get it out of the way — but an explicit
+// choice always wins, so expanding one does not undo itself on the next poll.
+function isCollapsed(t) {
+  // A card being replied to is never collapsed, whatever else is true: the
+  // reply box is inside it, and folding it away would hide text being typed.
+  if (state.replies[t.id] !== undefined) return false;
+  if (state.expanded.has(t.id)) return false;
+  if (state.collapsed.has(t.id)) return true;
+  return !!t.resolved;
+}
+
+function toggleThread(t) {
+  if (isCollapsed(t)) {
+    state.expanded.add(t.id);
+    state.collapsed.delete(t.id);
+  } else {
+    state.collapsed.add(t.id);
+    state.expanded.delete(t.id);
+  }
+  render();
+}
+
+const $ = (id) => document.getElementById(id);
+
+/* ---------------- data ---------------- */
+
+async function load(scope, refresh) {
+  const q = new URLSearchParams();
+  if (scope) q.set("scope", scope);
+  if (refresh) q.set("refresh", "1");
+  const res = await fetch(API + "/snapshot?" + q.toString());
+  if (!res.ok) { toast("Could not read the diff (" + res.status + ")"); return; }
+  const data = await res.json();
+  apply(data.snapshot, data.threads, data.viewed, data.autoSend, data.split, data.theme);
+}
+
+function apply(snapshot, threads, viewed, autoSend, split, theme) {
+  state.snapshot = snapshot;
+  state.threads = threads || [];
+  if (viewed !== undefined) state.viewed = new Set(viewed || []);
+  if (autoSend !== undefined) state.autoSend = !!autoSend;
+  if (split !== undefined) state.split = !!split;
+  if (theme !== undefined) state.theme = theme || "";
+  if (snapshot && snapshot.scope) state.scope = snapshot.scope;
+  dropStaleContext(snapshot);
+  // Keep the selection if that file still has changes; otherwise fall back to
+  // the first file, so a file the agent has just reverted does not leave the
+  // pane blank with no way back.
+  const paths = (snapshot.files || []).map((f) => f.path);
+  // A path in the fragment wins on first load, so a review can be linked at
+  // one file and the selection survives a reload.
+  if (!state.file) {
+    const wanted = decodeURIComponent(location.hash.replace(/^#/, ""));
+    if (wanted && paths.includes(wanted)) { state.file = wanted; revealFile(wanted); }
+  }
+  // The tree's order, not the snapshot's: the page is laid out in the order the
+  // navigator shows, so the file at the top of it is the first of those. Taking
+  // the snapshot's first file instead had the navigator highlighting one file
+  // while the page opened on another.
+  if (!state.file || !paths.includes(state.file)) {
+    const first = orderedFiles()[0];
+    state.file = first ? first.path : null;
+  }
+  // Whatever is on screen is read by definition. This matters when the selection
+  // has just fallen back because the file being read left the diff: without it a
+  // dot could sit on the file the reader is looking at.
+  if (state.file) readUnread(state.file);
+  render();
+  // The fragment is a link into one file, so honour it once the sections exist.
+  // Once only: after that the reader's scroll owns the position, and the
+  // fragment follows it rather than the other way round.
+  if (!state.landed && state.file) {
+    state.landed = true;
+    const wanted = decodeURIComponent(location.hash.replace(/^#/, ""));
+    if (wanted && state.sections[wanted]) scrollToFile(wanted);
+    else spyScroll(); // name whatever the page actually opened on
+  }
+}
+
+// Expansion is remembered across a reload, keyed by this review's own token.
+//
+// localStorage rather than the host: the token is unique per session and the
+// origin is this session's ephemeral port, so an entry dies with the review it
+// belongs to and cannot leak into the next one. It is also the wrong thing to
+// send through the host -- every click would be an HTTP round trip and a config
+// write, for something that is only worth keeping until the page is closed.
+//
+// Every access is guarded: a private window, or a browser set to block site
+// data, throws on the accessor itself rather than returning empty.
+const EXPAND_KEY = "medusa-review-expand:" + location.pathname.replace(/\/$/, "").split("/").pop();
+
+function loadExpansion() {
+  try {
+    const raw = window.localStorage.getItem(EXPAND_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved && typeof saved === "object") state.expand = saved;
+  } catch (err) {
+    /* no memory of the last visit, which is only a lost convenience */
+  }
+}
+
+function saveExpansion() {
+  try {
+    window.localStorage.setItem(EXPAND_KEY, JSON.stringify(state.expand));
+    pruneExpansion();
+  } catch (err) {
+    /* nothing to do: the expansion still works, it just will not be remembered */
+  }
+}
+
+// pruneExpansion drops what other reviews left behind.
+//
+// Each session writes under its own token and nothing else ever cleans those up,
+// so without this the store would grow by one entry per review ever opened.
+function pruneExpansion() {
+  try {
+    const stale = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith("medusa-review-expand:") && key !== EXPAND_KEY) stale.push(key);
+    }
+    for (const key of stale) window.localStorage.removeItem(key);
+  } catch (err) { /* nothing to prune with */ }
+}
+
+// dropStaleContext forgets the expanded context and cached lines of any file
+// whose diff has moved.
+//
+// It is per file rather than per snapshot: an agent editing one file must not
+// close up the context the reader has opened in another. The digest is the same
+// signal a viewed mark is pinned to, so the two invalidate together.
+function dropStaleContext(snapshot) {
+  const live = {};
+  for (const f of (snapshot && snapshot.files) || []) {
+    live[f.path] = true;
+    if (state.fileDigests[f.path] === f.digest) continue;
+    state.fileDigests[f.path] = f.digest;
+    // The cached *lines* are stale -- they came from a version of the file that
+    // no longer exists -- but how far the reader had opened the context is not:
+    // "twenty lines above this hunk" is still exactly what they asked for. It
+    // used to be dropped with the rest, so an agent touching the file snapped
+    // every expanded region shut under them. The counts stay, clampExpansion
+    // fits them to the new hunks, and refillExpanded re-reads the lines.
+    delete state.lineCache[f.path];
+    delete state.lineTotal[f.path];
+    delete state.hl[f.path];
+  }
+  // A file that has left the diff entirely keeps nothing either.
+  for (const path of Object.keys(state.fileDigests)) {
+    if (!live[path]) {
+      delete state.fileDigests[path];
+      delete state.expand[path];
+      delete state.lineCache[path];
+      delete state.lineTotal[path];
+      delete state.hl[path];
+    }
+  }
+}
+
+function post(path, payload) {
+  return fetch(API + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ---------------- live stream ---------------- */
+
+function connect() {
+  const es = new EventSource(API + "/live");
+  es.onopen = () => setLive(true, "live");
+  es.onmessage = (msg) => {
+    let ev;
+    try { ev = JSON.parse(msg.data); } catch (_) { return; }
+    if (ev.notice) toast(ev.notice);
+    if (ev.snapshot) {
+      if (ev.threads !== undefined) announceAgentReplies(state.threads, ev.threads);
+      apply(ev.snapshot, ev.threads !== undefined ? ev.threads : state.threads,
+            ev.viewed, ev.autoSend, ev.split, ev.theme);
+    } else {
+      if (ev.threads !== undefined) {
+        announceAgentReplies(state.threads, ev.threads);
+        state.threads = ev.threads;
+      }
+      if (ev.viewed !== undefined) state.viewed = new Set(ev.viewed || []);
+      if (ev.autoSend !== undefined) state.autoSend = !!ev.autoSend;
+      if (ev.split !== undefined) state.split = !!ev.split;
+      if (ev.theme !== undefined) state.theme = ev.theme || "";
+      render();
+    }
+  };
+  // EventSource reconnects on its own; the handler only has to report the gap,
+  // because while it is down the page is showing a diff that may have moved.
+  es.onerror = () => setLive(false, "reconnecting");
+}
+
+// announceAgentReplies reports a reply that arrived while the reader was looking
+// somewhere else.
+//
+// It names the file and line rather than jumping there: the reader may be
+// mid-comment on another file, and moving the view out from under them to show
+// an answer is worse than letting them choose when to read it. Clicking the
+// toast is the way there.
+function announceAgentReplies(before, after) {
+  const seen = new Map();
+  for (const t of before || []) seen.set(t.id, (t.replies || []).length);
+  for (const t of after || []) {
+    const had = seen.has(t.id) ? seen.get(t.id) : 0;
+    const now = (t.replies || []).length;
+    if (now <= had) continue;
+    const fresh = t.replies[now - 1];
+    if (!fresh || fresh.author !== "agent") continue;
+    if (t.path === state.file) continue; // already on screen, so already read
+    markUnread(t.path, t.id);
+    toast(agentName() + " replied on " + t.path + ":" + t.startLine + " — click to open", () => selectFile(t.path));
+  }
+}
+
+function markUnread(path, threadID) {
+  const seen = state.unread[path] || (state.unread[path] = new Set());
+  seen.add(threadID);
+}
+
+// hasUnread answers for a file, and dirRow asks it of every file it covers so
+// that folding a directory away cannot hide an unread reply.
+function hasUnread(path) {
+  const seen = state.unread[path];
+  return !!seen && seen.size > 0;
+}
+
+// readUnread clears a file's unread marks and opens the cards that carried them.
+//
+// Clearing alone is not enough to call it read. A resolved thread starts
+// collapsed, so an agent's reply to one would be marked read by a glance that
+// could not possibly have included it; expanding those threads is what makes the
+// reply actually on screen when the mark goes.
+function readUnread(path) {
+  const seen = state.unread[path];
+  if (!seen) return;
+  for (const id of seen) {
+    state.expanded.add(id);
+    state.collapsed.delete(id);
+  }
+  delete state.unread[path];
+}
+
+function setLive(on, text) {
+  $("dot").className = "dot " + (on ? "on" : "off");
+  $("livetext").textContent = text;
+}
+
+let toastTimer = null;
+function toast(text, onclick) {
+  const el = $("toast");
+  el.textContent = text;
+  el.classList.remove("hidden");
+  el.style.cursor = onclick ? "pointer" : "default";
+  el.onclick = onclick
+    ? () => { el.classList.add("hidden"); el.onclick = null; onclick(); }
+    : null;
+  clearTimeout(toastTimer);
+  // A reply the reader has to act on stays up longer than a passing notice.
+  toastTimer = setTimeout(() => el.classList.add("hidden"), onclick ? 15000 : 6000);
+}
+
+/* ---------------- render ---------------- */
+
+// captureTyping and restoreTyping carry the reader's cursor across a repaint.
+//
+// Keeping the text is not enough on its own. The diff repaints every couple of
+// seconds while an agent works, and a repaint that restores the words but drops
+// the caret to the start -- or drops focus entirely, so the next keystroke goes
+// nowhere -- is only marginally better than losing the comment. The key is the
+// textarea's identity rather than the element, since the element itself is gone
+// by the time this has to find it again.
+function captureTyping() {
+  const el = document.activeElement;
+  if (!el || el.tagName !== "TEXTAREA" || !el.dataset.typing) return null;
+  return { key: el.dataset.typing, start: el.selectionStart, end: el.selectionEnd };
+}
+
+function restoreTyping(saved) {
+  const key = (saved && saved.key) || state.focusKey;
+  state.focusKey = null;
+  if (!key) return;
+  const el = document.querySelector('textarea[data-typing="' + key + '"]');
+  if (!el) return;
+  el.focus();
+  // A box that was just opened puts the caret at the end of whatever is in it;
+  // one the reader was already typing in keeps the selection exactly.
+  const at = saved && saved.key === key
+    ? [saved.start, saved.end]
+    : [el.value.length, el.value.length];
+  try { el.setSelectionRange(at[0], at[1]); } catch (err) { /* not focusable yet */ }
+}
+
+function render() {
+  const snap = state.snapshot;
+  if (!snap) return;
+  const typing = captureTyping();
+  $("ws").textContent = snap.workspace || "Review changes";
+  renderBranchLine(snap);
+  for (const btn of $("scope").querySelectorAll("button")) {
+    btn.setAttribute("aria-selected", String(btn.dataset.scope === state.scope));
+  }
+  renderTheme();
+  renderTitle();
+  renderMode();
+  for (const btn of $("view").querySelectorAll("button")) {
+    btn.setAttribute("aria-selected", String((btn.dataset.split === "1") === state.split));
+  }
+  renderAgent(snap.agent || {});
+  renderFiles();
+  renderDiff();
+  renderBar();
+  if (snap.notice && snap.notice !== state.notice) { state.notice = snap.notice; toast(snap.notice); }
+  restoreTyping(typing);
+}
+
+// renderTheme puts the reader's choice on the root element and lights the
+// matching button.
+//
+// With no choice made the attribute is left off entirely rather than set to
+// whatever the OS currently says: absent is what lets the media query answer, so
+// the page keeps following the system as it changes through the day. The buttons
+// still show which theme is *in effect*, asking the OS directly for that, so
+// neither one is lit falsely.
+function renderTheme() {
+  const root = document.documentElement;
+  if (state.theme === "light" || state.theme === "dark") {
+    root.dataset.theme = state.theme;
+  } else {
+    delete root.dataset.theme;
+  }
+
+  const effective = state.theme || (prefersDark() ? "dark" : "light");
+  for (const btn of $("theme").querySelectorAll("button")) {
+    btn.setAttribute("aria-selected", String(btn.dataset.theme === effective));
+  }
+}
+
+function prefersDark() {
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  } catch (err) {
+    return false;
+  }
+}
+
+// setTheme records the choice server-side, so the next review opens the same way.
+//
+// Painted before the round trip, like the layout: a theme that waited on the
+// server to agree would make the button feel broken.
+async function setTheme(theme) {
+  state.theme = theme;
+  render();
+  const res = await post("/view", { theme: theme });
+  if (!res.ok) { toast("Could not change the theme."); return; }
+  const data = await res.json();
+  state.theme = data.theme || "";
+  render();
+}
+
+// renderTitle names the tab after the workspace and the file being read.
+//
+// It follows the selection, because the file is the part that moves as the
+// reader navigates -- and a review left in a background tab is otherwise
+// indistinguishable from any other. The base name rather than the path: the page
+// already shows the path, and a title long enough to be clipped identifies
+// nothing.
+//
+// Assigned only when it differs. render runs on every poll, and there is no
+// reason to hand the browser the same string every two seconds.
+function renderTitle() {
+  const snap = state.snapshot || {};
+  const workspace = snap.workspace || "";
+  const file = state.file ? state.file.slice(state.file.lastIndexOf("/") + 1) : "";
+
+  let title = "Review changes";
+  if (workspace && file) title = workspace + " - " + file + " Changes";
+  else if (workspace) title = workspace + " Changes";
+  else if (file) title = file + " Changes";
+
+  if (document.title !== title) document.title = title;
+}
+
+// renderMode shows the send mode. The label names the agent once it is known,
+// so the toggle says what it will actually do rather than describing a
+// mechanism.
+function renderMode() {
+  $("autosend").checked = state.autoSend;
+  $("modelabel").classList.toggle("on", state.autoSend);
+  $("modetext").textContent = state.autoSend
+    ? "Sending to " + agentName() + " as I comment"
+    : "Send as I comment";
+}
+
+// setAutoSend records the mode server-side and takes the answer from there.
+//
+// Turning it on delivers anything already queued, because the submit bar goes
+// away with it -- see renderBar. That is reported rather than done quietly: the
+// reader flipped a toggle and several comments left as a result.
+async function setAutoSend(on) {
+  const res = await post("/autosend", { autoSend: on });
+  if (!res.ok) {
+    toast("Could not change the send mode.");
+    $("autosend").checked = state.autoSend;
+    return;
+  }
+  const data = await res.json();
+  state.autoSend = !!data.autoSend;
+  if (data.threads) state.threads = data.threads;
+  render();
+  if (data.error) { toast(data.error); }
+  else if (data.sending) {
+    const n = (data.sent || []).length;
+    toast("Sent " + n + " queued comment" + (n === 1 ? "" : "s") + " to " + agentName() + ".");
+  }
+}
+
+// renderBranchLine names what is being compared, down to the commit.
+//
+// The base commit is shown, not just the base branch, because the base is
+// derived rather than chosen and it moves under the reader: a rebase mid-session
+// changes which commit "main" means for this review, and a bar reading only
+// "main" gives them no way to tell. The subject rides along after it and is the
+// first thing to be clipped, since the line is ellipsized -- the hash is what
+// identifies the commit and the subject is what makes it recognisable.
+function renderBranchLine(snap) {
+  const el = $("branch");
+  if (!snap.branch && !snap.base) { el.textContent = ""; el.title = ""; return; }
+
+  let html = esc(snap.base || "");
+  if (snap.baseRev) html += ' <span class="rev">' + esc(snap.baseRev) + "</span>";
+  if (snap.base && snap.branch) html += " &larr; ";
+  if (snap.branch) html += "<b>" + esc(snap.branch) + "</b>";
+  if (snap.baseSubject) html += ' <span class="subject">&middot; ' + esc(snap.baseSubject) + "</span>";
+  el.innerHTML = html;
+
+  // The full thing as a tooltip, because the visible line is clipped to fit.
+  el.title = [snap.base, snap.baseRev].filter(Boolean).join(" ") +
+    (snap.branch ? " \u2190 " + snap.branch : "") +
+    (snap.baseSubject ? "\n" + snap.baseSubject : "");
+}
+
+// agentName is what to call the agent in the interface. The page is opened
+// against whichever tab is active, so this is never a constant.
+function agentName() {
+  const a = (state.snapshot && state.snapshot.agent) || {};
+  return a.label || "the agent";
+}
+
+// renderAgent applies the agent's name to the interface and raises the banner
+// when that agent cannot reply.
+//
+// The banner is shown rather than worked around on purpose: the alternative
+// discussed was a second, file-based reply channel, and silently routing around
+// a sandbox the user chose is not this page's decision to make. Saying so lets
+// them either accept it or turn network access on.
+function renderAgent(agent) {
+  $("submit").textContent = "Submit to " + agentName();
+
+  const banner = $("banner");
+  if (agent.canReply || !agent.blocked || state.bannerDismissed) {
+    banner.classList.add("hidden");
+    return;
+  }
+  $("banner-title").textContent = agentName() + " cannot reply to comments. ";
+  $("banner-text").textContent = agent.blocked;
+  $("banner-fix").textContent = agent.fix || "";
+  banner.classList.remove("hidden");
+}
+
+function threadsFor(path) {
+  return state.threads.filter((t) => t.path === path);
+}
+
+function renderFiles() {
+  const files = state.snapshot.files || [];
+  const add = files.reduce((n, f) => n + f.added, 0);
+  const del = files.reduce((n, f) => n + f.removed, 0);
+  // The read count is only shown once something has been read: on a fresh
+  // review "0 read" is noise, and the number is only interesting as progress.
+  const read = files.filter((f) => state.viewed.has(f.path)).length;
+  $("navhead").innerHTML = files.length
+    ? files.length + " file" + (files.length === 1 ? "" : "s") +
+      (read ? " &middot; " + read + " read" : "") +
+      ' <span class="stat"><span class="a">+' + add + '</span> <span class="d">-' + del + "</span></span>"
+    : "No changes";
+
+  const list = $("filelist");
+  list.innerHTML = "";
+  appendNodes(buildTree(files), 0, list);
+}
+
+// buildTree turns the flat path list into the directory structure it describes.
+//
+// Every node also keeps `all`: each file is pushed into all of its ancestors, so
+// a shut folder can report what is inside it without walking the tree again.
+function buildTree(files) {
+  const root = { name: "", path: "", dirs: new Map(), files: [], all: [] };
+  for (const f of files) {
+    const parts = f.path.split("/");
+    let node = root;
+    node.all.push(f);
+    for (let i = 0; i < parts.length - 1; i++) {
+      const seg = parts[i];
+      let next = node.dirs.get(seg);
+      if (!next) {
+        next = {
+          name: seg, path: node.path ? node.path + "/" + seg : seg,
+          dirs: new Map(), files: [], all: [],
+        };
+        node.dirs.set(seg, next);
+      }
+      node = next;
+      node.all.push(f);
+    }
+    node.files.push(f);
+  }
+  return root;
+}
+
+// collapseChain folds a run of single-child directories into one row, so a Go
+// repository reads as `internal/gitreview` rather than as four nested folders
+// each holding nothing but the next.
+//
+// The row is keyed by the deepest path in the chain, which is the one whose
+// contents the twisty actually shows.
+function collapseChain(node) {
+  let label = node.name;
+  while (node.files.length === 0 && node.dirs.size === 1) {
+    node = node.dirs.values().next().value;
+    label += "/" + node.name;
+  }
+  return { node: node, label: label };
+}
+
+// appendNodes renders one level: folders first, then the files that live at it.
+// Depth is rendered as indentation rather than as nested lists, so a row's
+// height never depends on how deep it sits.
+function appendNodes(node, depth, list) {
+  const dirs = Array.from(node.dirs.values()).sort((a, b) => a.name.localeCompare(b.name));
+  for (const d of dirs) {
+    const chain = collapseChain(d);
+    const shut = state.dirsCollapsed.has(chain.node.path);
+    list.appendChild(dirRow(chain, depth, shut));
+    if (!shut) appendNodes(chain.node, depth + 1, list);
+  }
+  const leaves = node.files.slice().sort((a, b) => a.path.localeCompare(b.path));
+  for (const f of leaves) list.appendChild(fileRow(f, depth));
+}
+
+// indent converts a tree depth to a left padding, matching the row padding at
+// depth zero.
+function indent(depth) { return 9 + depth * 13; }
+
+function dirRow(chain, depth, shut) {
+  const li = document.createElement("li");
+  li.className = "dir";
+  const inside = chain.node.all;
+  const added = inside.reduce((n, f) => n + f.added, 0);
+  const removed = inside.reduce((n, f) => n + f.removed, 0);
+  const threads = inside.reduce((acc, f) => acc.concat(threadsFor(f.path)), []);
+  const unread = inside.some((f) => hasUnread(f.path));
+
+  // Counts are shown only while the folder is shut. Open, they duplicate the
+  // rows immediately below; shut, they are the only sign that anything in there
+  // has changed or has a comment waiting on it.
+  li.innerHTML =
+    '<button type="button" style="padding-left:' + indent(depth) + 'px">' +
+    '<span class="tw">' + (shut ? "\u25b8" : "\u25be") + "</span>" +
+    '<span class="fname"><span class="base">' + esc(chain.label) + "/</span></span>" +
+    (shut ? badgeHTML(threads, unread) + statHTML(added, removed) : "") +
+    "</button>";
+  li.querySelector("button").onclick = () => {
+    if (shut) state.dirsCollapsed.delete(chain.node.path);
+    else state.dirsCollapsed.add(chain.node.path);
+    render();
+  };
+  return li;
+}
+
+function fileRow(f, depth) {
+  const li = document.createElement("li");
+  const seen = state.viewed.has(f.path);
+  li.className = (f.path === state.file ? "sel" : "") + (seen ? " seen" : "");
+  // Only the base name: the tree above it already says where the file is, and
+  // repeating the directory on every row is what made the flat list unreadable.
+  const base = f.path.slice(f.path.lastIndexOf("/") + 1);
+  // The tick sits in the column the folders use for their twisty, so the ticks
+  // line up down the left edge instead of competing with the comment badge on
+  // the right -- which means something else entirely.
+  li.innerHTML =
+    '<button type="button" style="padding-left:' + indent(depth) + 'px" title="' + esc(f.path) + '">' +
+    '<span class="tw">' + (seen ? "\u2713" : "") + "</span>" +
+    '<span class="fname"><span class="base">' + esc(base) + "</span></span>" +
+    badgeHTML(threadsFor(f.path), hasUnread(f.path)) + statHTML(f.added, f.removed) +
+    "</button>";
+  li.querySelector("button").onclick = () => { selectFile(f.path); };
+  return li;
+}
+
+// setViewed ticks a file, or clears the tick.
+//
+// The server owns the answer -- it pins the mark to the digest of the diff on
+// screen -- so nothing is assumed here; the live stream brings the new state
+// back, which is also what keeps a second tab in step.
+async function setViewed(path, viewed) {
+  const res = await post("/viewed", { path: path, viewed: viewed });
+  if (!res.ok) { toast("Could not mark that file."); return; }
+  const data = await res.json();
+  if (data.viewed) { state.viewed = new Set(data.viewed); render(); }
+}
+
+// badgeHTML marks a row with what is still outstanding on it: a count of
+// unresolved comments, and a dot when the agent has replied somewhere the reader
+// has not looked.
+//
+// A file whose comments are all resolved gets nothing. It used to get a tick,
+// on the reasoning that a thread which vanishes on resolve looks like it was
+// never there -- but a navigator marked up with finished work competes with the
+// work that is left, which is the only thing the column is for. The comments are
+// still on the file when it is opened.
+function badgeHTML(threads, unread) {
+  let out = "";
+  const open = threads.filter((t) => !t.resolved).length;
+  if (open) out += '<span class="badge">' + open + "</span>";
+  if (unread) {
+    out += '<span class="badge new" title="' + esc(agentName()) +
+      ' has replied here">\u25cf</span>';
+  }
+  return out;
+}
+
+function statHTML(added, removed) {
+  return '<span class="stat"><span class="a">+' + added + '</span> <span class="d">-' + removed + "</span></span>";
+}
+
+// revealFile opens every folder above a path, so selecting a file the reader had
+// folded away does not leave the navigator showing no selection at all.
+function revealFile(path) {
+  const parts = String(path || "").split("/");
+  let prefix = "";
+  for (let i = 0; i < parts.length - 1; i++) {
+    prefix = prefix ? prefix + "/" + parts[i] : parts[i];
+    state.dirsCollapsed.delete(prefix);
+  }
+}
+
+// selectFile switches the diff pane and records the choice in the fragment.
+// selectFile scrolls to a file rather than swapping the pane to it.
+//
+// Every file is already on the page, so the navigator's job is to move the
+// reader, not to choose what exists. The spy is muted for the length of the
+// scroll: it would otherwise call every file the scroll passes over the current
+// one and rewrite the navigator, the title and the URL a dozen times on the way.
+function selectFile(path) {
+  state.file = path;
+  revealFile(path);
+  readUnread(path);
+  scrollToFile(path);
+  // replaceState, not a hash assignment: writing location.hash pushes a history
+  // entry per file, so Back would walk the files instead of leaving the review.
+  history.replaceState(null, "", location.pathname + location.search + "#" + encodeURIComponent(path));
+  render();
+}
+
+function scrollToFile(path) {
+  const section = state.sections[path];
+  if (!section) return;
+  state.scrollingTo = path;
+  section.el.scrollIntoView({ block: "start" });
+  // Long enough for a smooth scroll to land, short enough that the spy is not
+  // deaf if one never happens.
+  clearTimeout(scrollMute);
+  scrollMute = setTimeout(() => { state.scrollingTo = null; }, 400);
+}
+
+let scrollMute = null;
+
+/* ---------------- expanding the context around a hunk ---------------- */
+
+// EXPAND_STEP is how many lines one click opens up.
+const EXPAND_STEP = 20;
+const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+// hunkRange reads a hunk's position in both images out of its @@ header.
+//
+// The header is parsed rather than derived from the rows, because a hunk of pure
+// deletions has no line on the new side at all and still has a position there --
+// which is exactly the position the gap below it is measured from.
+function hunkRange(hunk) {
+  const m = HUNK_HEADER.exec((hunk && hunk.header) || "");
+  if (!m) return null;
+  const oldStart = +m[1], oldCount = m[2] === undefined ? 1 : +m[2];
+  const newStart = +m[3], newCount = m[4] === undefined ? 1 : +m[4];
+  return {
+    oldStart: oldStart, newStart: newStart,
+    oldEnd: oldStart + oldCount - 1, newEnd: newStart + newCount - 1,
+  };
+}
+
+// clampExpansion fits remembered expansion counts to the diff as it is now.
+//
+// It has to run before anything reads them. A count kept across a change -- or
+// restored from a previous visit -- was measured against hunks that may have
+// moved, and one that overshoots its gap would render lines belonging to the
+// hunk above: the same line twice, in two places, with no sign that anything
+// was wrong.
+//
+// The last hunk's downward count is left alone while the file's length is
+// unknown, because gapBelow answers 0 in that case and clamping to it would
+// throw away a perfectly good expansion the moment the file changed.
+function clampExpansion(file) {
+  const perFile = state.expand[file.path];
+  if (!perFile) return;
+  const hunks = file.hunks || [];
+  const knownTotal = state.lineTotal[file.path] !== undefined;
+
+  for (const key of Object.keys(perFile)) {
+    if (+key >= hunks.length) delete perFile[key];
+  }
+  for (let i = 0; i < hunks.length; i++) {
+    const open = perFile[i];
+    if (!open) continue;
+    open.up = Math.max(0, Math.min(open.up, gapAbove(file, i)));
+    if (i < hunks.length - 1 || knownTotal) {
+      open.down = Math.max(0, Math.min(open.down, gapBelow(file, i)));
+    }
+  }
+  // A gap is shared by the hunks either side of it, so the two counts opening
+  // into it must not sum past it. The one below gives way, arbitrarily but
+  // deterministically -- what matters is that they never overlap.
+  for (let i = 1; i < hunks.length; i++) {
+    const gap = gapAbove(file, i);
+    const below = perFile[i - 1] ? perFile[i - 1].down : 0;
+    if (perFile[i] && perFile[i].up + below > gap) {
+      perFile[i].up = Math.max(0, gap - below);
+    }
+  }
+}
+
+// refillExpanded re-reads the lines an expansion needs but no longer has.
+//
+// Between them, clampExpansion and this are what make an expansion survive the
+// file changing underneath it: the counts are kept, trimmed to fit, and the
+// lines behind them fetched again. Without it the counts would be right and the
+// rows would silently render short, since effectiveLines skips any line it
+// cannot find in the cache.
+const refillPending = new Set();
+
+function refillExpanded(file) {
+  const perFile = state.expand[file.path];
+  if (!perFile) return;
+  const cache = state.lineCache[file.path];
+  const hunks = file.hunks || [];
+
+  let from = Infinity;
+  let to = 0;
+  for (let i = 0; i < hunks.length; i++) {
+    const open = perFile[i];
+    const r = hunkRange(hunks[i]);
+    if (!open || !r) continue;
+    for (let k = 1; k <= open.up; k++) {
+      const n = r.newStart - k;
+      if (n >= 1 && !(cache && cache.has(n))) { from = Math.min(from, n); to = Math.max(to, n); }
+    }
+    for (let k = 1; k <= open.down; k++) {
+      const n = r.newEnd + k;
+      if (!(cache && cache.has(n))) { from = Math.min(from, n); to = Math.max(to, n); }
+    }
+  }
+  if (to === 0 || from > to) return;
+
+  // One request for the whole span, gaps included: two reads of one file cost
+  // more than one read of a few extra lines, and the extra lines are ones the
+  // reader is quite likely to open next anyway.
+  const key = file.path + ":" + from + "-" + to;
+  if (refillPending.has(key)) return;
+  refillPending.add(key);
+  fetchLines(file.path, from, to, true).then((got) => {
+    refillPending.delete(key);
+    if (got > 0) render();
+  });
+}
+
+function expandState(path, i) {
+  const perFile = state.expand[path] || (state.expand[path] = {});
+  return perFile[i] || (perFile[i] = { up: 0, down: 0 });
+}
+
+// gapAbove and gapBelow measure the unchanged run on each side of a hunk.
+//
+// A gap is the same length in both images -- nothing changed in it, by
+// definition -- which is what lets an expanded line carry both an old and a new
+// number without consulting git again.
+function gapAbove(file, i) {
+  const r = hunkRange(file.hunks[i]);
+  if (!r) return 0;
+  if (i === 0) return Math.max(0, r.newStart - 1);
+  const prev = hunkRange(file.hunks[i - 1]);
+  return prev ? Math.max(0, r.newStart - prev.newEnd - 1) : 0;
+}
+
+function gapBelow(file, i) {
+  const r = hunkRange(file.hunks[i]);
+  if (!r) return 0;
+  if (i < file.hunks.length - 1) {
+    const next = hunkRange(file.hunks[i + 1]);
+    return next ? Math.max(0, next.newStart - r.newEnd - 1) : 0;
+  }
+  // Below the last hunk the answer needs the file's length, which the snapshot
+  // deliberately does not carry: counting it would mean reading every changed
+  // file on every two-second poll. Until it is known the answer is zero, not a
+  // guess -- offering the expander optimistically put a bar at the foot of every
+  // diff whose last hunk already reached the end of the file, an arrow that did
+  // nothing. ensureLineTotal asks once, for the file on screen only.
+  const total = state.lineTotal[file.path];
+  return total === undefined ? 0 : Math.max(0, total - r.newEnd);
+}
+
+// roomAbove and roomBelow subtract what is already open. A gap is shared by the
+// hunks on either side of it, so each has to account for the other's expansion
+// or the two would overlap and render the same lines twice.
+function roomAbove(file, i) {
+  const opposite = i > 0 ? expandState(file.path, i - 1).down : 0;
+  return Math.max(0, gapAbove(file, i) - expandState(file.path, i).up - opposite);
+}
+
+function roomBelow(file, i) {
+  const opposite = i < file.hunks.length - 1 ? expandState(file.path, i + 1).up : 0;
+  return Math.max(0, gapBelow(file, i) - expandState(file.path, i).down - opposite);
+}
+
+// contextLine builds a row for an expanded line.
+//
+// The leading space is git's own context marker, which splitMarker takes off
+// again, so an expanded line renders exactly as a context line from the diff
+// does -- and can be commented on the same way, since it carries real numbers.
+function contextLine(text, oldNo, newNo) {
+  return { kind: "context", content: " " + text, old: oldNo, new: newNo, expanded: true };
+}
+
+// effectiveLines is what actually gets rendered for a hunk: the expanded context
+// above it, the hunk itself, then the expanded context below.
+//
+// Returning one flat list matters beyond tidiness. Range selection indexes into
+// it, so expanded lines are draggable and commentable exactly like the diff's
+// own, with no second code path to keep in step.
+function effectiveLines(file, i) {
+  const hunk = file.hunks[i];
+  const r = hunkRange(hunk);
+  if (!r) return hunk.lines || [];
+  const open = expandState(file.path, i);
+  const cache = state.lineCache[file.path];
+  const out = [];
+
+  for (let k = open.up; k >= 1; k--) {
+    const n = r.newStart - k;
+    const text = cache && cache.get(n);
+    if (n < 1 || text === undefined) continue;
+    out.push(contextLine(text, r.oldStart - k, n));
+  }
+  for (const line of hunk.lines || []) out.push(line);
+  for (let k = 1; k <= open.down; k++) {
+    const n = r.newEnd + k;
+    const text = cache && cache.get(n);
+    if (text === undefined) continue;
+    out.push(contextLine(text, r.oldEnd + k, n));
+  }
+  return out;
+}
+
+// totalsPending stops a render from asking again while an answer is in flight.
+// The pane repaints every couple of seconds, so without it the poll would fire a
+// request per tick.
+const totalsPending = new Set();
+
+// ensureLineTotal learns the length of the file on screen, so the foot expander
+// can say truthfully whether anything is below the last hunk.
+//
+// One request per file per digest, and only for the file being looked at -- the
+// cost the snapshot could not carry was reading *every* changed file on *every*
+// poll. Line 1 is asked for because the response's `total` is the point; its
+// text is cached alongside and is a real line, so nothing is wasted.
+//
+// Untracked files are skipped: their diff is the whole file already
+// (`@@ -0,0 +1,N @@`), so there is provably nothing below it.
+function ensureLineTotal(file) {
+  if (!file || file.untracked || file.binary || file.large) return;
+  if (!file.hunks || !file.hunks.length) return;
+  if (state.lineTotal[file.path] !== undefined) return;
+  if (totalsPending.has(file.path)) return;
+
+  totalsPending.add(file.path);
+  fetchLines(file.path, 1, 1, true).then(() => {
+    totalsPending.delete(file.path);
+    // Only repaint if the answer arrived; an unreadable file leaves the total
+    // unknown, which reads as "nothing below" and needs no repaint.
+    if (state.lineTotal[file.path] !== undefined) render();
+  });
+}
+
+// fetchLines reads a run of the file and returns how many lines came back.
+//
+// The count is the return value rather than the lines because the caller only
+// advances its expansion by what it actually got: a request that ran off the end
+// of the file must open up that much and no more.
+// A read the reader did not ask for -- the one that measures the file -- must
+// not toast: a deleted or unreadable file would otherwise report an error for
+// simply having been opened.
+async function fetchLines(path, from, to, quiet) {
+  const q = new URLSearchParams({ path: path, from: String(from), to: String(to) });
+  const complain = (msg) => { if (!quiet) toast(msg); };
+  let data;
+  try {
+    const res = await fetch(API + "/lines?" + q.toString());
+    if (!res.ok) { complain("Could not read more of " + path); return 0; }
+    data = await res.json();
+  } catch (err) {
+    complain("Could not read more of " + path);
+    return 0;
+  }
+  if (data.error) { complain(data.error); return 0; }
+  if (data.total) state.lineTotal[path] = data.total;
+
+  const cache = state.lineCache[path] || (state.lineCache[path] = new Map());
+  (data.lines || []).forEach((text, k) => cache.set(data.from + k, text));
+  return (data.lines || []).length;
+}
+
+// expandHunk opens the context in one direction by up to EXPAND_STEP lines.
+//
+// The lines are fetched before the counter moves, so a render never asks for a
+// line that is not cached and no half-open state is ever on screen.
+async function expandHunk(file, i, dir) {
+  const r = hunkRange(file.hunks[i]);
+  if (!r) return;
+  const open = expandState(file.path, i);
+  const room = dir === "up" ? roomAbove(file, i) : roomBelow(file, i);
+  if (room <= 0) return;
+
+  const step = Math.min(EXPAND_STEP, room);
+  let from, to;
+  if (dir === "up") {
+    to = r.newStart - open.up - 1;
+    from = Math.max(1, to - step + 1);
+  } else {
+    from = r.newEnd + open.down + 1;
+    to = from + step - 1;
+  }
+  if (to < from) return;
+
+  const got = await fetchLines(file.path, from, to);
+  // Even a read that returned nothing is worth a repaint: it will have reported
+  // the file's length, which is what takes a dead expander off the last hunk.
+  if (got > 0) {
+    open[dir] += got;
+    saveExpansion();
+  }
+  render();
+}
+
+function expandButton(glyph, title, onclick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = glyph;
+  b.title = title;
+  b.onclick = onclick;
+  return b;
+}
+
+// gapBar is the bar for the run of hidden lines above hunk `i`, or -- when `i`
+// is one past the last hunk -- for the tail of the file after it. It returns
+// null when nothing is hidden there.
+//
+// One bar per gap, drawn *at* the gap. The two directions are the same run of
+// hidden lines seen from its two ends -- roomAbove(i) and roomBelow(i-1) measure
+// it identically -- so one bar offers both:
+//
+//   ▲  the lines *before* the hunk below the bar   (expandHunk(i, "up"))
+//   ▼  the lines *after* the hunk above the bar    (expandHunk(i-1, "down"))
+//
+// Each arrow reveals what lies in the direction it points, counted from the
+// nearest visible line on the far side of the gap: at a bar between line 24 and
+// line 142, ▲ shows what comes before 142 and ▼ shows what comes after 24. It
+// was the other way round first, which reads just as coherently written down and
+// not at all when you are looking at it.
+//
+// That the bar is *at* the gap matters separately. The downward arrow used to
+// live in a hunk's header, at the top of the hunk, while the lines it revealed
+// appeared at the bottom -- off screen for any hunk taller than the viewport.
+// And a header is only drawn while something is hidden above its hunk, so
+// opening the gap above a hunk took away the arrow that opened the gap below it.
+//
+// The label is the `@@` header of the hunk below, which is what the gap is a
+// discontinuity in front of; the tail gap has no hunk below it and so no label.
+function gapBar(file, i) {
+  const hunks = file.hunks || [];
+  const tail = i >= hunks.length;
+  const room = tail ? roomBelow(file, hunks.length - 1) : roomAbove(file, i);
+  if (room <= 0) return null;
+
+  const el = document.createElement("div");
+  el.className = "hunk-head" + (tail ? " foot" : "");
+  const acts = document.createElement("span");
+  acts.className = "hunk-acts";
+
+  // ▲ walks back from the code *below* the bar, ▼ walks on from the code
+  // *above* it -- so each arrow reveals the lines that lie in the direction it
+  // points, counted from the nearest visible line on the far side of the gap.
+  // The tooltips name that line, because an arrow in the middle of a gap has
+  // two plausible readings and a number has one.
+  if (!tail) {
+    const below = hunkRange(hunks[i]);
+    acts.appendChild(expandButton("▲",
+      below ? "Show the lines before " + below.newStart : "Show the lines above",
+      () => expandHunk(file, i, "up")));
+  }
+  if (i > 0) {
+    const above = hunkRange(hunks[i - 1]);
+    acts.appendChild(expandButton("▼",
+      above ? "Show the lines after " + above.newEnd : "Show the lines below",
+      () => expandHunk(file, i - 1, "down")));
+  }
+  el.appendChild(acts);
+  if (!tail) {
+    const label = document.createElement("span");
+    label.textContent = hunks[i].header;
+    el.appendChild(label);
+  }
+  return el;
+}
+
+/* ---------------- comment anchoring ---------------- */
+
+// coversLine reports whether a comment is about this line.
+//
+// endLine is trusted only when it is at or past startLine: a single-line comment
+// may carry either, and treating a missing one as 0 would leave a range that
+// covers nothing at all.
+function coversLine(t, line) {
+  const n = t.side === "old" ? line.old : line.new;
+  if (!n) return false;
+  const end = t.endLine > t.startLine ? t.endLine : t.startLine;
+  return n >= t.startLine && n <= end;
+}
+
+// placeThreads decides which rendered row each comment card sits under: the
+// **last** row of its range that this diff actually shows.
+//
+// Under, not over. A card above its range separates the comment from the code by
+// however many lines it covers, and the reader has to guess downwards to find
+// what it is about; after the last line, the range reads as the quote and the
+// card as the response to it.
+//
+// Iterating in render order and keeping the latest match is also what makes a
+// range spanning two hunks land at its true end, and what identifies the
+// comments that have no row left at all.
+function placeThreads(file, threads, linesByHunk) {
+  const at = new Map();
+  for (let i = 0; i < linesByHunk.length; i++) {
+    for (const line of linesByHunk[i]) {
+      for (const t of threads) {
+        if (coversLine(t, line)) {
+          at.set(t.id, { hunk: i, line: t.side === "old" ? line.old : line.new });
+        }
+      }
+    }
+  }
+  return at;
+}
+
+/* ---------------- syntax highlighting ---------------- */
+
+// EXT_LANG and NAME_LANG map a file onto a highlight.js language id.
+//
+// An explicit map, rather than letting highlight.js guess: auto-detection on a
+// fragment of a diff picks the wrong language often enough to be worse than no
+// colour, and it does it silently. Anything unmapped -- or mapped to a language
+// this bundle does not carry -- renders as plain text, which is the honest
+// answer and exactly what happens today.
+const EXT_LANG = {
+  go: "go",
+  js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
+  ts: "typescript", tsx: "typescript",
+  py: "python", rb: "ruby", rs: "rust", java: "java", kt: "kotlin", kts: "kotlin",
+  swift: "swift", cs: "csharp", php: "php", lua: "lua", pl: "perl", pm: "perl", r: "r",
+  c: "c", h: "c", cc: "cpp", cpp: "cpp", cxx: "cpp", hpp: "cpp", hh: "cpp",
+  sh: "bash", bash: "bash", zsh: "bash", fish: "bash",
+  json: "json", jsonc: "json",
+  yaml: "yaml", yml: "yaml",
+  toml: "ini", ini: "ini", cfg: "ini", conf: "ini",
+  css: "css", scss: "scss", sass: "scss", less: "less",
+  html: "xml", htm: "xml", xml: "xml", svg: "xml", vue: "xml",
+  md: "markdown", markdown: "markdown",
+  sql: "sql", graphql: "graphql", gql: "graphql",
+  diff: "diff", patch: "diff",
+  mk: "makefile",
+};
+
+const NAME_LANG = {
+  makefile: "makefile", "gnumakefile": "makefile",
+  ".bashrc": "bash", ".zshrc": "bash", ".profile": "bash",
+  ".gitignore": "plaintext", ".gitattributes": "plaintext",
+};
+
+// MAX_HL_BYTES bounds one lexing pass. See the note where it is checked.
+const MAX_HL_BYTES = 200000;
+
+// languageFor resolves a path to a language the loaded bundle actually has.
+//
+// The getLanguage check is what makes a smaller bundle degrade instead of
+// throwing: highlight.js raises on an unregistered language rather than falling
+// back, so asking for one it does not carry would take the diff pane down.
+function languageFor(path) {
+  if (typeof hljs === "undefined") return null;
+  const base = String(path || "").slice(String(path || "").lastIndexOf("/") + 1).toLowerCase();
+  const byName = NAME_LANG[base];
+  if (byName) return hljs.getLanguage(byName) ? byName : null;
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const lang = EXT_LANG[base.slice(dot + 1)];
+  return lang && hljs.getLanguage(lang) ? lang : null;
+}
+
+// splitHighlighted turns one highlighted block into per-line HTML.
+//
+// highlight.js nests spans, and a construct that crosses a newline -- a Python
+// docstring, a JS template literal, a C block comment -- leaves one open across
+// it. Cutting the string at newlines would put an unclosed span in one table
+// cell and a stray closing tag in another, so what is open is closed at each
+// break and reopened on the next line.
+//
+// The scan only has to understand `<span class="...">` and `</span>`, because
+// that is the whole of highlight.js's output; everything else in it is escaped
+// text.
+function splitHighlighted(html) {
+  const lines = [];
+  const open = [];
+  let cur = "";
+  let i = 0;
+  while (i < html.length) {
+    const ch = html[i];
+    if (ch === "<") {
+      const end = html.indexOf(">", i);
+      if (end < 0) { cur += html.slice(i); break; }
+      const tag = html.slice(i, end + 1);
+      if (tag[1] === "/") open.pop();
+      else open.push(tag);
+      cur += tag;
+      i = end + 1;
+    } else if (ch === "\n") {
+      lines.push(cur + "</span>".repeat(open.length));
+      cur = open.join("");
+      i++;
+    } else {
+      let stop = html.length;
+      const tag = html.indexOf("<", i);
+      const nl = html.indexOf("\n", i);
+      if (tag >= 0) stop = Math.min(stop, tag);
+      if (nl >= 0) stop = Math.min(stop, nl);
+      cur += html.slice(i, stop);
+      i = stop;
+    }
+  }
+  lines.push(cur + "</span>".repeat(open.length));
+  return lines;
+}
+
+// highlightRows returns the per-row HTML for a hunk, aligned to `lines`, with a
+// null wherever a row has no highlighting.
+//
+// Each side is lexed as one block, not each row on its own. A hunk's rows are
+// not source: they interleave a removed line with the line that replaced it, so
+// joining them hands the lexer text that never existed in any file. The
+// post-image rows (context and added) *are* contiguous source, and so are the
+// pre-image rows (context and removed) -- so those are the two strings that get
+// highlighted. That is what lets a multi-line construct inside the hunk come out
+// right, and it costs two calls per hunk rather than one per line. A construct
+// that opens *before* the hunk is still read wrong; expanding the context is the
+// answer to that, and it is why expanded rows are lexed with everything else.
+function highlightRows(lines, lang) {
+  const out = new Array(lines.length).fill(null);
+  if (!lang) return out;
+
+  const newRows = [], newSrc = [], oldRows = [], oldSrc = [];
+  lines.forEach((line, i) => {
+    // Not a line of the file: git's "\ No newline at end of file" carries a
+    // number on neither side, and feeding it in would shift every line after it
+    // onto the wrong row.
+    if (!line.old && !line.new) return;
+    const text = splitMarker(line.content)[1];
+    if (line.kind !== "del") { newRows.push(i); newSrc.push(text); }
+    if (line.kind !== "add") { oldRows.push(i); oldSrc.push(text); }
+  });
+
+  const paint = (rows, src) => {
+    if (!rows.length) return;
+    // A file under git's 2MB "large" threshold can still be one minified line
+    // of half a megabyte, and lexing that is measured in seconds rather than
+    // milliseconds. Plain text is the right answer for it anyway: nobody reads
+    // a minified bundle for its keywords.
+    const source = src.join("\n");
+    if (source.length > MAX_HL_BYTES) return;
+    let html;
+    try {
+      // hljs escapes its input, so the only markup in the result is its own
+      // spans. That is what makes the innerHTML at the call site safe -- the
+      // line's text is never treated as markup.
+      html = splitHighlighted(
+        hljs.highlight(source, { language: lang, ignoreIllegals: true }).value);
+    } catch (err) {
+      return; // plain text is always an acceptable answer
+    }
+    rows.forEach((row, k) => { if (html[k] !== undefined) out[row] = html[k]; });
+  };
+  // Old first, so a context row -- which is in both -- ends up carrying the
+  // post-image result: that is the code that exists now.
+  paint(oldRows, oldSrc);
+  paint(newRows, newSrc);
+  return out;
+}
+
+// highlightFor memoises highlightRows for one hunk.
+//
+// The diff pane is rebuilt on every repaint -- a poll, a selection, a comment --
+// so without this the same lines are lexed several times a second. The key
+// carries how far the context is opened, because expanding changes which lines
+// the hunk holds; the whole entry is dropped when the file's digest moves, in
+// dropStaleContext, alongside the cached lines it was computed from.
+function highlightFor(file, hunkIdx, lines, lang) {
+  if (!lang) return new Array(lines.length).fill(null);
+  const open = expandState(file.path, hunkIdx);
+  // The line count is part of the key, not just how far the context is opened.
+  // Those two used to be the same thing, because a count only ever moved after
+  // its lines had been fetched -- but an expansion restored from a previous
+  // visit arrives before them, so the first render sees the counts with none of
+  // the lines. Keyed on the counts alone, that render's short array was handed
+  // back to the render that followed it, painting the hunk's own text onto the
+  // expanded rows above it: line 1 reading "line 077".
+  const key = hunkIdx + ":" + open.up + ":" + open.down + ":" + lines.length;
+  const perFile = state.hl[file.path] || (state.hl[file.path] = {});
+  if (!perFile[key]) perFile[key] = highlightRows(lines, lang);
+  return perFile[key];
+}
+
+/* ---------------- the diff pane: every file, one page ---------------- */
+
+// ROW_HEIGHT_GUESS is what an unbuilt file's placeholder is sized with, in px.
+// It only has to be close: the moment a file is built its real height is
+// measured and kept, so the guess is never used for it again.
+const ROW_HEIGHT_GUESS = 19;
+
+// MOUNT_MARGIN is how far outside the viewport a file is built, in px. Roughly a
+// screen either way, so scrolling at a normal pace never reaches an empty one.
+const MOUNT_MARGIN = 1200;
+
+// renderDiff draws every changed file, in the order the navigator lists them.
+//
+// One page rather than one file at a time, which is what a review actually is:
+// the reader scrolls through the change and the navigator says where they are,
+// instead of the navigator being the only way to move.
+//
+// Only the files near the viewport are built. A diff of this repo is sixty files
+// and twelve thousand lines; building all of it took the best part of a second,
+// and the pane is rebuilt on every poll, so it would have spent half its life
+// laying out code nobody was looking at. An unbuilt file is a spacer of its own
+// height -- guessed until it has been built once, measured every time after --
+// so the scrollbar means the same thing whether or not the rows behind it exist
+// yet.
+function renderDiff() {
+  const pane = $("diff");
+  const files = orderedFiles();
+
+  if (!files.length) {
+    pane.replaceChildren(el("div", "empty",
+      state.snapshot.error ? state.snapshot.error : "No changes to review."));
+    state.sections = {};
+    return;
+  }
+
+  // Rebuilding a section changes nothing above it, but the browser still
+  // reports scrollTop before layout settles; holding it makes the pane sit
+  // still through a poll.
+  const keepScroll = pane.scrollTop;
+  reconcileSections(pane, files);
+  for (const file of files) {
+    const section = state.sections[file.path];
+    if (nearViewport(pane, section.el)) mountSection(section, file);
+    else unmountSection(section);
+  }
+  pane.scrollTop = keepScroll;
+}
+
+// orderedFiles returns the files in the order the navigator shows them, which is
+// the tree's order and not the snapshot's.
+//
+// Built from the same walk the navigator uses, so the two cannot disagree about
+// what comes next -- a page whose order differs from its own index is worse than
+// either order on its own.
+function orderedFiles() {
+  // Cached against the snapshot's digest: this runs on every scroll frame, and
+  // rebuilding the tree sixty files deep to answer "what order are they in" is
+  // work that only changes when the diff does.
+  const stamp = (state.snapshot && state.snapshot.digest) || "";
+  if (state.orderStamp !== stamp) {
+    const out = [];
+    collectFiles(buildTree((state.snapshot && state.snapshot.files) || []), out);
+    state.orderStamp = stamp;
+    state.order = out;
+  }
+  return state.order;
+}
+
+function collectFiles(node, out) {
+  const dirs = Array.from(node.dirs.values()).sort((a, b) => a.name.localeCompare(b.name));
+  for (const d of dirs) collectFiles(collapseChain(d).node, out);
+  for (const f of node.files.slice().sort((a, b) => a.path.localeCompare(b.path))) out.push(f);
+}
+
+// reconcileSections makes the pane hold one section per file, in order, reusing
+// the elements that are already there.
+//
+// Reused rather than rebuilt because a section remembers two things worth
+// keeping: its measured height, and whether its rows are currently built.
+// Recreating them every render would lose both and undo the point of the whole
+// arrangement.
+function reconcileSections(pane, files) {
+  const wanted = new Set(files.map((f) => f.path));
+  for (const path of Object.keys(state.sections)) {
+    if (!wanted.has(path)) delete state.sections[path];
+  }
+
+  const order = [];
+  for (const file of files) {
+    let section = state.sections[file.path];
+    if (!section) {
+      const wrap = el("section", "file");
+      wrap.dataset.path = file.path;
+      section = {
+        el: wrap, head: null, body: el("div", "file-body"),
+        digest: null, height: estimateHeight(file), mounted: false,
+      };
+      // Sized before it is measured, or every section would start at zero
+      // height, stack at the top of the pane, and all of them would count as
+      // near the viewport -- mounting the whole diff on the first render, which
+      // is the one thing this arrangement exists to avoid.
+      section.body.style.minHeight = Math.round(section.height) + "px";
+      wrap.appendChild(section.body);
+      state.sections[file.path] = section;
+    }
+    // The head is cheap and carries the read tick, so it is redrawn every time.
+    const head = fileHead(file);
+    if (section.head) section.el.replaceChild(head, section.head);
+    else section.el.insertBefore(head, section.body);
+    section.head = head;
+    order.push(section.el);
+  }
+
+  // replaceChildren with the full list handles creation, removal and reordering
+  // in one go, and leaves elements that are already in the right place alone.
+  const current = Array.from(pane.children);
+  if (current.length !== order.length || current.some((node, i) => node !== order[i])) {
+    pane.replaceChildren(...order);
+  }
+}
+
+// estimateHeight guesses a file's height from its row count, for the placeholder
+// it gets before it has ever been built.
+function estimateHeight(file) {
+  let rows = 0;
+  for (const hunk of file.hunks || []) rows += (hunk.lines || []).length + 1;
+  return rows * ROW_HEIGHT_GUESS;
+}
+
+function nearViewport(pane, node) {
+  const paneBox = pane.getBoundingClientRect();
+  const box = node.getBoundingClientRect();
+  return box.bottom > paneBox.top - MOUNT_MARGIN && box.top < paneBox.bottom + MOUNT_MARGIN;
+}
+
+// mountSection builds a file's rows, or leaves them alone if they are already
+// built and nothing about them has changed.
+function mountSection(section, file) {
+  const stamp = sectionStamp(file);
+  if (section.mounted && section.digest === stamp) return;
+
+  section.body.replaceChildren(...fileBody(file));
+  section.digest = stamp;
+  section.mounted = true;
+  // Measured now, and used from here on for the placeholder: after one build
+  // the placeholder is the file's real height, so unmounting it cannot move
+  // anything below it.
+  section.height = section.body.getBoundingClientRect().height;
+  section.body.style.minHeight = "";
+}
+
+// unmountSection replaces a file's rows with a spacer of the same height.
+function unmountSection(section) {
+  if (!section.mounted) return;
+  section.body.replaceChildren();
+  section.body.style.minHeight = Math.round(section.height) + "px";
+  section.mounted = false;
+  section.digest = null;
+}
+
+// sectionStamp is everything about a file that changes what its rows look like.
+//
+// A file whose stamp has not moved is left in the DOM untouched, which is what
+// keeps a poll from rebuilding four screens of code every two seconds -- and
+// what keeps the reply box the reader is typing in from being rebuilt under
+// them more often than it must be.
+function sectionStamp(file) {
+  const threads = threadsFor(file.path).map((t) =>
+    t.id + (t.resolved ? "r" : "") + (t.sent ? "s" : "") +
+    (t.replies || []).length + (isCollapsed(t) ? "c" : "") +
+    (state.replies[t.id] !== undefined ? "w" : "")).join(",");
+  const form = state.form && state.form.path === file.path
+    ? state.form.side + state.form.start + "-" + state.form.end : "";
+  const open = JSON.stringify(state.expand[file.path] || {});
+  const cached = (state.lineCache[file.path] || new Map()).size;
+  return [file.digest, threads, form, open, cached,
+    state.split ? "s" : "u", state.theme].join("|");
+}
+
+// fileBody builds the nodes for one file: its notes, its hunks and the bars
+// between them, and any comment left stranded by a change.
+function fileBody(file) {
+  const out = [];
+  if (file.error) out.push(noteEl(file.error));
+  if (file.binary) out.push(noteEl("Binary file — not shown."));
+  if (file.large) out.push(noteEl("File is too large to display."));
+
+  const threads = threadsFor(file.path);
+  const hunks = file.hunks || [];
+  if (!hunks.length && !file.binary && !file.large && !file.error) {
+    out.push(noteEl("No textual diff for this file."));
+  }
+
+  // Before the lines are built from them, not after: an overshooting count
+  // would already have rendered a duplicated line by then.
+  clampExpansion(file);
+  const linesByHunk = hunks.map((_, i) => effectiveLines(file, i));
+  const at = placeThreads(file, threads, linesByHunk);
+  const lang = languageFor(file.path);
+  ensureLineTotal(file);
+  refillExpanded(file);
+
+  const draw = state.split ? rowsTableSplit : rowsTable;
+  for (let i = 0; i < hunks.length; i++) {
+    const bar = gapBar(file, i);
+    if (bar) out.push(bar);
+    const table = draw(file, hunks[i], i, linesByHunk[i], threads, at,
+      highlightFor(file, i, linesByHunk[i], lang));
+    // One line-number width per file, so hunks expanded until they touch read
+    // as continuous code rather than stepping sideways.
+    sizeLineColumns(table, linesByHunk);
+    out.push(table);
+  }
+  if (hunks.length) {
+    const tailBar = gapBar(file, hunks.length);
+    if (tailBar) out.push(tailBar);
+  }
+
+  // Comments whose anchor no longer appears in the diff still have to be
+  // visible: the agent may have already changed the code they were about, and a
+  // thread that silently vanishes looks like it was never sent.
+  const orphans = threads.filter((t) => !at.has(t.id));
+  if (orphans.length) {
+    const wrap = el("div", "thread-cell");
+    wrap.style.paddingLeft = "16px";
+    wrap.appendChild(noteEl("Comments whose lines are no longer in the diff:"));
+    for (const t of orphans) wrap.appendChild(threadCard(t));
+    out.push(wrap);
+  }
+
+  const form = state.form;
+  if (form && form.path === file.path && !rowFor(linesByHunk, form.side, form.end)) {
+    const wrap = el("div", "thread-cell");
+    wrap.style.paddingLeft = "16px";
+    wrap.appendChild(noteEl("The lines this comment was on are no longer in the diff:"));
+    wrap.appendChild(formCard(form));
+    out.push(wrap);
+  }
+  return out;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+/* ---------------- which file am I looking at ---------------- */
+
+// spyScroll names the file under the top of the pane.
+//
+// The navigator stops being the only way to move and becomes a report of where
+// the reader is, so it has to follow the scroll rather than the other way round.
+// The file chosen is the last one whose head has reached the top of the pane,
+// which is the one whose code fills the screen -- not the one nearest the
+// middle, which flickers between neighbours on a short file.
+function spyScroll() {
+  if (state.scrollingTo) return;
+  const pane = $("diff");
+  const top = pane.getBoundingClientRect().top + 1;
+
+  let current = null;
+  for (const file of orderedFiles()) {
+    const section = state.sections[file.path];
+    if (!section) continue;
+    if (section.el.getBoundingClientRect().top <= top) current = file.path;
+  }
+  if (!current) {
+    const first = orderedFiles()[0];
+    current = first ? first.path : null;
+  }
+  if (!current || current === state.file) return;
+
+  state.file = current;
+  readUnread(current);
+  // Only the parts that name the file: a full render would rebuild rows on
+  // every scroll frame.
+  renderFiles();
+  renderTitle();
+  history.replaceState(null, "", location.pathname + location.search + "#" + encodeURIComponent(current));
+}
+
+// sizeLineColumns publishes the widest line number in the file as a custom
+// property the gutter cells size themselves from.
+//
+// Set on each table rather than on the pane, now that every file is on one page:
+// a single value for the whole pane would size a three-digit file's gutter for
+// whichever file in the diff happens to be the longest.
+function sizeLineColumns(node, linesByHunk) {
+  let widest = 0;
+  for (const lines of linesByHunk) {
+    for (const line of lines) {
+      if (line.old > widest) widest = line.old;
+      if (line.new > widest) widest = line.new;
+    }
+  }
+  node.style.setProperty("--ln-ch", String(String(widest || 0).length));
+}
+
+// rowFor reports whether a line number is on screen for the given side.
+function rowFor(linesByHunk, side, number) {
+  for (const lines of linesByHunk) {
+    for (const line of lines) {
+      if ((side === "old" ? line.old : line.new) === number) return true;
+    }
+  }
+  return false;
+}
+
+// fileHead is the sticky bar naming the file, and where it is marked read.
+function fileHead(file) {
+  const head = document.createElement("div");
+  head.className = "file-head";
+  head.innerHTML = '<span class="tag">' + esc(file.status) + "</span>" +
+    (file.oldPath ? "<span>" + esc(file.oldPath) + " &rarr; </span>" : "") +
+    "<span>" + esc(file.path) + "</span>" +
+    '<span class="spacer"></span>' +
+    '<span class="stat"><span class="a">+' + file.added + '</span> <span class="d">-' + file.removed + "</span></span>";
+
+  const seen = state.viewed.has(file.path);
+  head.appendChild(button(
+    seen ? "✓ Read" : "Mark read",
+    "btn small" + (seen ? "" : " ghost"),
+    () => setViewed(file.path, !seen),
+  ));
+  return head;
+}
+
+function noteEl(text) {
+  const el = document.createElement("div");
+  el.className = "note";
+  el.textContent = text;
+  return el;
+}
+
+// splitMarker separates a diff line's +/-/space prefix from the line itself, so
+// the marker can be rendered in its own column.
+//
+// Anything else in that position is left alone and shown whole: git's
+// "\ No newline at end of file" is not a line of the file and has no marker to
+// strip, and cutting its first character would silently mangle it.
+function splitMarker(content) {
+  const c = String(content === undefined || content === null ? "" : content);
+  const first = c.charAt(0);
+  if (first === "+" || first === "-") return [first, c.slice(1)];
+  if (first === " ") return ["", c.slice(1)];
+  return ["", c];
+}
+
+// formCovers is the draft comment's equivalent of coversLine, so the lines being
+// commented on stay marked while the reader is still typing. Losing the marking
+// the moment the drag ends is what made a multi-line comment look like it had
+// landed on one line.
+function formCovers(form, file, line) {
+  if (!form || form.path !== file.path) return false;
+  const n = form.side === "old" ? line.old : line.new;
+  return !!n && n >= form.start && n <= form.end;
+}
+
+// paintPick shows the current selection by toggling a class on the rows that are
+// already there.
+//
+// It exists because rebuilding the table mid-drag silently loses the drag. The
+// mousedown lands on a cell; a re-render then destroys that cell, and Chrome has
+// nowhere to deliver the matching mouseup, so the document handler that commits
+// the range never runs. The reader releases the mouse and no comment form opens
+// -- and `state.dragging` is left armed, so their *next* click anywhere finishes
+// the stale drag and opens a form on lines they are no longer looking at. A real
+// mouse hid this most of the time, because any movement after the last re-render
+// re-targets the pointer at a live cell; releasing without that final jiggle did
+// not.
+//
+// Repainting instead of re-rendering is also simply cheaper: crossing a row costs
+// a class toggle rather than rebuilding every row in the hunk.
+// armDrag starts a range selection and takes the measurements it will be
+// steered by.
+//
+// The rows are measured once, here, in *pane content* coordinates -- offsets
+// from the top of the scrollable content rather than from the top of the
+// window. Those do not move when the pane scrolls, so a drag that scrolls the
+// pane keeps resolving correctly, and nothing has to re-measure on every mouse
+// move. It is safe to cache because the drag itself no longer re-renders: from
+// here until the release, only classes change.
+function armDrag(file, hunk, lines, index, side) {
+  state.dragging = true;
+  state.picking = {
+    path: file.path, hunk: hunk.header, side: side,
+    from: index, to: index, lines: lines,
+    rows: measureRows(file.path, hunk.header, side),
+  };
+  paintPick();
+}
+
+function measureRows(path, hunkHeader, side) {
+  const pane = $("diff");
+  const top = pane.getBoundingClientRect().top - pane.scrollTop;
+  const out = [];
+  for (const tr of pane.querySelectorAll("tr.row")) {
+    if (tr.dataset.file !== path || tr.dataset.hunk !== hunkHeader) continue;
+    const raw = state.split ? tr.dataset[side] : tr.dataset.i;
+    if (raw === undefined || raw === "") continue;
+    const box = tr.getBoundingClientRect();
+    out.push({ index: +raw, top: box.top - top, bottom: box.bottom - top });
+  }
+  return out;
+}
+
+// extendPick moves the end of the range to the row nearest the pointer.
+//
+// Nearest, not "the row under the pointer": the gutter a drag starts in is 22px
+// wide and a comment card is the full width of the pane, so any range spanning
+// a card has to cross something that is not a row at all. Tracking entry into
+// the gutter cell -- which is what this replaced -- meant the range stopped
+// following the moment the pointer drifted out of that narrow column, and a
+// comment sitting in the middle of a range guaranteed it did. Distance to the
+// nearest row carries the selection straight over the card.
+function extendPick(clientY) {
+  const pick = state.picking;
+  if (!pick || !pick.rows.length) return;
+  const pane = $("diff");
+  const y = clientY - pane.getBoundingClientRect().top + pane.scrollTop;
+
+  let best = pick.rows[0].index;
+  let bestDist = Infinity;
+  for (const row of pick.rows) {
+    const dist = y < row.top ? row.top - y : y > row.bottom ? y - row.bottom : 0;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = row.index;
+    }
+    if (dist === 0) break;
+  }
+  if (best !== pick.to) {
+    pick.to = best;
+    paintPick();
+  }
+}
+
+function paintPick() {
+  const pick = state.picking;
+  const lo = pick ? Math.min(pick.from, pick.to) : 0;
+  const hi = pick ? Math.max(pick.from, pick.to) : -1;
+  const inRange = (raw) => {
+    if (raw === undefined || raw === "") return false;
+    const i = +raw;
+    return i >= lo && i <= hi;
+  };
+
+  // Unified rows are picked whole. A split row is picked one side at a time,
+  // because a range on the left is about removed lines and the two sides do not
+  // even share line numbers -- so the class goes on the side, not the row.
+  for (const tr of document.querySelectorAll("#diff tr.row")) {
+    const same = !!pick && tr.dataset.file === pick.path && tr.dataset.hunk === pick.hunk;
+    tr.classList.toggle("picked", same && !state.split && inRange(tr.dataset.i));
+    if (!state.split) continue;
+    const mine = same;
+    tr.classList.toggle("picked-left", mine && pick.side === "left" && inRange(tr.dataset.left));
+    tr.classList.toggle("picked-right", mine && pick.side === "right" && inRange(tr.dataset.right));
+  }
+}
+
+function rowsTable(file, hunk, hunkIdx, lines, threads, at, hl) {
+  const table = document.createElement("table");
+  table.className = "rows";
+  const body = document.createElement("tbody");
+
+  lines.forEach((line, i) => {
+    const tr = document.createElement("tr");
+    tr.className = "row " + (line.kind === "add" ? "add" : line.kind === "del" ? "del" : "ctx");
+    if (line.expanded) tr.classList.add("expanded");
+    tr.dataset.old = line.old || 0;
+    tr.dataset.new = line.new || 0;
+    tr.dataset.kind = line.kind;
+    // Position within the hunk, so paintPick can find this row again without
+    // the table being rebuilt underneath the pointer. The path goes with it
+    // because a `@@` header is only unique within one file, and every file is
+    // now on the same page.
+    tr.dataset.i = i;
+    tr.dataset.hunk = hunk.header;
+    tr.dataset.file = file.path;
+
+    const pick = state.picking;
+    if (pick && pick.path === file.path && pick.hunk === hunk.header &&
+        i >= Math.min(pick.from, pick.to) && i <= Math.max(pick.from, pick.to)) {
+      tr.classList.add("picked");
+    }
+
+    // Mark every line a comment covers, single or ranged alike. A comment on one
+    // line gets the same bar as a comment on twenty: the question the reader is
+    // asking of the margin is "which lines is this about", and it has the same
+    // answer either way.
+    const covering = threads.filter((t) => coversLine(t, line));
+    if (covering.length) {
+      tr.classList.add("commented");
+      if (covering.every((t) => t.resolved)) tr.classList.add("mark-done");
+    }
+    if (formCovers(state.form, file, line)) tr.classList.add("pending");
+
+    const old = document.createElement("td");
+    old.className = "ln";
+    old.textContent = line.old ? line.old : "";
+    const nw = document.createElement("td");
+    nw.className = "ln";
+    nw.textContent = line.new ? line.new : "";
+    const act = document.createElement("td");
+    act.className = "act";
+    // A pencil, not a plus: the sign column immediately to its right now holds
+    // the diff's own +, and two plus signs side by side read as one glyph.
+    act.textContent = "✎";
+    act.title = "Comment on this line — drag to cover several";
+    const [marker, text] = splitMarker(line.content);
+    const sign = document.createElement("td");
+    sign.className = "sign";
+    sign.textContent = marker;
+    const code = document.createElement("td");
+    code.className = "code";
+    // innerHTML only ever receives highlight.js output, which has escaped the
+    // line's own text on the way through. Nothing else is interpolated here.
+    const painted = hl && hl[i];
+    if (painted) {
+      code.classList.add("hl");
+      code.innerHTML = painted;
+    } else {
+      code.textContent = text;
+    }
+
+    // Dragging over the gutter is what turns a line comment into a range one.
+    // The whole row is not the handle: selecting the code text is how a
+    // reviewer copies it, and making the row a drag surface takes that away.
+    act.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      armDrag(file, hunk, lines, i, "unified");
+    });
+
+    tr.append(old, nw, act, sign, code);
+    body.appendChild(tr);
+
+    // The card renders after the last line of its range, so the marked lines
+    // above read as the quote and the card as what is being said about them.
+    for (const t of threads) {
+      const spot = at.get(t.id);
+      if (!spot || spot.hunk !== hunkIdx) continue;
+      const n = t.side === "old" ? line.old : line.new;
+      if (n && n === spot.line) body.appendChild(threadRow(t));
+    }
+
+    const form = state.form;
+    if (form && form.path === file.path) {
+      const n = form.side === "old" ? line.old : line.new;
+      if (n && n === form.end) body.appendChild(formRow(form));
+    }
+  });
+
+  table.appendChild(body);
+  return table;
+}
+
+/* ---------------- split view ---------------- */
+
+// splitRows pairs a hunk's unified lines into side-by-side rows.
+//
+// A unified hunk is runs of context, removals and additions. Context belongs to
+// both sides at once. A run of removals and the run of additions that follows it
+// are one edit seen from two sides, so they are zipped index-wise -- which is
+// what puts a rewritten line opposite the line it replaced instead of below it.
+// The longer run leaves the other side blank for its remaining rows.
+//
+// Each side carries the line's index in the unified list, not the line itself.
+// Everything else already keys off that index -- the highlight cache, range
+// selection -- so pairing changes what is on screen without giving any of them a
+// second representation to understand.
+function splitRows(lines) {
+  const rows = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.kind === "context" || (!line.old && !line.new)) {
+      // A line on neither side -- git's "\ No newline at end of file" -- is
+      // shown once, on the left, rather than doubled.
+      const both = line.kind === "context" && line.old && line.new;
+      rows.push({ left: i, right: both ? i : null });
+      i++;
+      continue;
+    }
+
+    const dels = [];
+    while (i < lines.length && lines[i].kind === "del") dels.push(i++);
+    const adds = [];
+    while (i < lines.length && lines[i].kind === "add") adds.push(i++);
+
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++) {
+      rows.push({
+        left: k < dels.length ? dels[k] : null,
+        right: k < adds.length ? adds[k] : null,
+      });
+    }
+  }
+  return rows;
+}
+
+// sideCell builds one side of a split row: line number, comment gutter, marker
+// and code. A null index is the blank half of an unpaired edit.
+function sideCell(file, hunk, lines, index, side, hl, threads, form, tr) {
+  const ln = document.createElement("td");
+  ln.className = "ln";
+  const act = document.createElement("td");
+  act.className = "act";
+  const sign = document.createElement("td");
+  sign.className = "sign";
+  const code = document.createElement("td");
+  code.className = "code";
+
+  if (index === null) {
+    // Filler, not a line: it must not be numbered, commented, or offered a
+    // pencil, and it is tinted so the eye reads it as "nothing here".
+    for (const cell of [ln, act, sign, code]) cell.classList.add("void");
+    return [ln, act, sign, code];
+  }
+
+  const line = lines[index];
+  const number = side === "left" ? line.old : line.new;
+  ln.textContent = number ? number : "";
+  act.textContent = "✎";
+  act.title = "Comment on this line — drag to cover several";
+
+  const [marker, text] = splitMarker(line.content);
+  sign.textContent = marker;
+  const painted = hl && hl[index];
+  if (painted) {
+    code.classList.add("hl");
+    code.innerHTML = painted;
+  } else {
+    code.textContent = text;
+  }
+
+  const tone = line.kind === "add" ? "add" : line.kind === "del" ? "del" : "";
+  if (tone) {
+    for (const cell of [sign, code]) cell.classList.add(tone);
+  }
+  if (line.expanded) ln.classList.add("expanded");
+
+  // The margin bar goes on the outermost cell of the side the comment is on, so
+  // a comment on a removed line marks the left and one on its replacement marks
+  // the right.
+  const covering = threads.filter((t) => t.side === (side === "left" ? "old" : "new") && coversLine(t, line));
+  if (covering.length) {
+    ln.classList.add("commented");
+    if (covering.every((t) => t.resolved)) ln.classList.add("mark-done");
+  }
+  if (form && form.side === (side === "left" ? "old" : "new") && formCovers(form, file, line)) {
+    ln.classList.add("pending");
+  }
+
+  // Dragging is per side: a range that started on the left is about removed
+  // lines, and the two sides have different line numbers entirely.
+  act.dataset.i = index;
+  act.dataset.side = side;
+  act.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    armDrag(file, hunk, lines, index, side);
+  });
+  tr.dataset[side] = index;
+  return [ln, act, sign, code];
+}
+
+// rowsTableSplit renders a hunk side by side.
+//
+// Comment cards and the draft form still span the whole width. A comment is
+// about a place in the code, not about a column, and a card confined to one half
+// would be a third of the width of the same card in unified view.
+function rowsTableSplit(file, hunk, hunkIdx, lines, threads, at, hl) {
+  const table = document.createElement("table");
+  table.className = "rows split";
+  // The colgroup is what makes the halves equal: the gutters are pinned and the
+  // two code columns are left unsized, so fixed layout splits the rest evenly.
+  table.innerHTML =
+    '<colgroup>' +
+    '<col class="gutter"><col class="pencil"><col class="marker"><col>' +
+    '<col class="gutter"><col class="pencil"><col class="marker"><col>' +
+    "</colgroup>";
+  const body = document.createElement("tbody");
+  const form = state.form && state.form.path === file.path ? state.form : null;
+
+  for (const row of splitRows(lines)) {
+    const tr = document.createElement("tr");
+    tr.className = "row";
+    // Indices are per hunk, so the hunk has to travel with them: without it a
+    // drag in one hunk would highlight the same index in every other. And the
+    // path with it, since a `@@` header is only unique within one file.
+    tr.dataset.hunk = hunk.header;
+    tr.dataset.file = file.path;
+    body.appendChild(tr);
+    tr.append(
+      ...sideCell(file, hunk, lines, row.left, "left", hl, threads, form, tr),
+      ...sideCell(file, hunk, lines, row.right, "right", hl, threads, form, tr),
+    );
+
+    // A card renders under the row carrying the last line of its range, on
+    // whichever side that line lives.
+    for (const t of threads) {
+      const spot = at.get(t.id);
+      if (!spot || spot.hunk !== hunkIdx) continue;
+      const index = t.side === "old" ? row.left : row.right;
+      if (index === null || index === undefined) continue;
+      const line = lines[index];
+      const number = t.side === "old" ? line.old : line.new;
+      if (number && number === spot.line) body.appendChild(threadRow(t));
+    }
+    if (form) {
+      const index = form.side === "old" ? row.left : row.right;
+      if (index !== null && index !== undefined) {
+        const line = lines[index];
+        const number = form.side === "old" ? line.old : line.new;
+        if (number && number === form.end) body.appendChild(formRow(form));
+      }
+    }
+  }
+
+  table.appendChild(body);
+  return table;
+}
+
+function wrapRow(node) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.className = "thread-cell";
+  // Five columns unified, eight split. A card is about a place in the code, not
+  // about a column, so it spans the row either way.
+  td.colSpan = state.split ? 8 : 5;
+  td.appendChild(node);
+  tr.appendChild(td);
+  return tr;
+}
+
+function threadRow(t) { return wrapRow(threadCard(t)); }
+
+function threadCard(t) {
+  const card = document.createElement("div");
+  card.className = "card" + (t.resolved ? " resolved" : "") + (t.sent ? "" : " draft");
+  const collapsed = isCollapsed(t);
+  if (collapsed) card.classList.add("collapsed");
+
+  const range = t.endLine > t.startLine ? t.startLine + "\u2013" + t.endLine : String(t.startLine);
+  const replies = t.replies || [];
+
+  // The header is the toggle. It stays readable collapsed, so a shut card still
+  // says who wrote it, where, whether it was sent, and whether the agent answered.
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "who toggle";
+  head.setAttribute("aria-expanded", String(!collapsed));
+  // A resolved thread wears one pill. How many times it was discussed and
+  // whether the agent was told are both answers to "what is left to do here",
+  // and the answer is nothing -- so they go, and resolved is what is left to
+  // read. Draft stays even when resolved: a comment closed without ever being
+  // sent is worth knowing about, which "sent" is not.
+  const pills = t.resolved
+    ? '<span class="pill done">resolved</span>' +
+      (t.sent ? "" : '<span class="pill state">draft</span>')
+    : (t.sent ? '<span class="pill state">sent</span>' : '<span class="pill state">draft</span>') +
+      (replies.length
+        ? '<span class="pill ' + (replies[replies.length - 1].author === "agent" ? "agent" : "state") + '">' +
+          replies.length + (replies.length === 1 ? " reply" : " replies") + "</span>"
+        : "");
+
+  head.innerHTML =
+    '<span class="chev">' + (collapsed ? "\u25b8" : "\u25be") + "</span>" +
+    '<span class="pill user">you</span>' +
+    '<span class="anchor">' + esc(t.path) + ":" + range + "</span>" +
+    pills +
+    (collapsed ? '<span class="preview">' + esc(oneLine(t.body)) + "</span>" : "");
+  head.onclick = () => toggleThread(t);
+  card.appendChild(head);
+
+  if (collapsed) return card;
+
+  const body = document.createElement("div");
+  let html = "";
+  if (t.quote && t.quote.length) {
+    html += '<div class="form-meta">' + t.quote.map(esc).join("<br>") + "</div>";
+  }
+  html += '<div class="body">' + esc(t.body) + "</div>";
+  for (const r of replies) {
+    html += '<div class="reply"><div class="who"><span class="pill ' +
+      (r.author === "agent" ? "agent" : "user") + '">' +
+      (r.author === "agent" ? agentName().toLowerCase() : "you") + "</span></div>" +
+      '<div class="body">' + esc(r.body) + "</div></div>";
+  }
+  body.innerHTML = html;
+  card.appendChild(body);
+
+  const acts = document.createElement("div");
+  acts.className = "acts";
+  if (!t.sent) {
+    acts.appendChild(button("Delete", "btn small ghost", async () => {
+      await post("/delete", { thread: t.id });
+    }));
+  }
+  acts.appendChild(button(t.resolved ? "Reopen" : "Resolve", "btn small ghost", async () => {
+    await post("/resolve", { thread: t.id, resolved: !t.resolved });
+  }));
+  acts.appendChild(button("Reply", "btn small ghost", () => {
+    if (state.replies[t.id] === undefined) state.replies[t.id] = "";
+    state.focusKey = "reply:" + t.id;
+    render();
+  }));
+  card.appendChild(acts);
+
+  // Rendered from state rather than appended on click, so a repaint mid-sentence
+  // rebuilds the box with what was in it instead of throwing it away.
+  if (state.replies[t.id] !== undefined) card.appendChild(replyBox(t));
+  return card;
+}
+
+function replyBox(t) {
+  const wrap = document.createElement("div");
+  wrap.className = "reply";
+
+  const ta = document.createElement("textarea");
+  ta.placeholder = "Add a note to this thread";
+  ta.dataset.typing = "reply:" + t.id;
+  ta.value = state.replies[t.id] || "";
+  ta.oninput = () => { state.replies[t.id] = ta.value; };
+
+  const send = button("Add reply", "btn small primary", async () => {
+    const text = (state.replies[t.id] || "").trim();
+    if (!text) { ta.focus(); return; }
+    const res = await post("/reply", { thread: t.id, body: text, author: "user" });
+    if (!res.ok) { toast("Could not add that reply."); return; }
+    delete state.replies[t.id];
+    // A reply is one more thing the agent has to be told, so under auto-send it
+    // leaves now and says so -- the same feedback a new comment gives.
+    const data = await res.json();
+    if (data.threads) state.threads = data.threads;
+    render();
+    if (data.error) { toast(data.error); }
+    else if (data.sending) { toast("Sent to " + agentName() + "."); }
+  });
+  const cancel = button("Cancel", "btn small ghost", () => {
+    delete state.replies[t.id];
+    render();
+  });
+
+  wrap.append(ta, send, cancel);
+  return wrap;
+}
+
+// oneLine flattens a body for the collapsed preview.
+function oneLine(text) {
+  const flat = String(text || "").replace(/\s+/g, " ").trim();
+  return flat.length > 90 ? flat.slice(0, 89) + "\u2026" : flat;
+}
+
+function button(label, cls, onclick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = cls;
+  b.textContent = label;
+  b.onclick = onclick;
+  return b;
+}
+
+function formRow(form) { return wrapRow(formCard(form)); }
+
+function formCard(form) {
+  const card = document.createElement("div");
+  card.className = "card draft";
+  const range = form.end > form.start ? form.start + "–" + form.end : String(form.start);
+  card.innerHTML = '<div class="who"><span class="pill user">new comment</span>' +
+    '<span class="anchor">' + esc(form.path) + ":" + range +
+    (form.side === "old" ? " (removed)" : "") + "</span></div>" +
+    '<div class="form-meta">' + form.quote.map(esc).join("<br>") + "</div>";
+
+  const ta = document.createElement("textarea");
+  ta.placeholder = "What should " + agentName() + " change here?";
+  // The text lives on the form, not in the element: this card is rebuilt on
+  // every repaint, and an agent editing the file is what triggers most of them.
+  ta.dataset.typing = "form";
+  ta.value = form.draft || "";
+  ta.oninput = () => { form.draft = ta.value; };
+  const acts = document.createElement("div");
+  acts.className = "acts";
+  acts.append(
+    button("Add comment", "btn small primary", async () => {
+      const body = (form.draft || "").trim();
+      if (!body) { ta.focus(); return; }
+      // submit rides along with the comment rather than following it as a
+      // second request: one round trip, and no window in which the comment
+      // exists as a draft that a reload could present as unsent.
+      const res = await post("/comments", {
+        submit: state.autoSend,
+        comments: [{
+          path: form.path, side: form.side, startLine: form.start,
+          endLine: form.end, quote: form.quote, body: body,
+        }],
+      });
+      if (!res.ok) { toast("Could not save that comment."); return; }
+      const data = await res.json();
+      state.threads = data.threads || state.threads;
+      state.form = null;
+      render();
+      if (data.error) { toast(data.error); }
+      else if (data.sending) { toast("Sent to " + agentName() + "."); }
+    }),
+    button("Cancel", "btn small ghost", () => { state.form = null; render(); }),
+  );
+  card.append(ta, acts);
+  return card;
+}
+
+// renderBar shows the queue, and there is no queue under auto-send.
+//
+// The bar is hidden outright rather than shown with its buttons removed: a bar
+// reporting comments with no way to act on them is worse than no bar. Which is
+// also why turning the mode on flushes whatever was already queued -- with
+// nothing left to press, anything still pending would be stranded. If a flush
+// fails (no agent tab), the error is toasted and turning the mode back off
+// brings the bar, and those comments, straight back.
+// pendingCount counts everything waiting to be sent, of both kinds.
+//
+// A reply on a thread the agent already has is pending work in its own right:
+// counting only unsent threads left the bar hidden while a reply sat queued,
+// with nothing on screen saying so and no button to send it.
+function pendingCount() {
+  let n = 0;
+  for (const t of state.threads) {
+    if (!t.sent) { n++; continue; }
+    for (const r of t.replies || []) {
+      if (r.author === "user" && !r.sent) n++;
+    }
+  }
+  return n;
+}
+
+function renderBar() {
+  const n = pendingCount();
+  const bar = $("bar");
+  if (!n || state.autoSend) { bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+  $("barcount").textContent = n + (n === 1 ? " comment ready" : " comments ready");
+  $("barhint").textContent = "Comments and replies are queued here until you submit them.";
+}
+
+/* ---------------- range selection ---------------- */
+
+// The range follows the pointer for as long as the button is down, wherever it
+// happens to be -- over the code, over a comment card, outside the table.
+document.addEventListener("mousemove", (e) => {
+  if (state.dragging) extendPick(e.clientY);
+});
+
+// The range is committed on mouseup anywhere, not just on the gutter: a drag
+// that leaves the table would otherwise stay armed and pick up the next click.
+document.addEventListener("mouseup", () => {
+  if (!state.dragging) return;
+  state.dragging = false;
+  const pick = state.picking;
+  state.picking = null;
+  if (!pick) { render(); return; }
+
+  const lo = Math.min(pick.from, pick.to), hi = Math.max(pick.from, pick.to);
+  const rows = pick.lines.slice(lo, hi + 1);
+
+  // Prefer the post-image: it is the code that exists now, and what an agent
+  // can go and edit. A range made up only of deletions has no post-image, and
+  // must be reported against the old side or it names nothing at all.
+  const news = rows.map((r) => r.new).filter((n) => n > 0);
+  const olds = rows.map((r) => r.old).filter((n) => n > 0);
+  let side, start, end;
+  if (news.length) { side = "new"; start = Math.min(...news); end = Math.max(...news); }
+  else if (olds.length) { side = "old"; start = Math.min(...olds); end = Math.max(...olds); }
+  else { render(); return; }
+
+  state.form = {
+    path: pick.path, side: side, start: start, end: end,
+    quote: rows.map((r) => r.content),
+    draft: "",
+  };
+  state.focusKey = "form";
+  render();
+});
+
+/* ---------------- wiring ---------------- */
+
+$("banner-close").onclick = () => {
+  state.bannerDismissed = true;
+  $("banner").classList.add("hidden");
+};
+// Scrolling has to do two things: say which file is in view, and build the ones
+// coming into it. Both are cheap enough to run on a frame, and both are wrong if
+// they wait for the next poll -- an unbuilt file two screens down is blank by
+// the time a fast scroll reaches it.
+$("diff").addEventListener("scroll", () => {
+  if (scrollPending) return;
+  scrollPending = true;
+  requestAnimationFrame(() => {
+    scrollPending = false;
+    spyScroll();
+    mountVisible();
+  });
+}, { passive: true });
+
+let scrollPending = false;
+
+// mountVisible builds and discards file bodies as they come and go, without
+// touching the ones already in the right state.
+function mountVisible() {
+  if (!state.snapshot) return;
+  const pane = $("diff");
+  for (const file of orderedFiles()) {
+    const section = state.sections[file.path];
+    if (!section) continue;
+    if (nearViewport(pane, section.el)) mountSection(section, file);
+    else unmountSection(section);
+  }
+}
+
+$("theme").onclick = (e) => {
+  const btn = e.target.closest("button[data-theme]");
+  if (btn) setTheme(btn.dataset.theme);
+};
+// A system change is only interesting while no explicit choice is in force, and
+// then only to keep the buttons honest about which theme is actually showing.
+try {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (!state.theme) renderTheme();
+  });
+} catch (err) { /* an older browser simply will not follow the OS live */ }
+
+$("view").onclick = async (e) => {
+  const btn = e.target.closest("button[data-split]");
+  if (!btn) return;
+  const want = btn.dataset.split === "1";
+  if (want === state.split) return;
+  // Painted before the round trip: the layout is the page's own and waiting on
+  // the server to agree would make the toggle feel broken.
+  state.split = want;
+  render();
+  const res = await post("/view", { split: want });
+  if (!res.ok) { toast("Could not change the view."); return; }
+  const data = await res.json();
+  state.split = !!data.split;
+  render();
+};
+$("autosend").onchange = (e) => setAutoSend(e.target.checked);
+$("refresh").onclick = () => load(state.scope, true);
+$("scope").onclick = (e) => {
+  const btn = e.target.closest("button[data-scope]");
+  if (!btn) return;
+  state.scope = btn.dataset.scope;
+  load(state.scope, false);
+};
+$("submit").onclick = async () => {
+  const btn = $("submit");
+  btn.disabled = true;
+  try {
+    const res = await post("/comments", { comments: [], submit: true });
+    const data = await res.json();
+    if (data.error) { toast(data.error); return; }
+    state.threads = data.threads || state.threads;
+    render();
+    const agent = (state.snapshot && state.snapshot.agent) || {};
+    toast(agent.canReply
+      ? "Sent to " + agentName() + " — it will reply under each comment as it works."
+      : "Sent to " + agentName() + " — it cannot reply from this session, so watch the diff for changes.");
+  } catch (err) {
+    toast("Could not submit: " + err);
+  } finally {
+    btn.disabled = false;
+  }
+};
+// Discard drops unsent comments. A queued reply is deliberately left alone: it
+// hangs off a thread the agent already has, so there is nothing to delete
+// without taking that thread's history with it, and the reader can submit it or
+// leave it.
+$("discard").onclick = async () => {
+  for (const t of state.threads.filter((x) => !x.sent)) {
+    await post("/delete", { thread: t.id });
+  }
+};
+
+function esc(s) {
+  return String(s === undefined || s === null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+loadExpansion();
+load(null, false).then(connect);
+</script>
+</body>
+</html>

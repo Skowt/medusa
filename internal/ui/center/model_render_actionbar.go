@@ -30,7 +30,7 @@ func (m *Model) getBaseBranchDisplay() string {
 }
 
 // renderInfoBar renders the info bar with workspace details and action buttons.
-// Layout: [branch info] │ [path] [IDE]
+// Layout: [branch info] │ [path] [IDE] … right-aligned [Review Changes]
 // Also renders a subtle separator line below.
 func (m *Model) renderInfoBar(width int) string {
 	m.actionBarHits = m.actionBarHits[:0]
@@ -73,8 +73,16 @@ func (m *Model) renderInfoBar(width int) string {
 	ideBtn := branchStyle.Render("[IDE]")
 	ideBtnWidth := lipgloss.Width(ideBtn)
 
+	// Review button. It is offered unconditionally, not gated on a dirty
+	// worktree: the review it opens covers everything since the base branch, so
+	// an agent that has committed its work has the most to review and a clean
+	// tree would be exactly when the button disappeared.
+	reviewBtn := lipgloss.NewStyle().Foreground(common.ColorPrimary).
+		Bold(true).Render("[Review Changes]")
+	reviewBtnWidth := lipgloss.Width(reviewBtn) + 1
+
 	// Build path info (shortened)
-	reservedForLeft := lipgloss.Width(branchInfo) + separatorWidth + 1 + ideBtnWidth
+	reservedForLeft := lipgloss.Width(branchInfo) + separatorWidth + 1 + ideBtnWidth + reviewBtnWidth
 	availableForPath := width - reservedForLeft
 	if availableForPath < 10 {
 		availableForPath = 10
@@ -85,8 +93,10 @@ func (m *Model) renderInfoBar(width int) string {
 	pathInfo = m.copyLabel(copyTargetWorkdir, pathInfo, pathWidth)
 	pathRendered := pathStyle.Render(pathInfo)
 
-	// Left content: branch │ path [IDE].
-	mainLine := branchInfo + separator + pathRendered + " " + ideBtn
+	// Left content: branch │ path [IDE]. The review button is not part of it --
+	// it is right-aligned below, away from the three controls that describe the
+	// workspace, because it is the one that acts on the work.
+	leftContent := branchInfo + separator + pathRendered + " " + ideBtn
 
 	// The displayed path itself is the copy target.
 	pathX := lipgloss.Width(branchInfo + separator)
@@ -105,6 +115,35 @@ func (m *Model) renderInfoBar(width int) string {
 			X:      ideBtnX,
 			Y:      0,
 			Width:  ideBtnWidth,
+			Height: 1,
+		},
+	})
+
+	// Build the main line, with the review button pinned to the right edge.
+	//
+	// The left side is clipped first when the two would collide: the path is
+	// already abbreviated and can lose a little more, whereas a button pushed
+	// past the edge is simply gone -- which is the failure mode that is hardest
+	// to notice, since nothing is left to hint it should be there.
+	reviewWidth := lipgloss.Width(reviewBtn)
+	room := width - reviewWidth - 1
+	if room < 0 {
+		room = 0
+	}
+	left := lipgloss.NewStyle().MaxWidth(room).Render(leftContent)
+	gap := room - lipgloss.Width(left) + 1
+	if gap < 1 {
+		gap = 1
+	}
+	mainLine := left + strings.Repeat(" ", gap) + reviewBtn
+
+	m.actionBarHits = append(m.actionBarHits, actionBarButton{
+		kind:  actionBarReviewChanges,
+		label: "Review Changes",
+		region: common.HitRegion{
+			X:      lipgloss.Width(mainLine) - reviewWidth,
+			Y:      0,
+			Width:  reviewWidth,
 			Height: 1,
 		},
 	})
@@ -171,6 +210,19 @@ func (m *Model) actionBarCommand(kind actionBarButtonKind) tea.Cmd {
 	case actionBarOpenIDE:
 		return func() tea.Msg {
 			return messages.ActionBarOpenIDE{WorkspaceRoot: ws.Root()}
+		}
+	case actionBarReviewChanges:
+		// The agent tab is resolved here rather than in the app: which tab is
+		// active is the center pane's own state, and a review belongs to the
+		// agent whose changes it describes.
+		target := m.ActiveAgentTarget()
+		return func() tea.Msg {
+			return messages.OpenGitReview{
+				WorkspaceID:  string(ws.ID()),
+				AgentSession: target.SessionName,
+				Assistant:    target.Assistant,
+				CodexSandbox: target.CodexSandbox,
+			}
 		}
 	}
 	return nil

@@ -726,6 +726,803 @@ skill directly and no `Skill` tool call is emitted, so there is nothing in the
 transcript to attribute. Skill names with no `plugin:` prefix are bucketed as
 `personal` / `project` / `built-in` by locating the skill on disk.
 
+### Git reviews in the browser: `internal/gitreview`
+
+`[Review Changes]`, right-aligned on the info bar's first row, opens a live diff
+review for the active workspace in the browser: file tree on the left, diff on
+the right, comments on a line or a dragged range, and a submit that pastes the
+whole batch into the agent that made the changes. Threads are
+collapsible, and a resolved one starts collapsed -- the point of resolving is to
+get it out of the way. Collapse state is held per thread id in the page, not as a
+flag rebuilt from the server: the diff repaints every couple of seconds, and a
+server-derived flag would snap every card open under the reader's cursor.
+
+It is a web page rather than a TUI pane because a diff review wants a browser's
+width, mouse selection and text input, none of which a terminal pane does well.
+An earlier split-pane version of this feature was removed for that reason; what
+survived it and is reused here is `center.SendToAgentSession` (with its
+bracketed-paste helper, which is what keeps a multi-line review one prompt
+instead of a dozen half-sentences) and `git.DiffLine.OldLine/NewLine`.
+
+**The diff renders unified or side by side**, chosen by a toggle in the top bar
+and remembered like the other review settings. `splitRows` does the pairing: a
+unified hunk is runs of context, removals and additions, so context belongs to
+both sides at once, and a run of removals with the run of additions that follows
+it is one edit seen twice -- zipped index-wise, which is what puts a rewritten
+line *opposite* the line it replaced rather than below it. The longer run leaves
+the other side blank, striped rather than empty so it reads as "nothing on this
+side" and not as a blank line.
+
+Five properties:
+
+1. **A side carries the line's index in the unified list, not the line.**
+   Everything already keys off that index -- the highlight cache, range
+   selection -- so pairing changes what is on screen without giving any of them a
+   second representation to understand.
+2. **`table-layout: fixed`, with the two code columns left unsized.** Under
+   fixed layout the columns with no width share what is left equally, which is
+   the only way to get halves that stay equal; asked for `width: 50%` under the
+   default auto layout they came out 551px and 508px, because auto layout treats
+   a width as a hint and gives the wider content more -- so the two sides of one
+   change wrapped at different points. The gutters are pinned by a `<colgroup>`.
+3. **Tints go on cells, not rows.** The two halves of a split row are usually a
+   removal and its replacement, so a row-level colour could only ever be right
+   about one of them. Same for the comment bar, which marks the side the comment
+   is on, and for the drag highlight (`picked-left` / `picked-right`).
+4. **Dragging is per side**, because a range on the left is about removed lines
+   and the two sides do not share line numbers. Indices are per hunk, so the
+   hunk header travels on the row with them -- without it a drag in one hunk
+   highlighted the same index in every other.
+5. **Cards still span the whole width** (`colSpan` 5 unified, 8 split). A comment
+   is about a place in the code, not about a column, and one confined to a half
+   would be a third of the width of the same card unified.
+
+The tab is named `<workspace> - <file> Changes` (`renderTitle`), following the
+selection as the reader navigates -- a review left in a background tab is
+otherwise indistinguishable from any other. The base name rather than the path,
+since the page already shows the path and a title long enough to be clipped
+identifies nothing, and assigned only when it differs, because render runs on
+every poll.
+
+**The theme is the reader's to choose, and light is not a new palette -- it was
+always the base one.** The page followed `prefers-color-scheme` and had no way
+to disagree with it; a ☀/☾ toggle in the top bar now does, remembered with the
+other review settings as `last_review_theme`.
+
+Three properties:
+
+1. **Light on bare `:root`, dark twice.** The dark block appears under
+   `@media (prefers-color-scheme: dark)` *guarded as*
+   `:root:not([data-theme="light"])`, and again under `:root[data-theme="dark"]`.
+   Without the guard the toggle could turn dark on but never off on a dark
+   machine. It is written twice because a media query and an attribute selector
+   cannot be combined into one rule; keeping **every** colour the page uses in
+   those blocks -- the syntax tokens included, which used to be literals spread
+   over a dozen `.hljs-` rules -- is what holds the duplication to one list.
+2. **No choice means no attribute**, rather than stamping whatever the OS
+   currently says. Absent is what lets the media query answer, so the page keeps
+   following the system as it changes through the day. The buttons still show
+   which theme is *in effect*, asking `matchMedia` directly, so neither is lit
+   falsely -- and a system change while no choice is in force relights them.
+3. **`ParseTheme` normalises anything it does not recognise to "follow the OS"**
+   rather than refusing it. A hand-edited config would otherwise have no theme
+   at all, and falling back to a fixed one would override a preference the reader
+   expressed in their system settings.
+
+**Diffs are syntax highlighted by a vendored highlight.js** (v11.11.1, the
+common bundle, BSD-3-Clause; provenance and upgrade notes in
+`highlight.min.js.README`). It is vendored and embedded rather than loaded from
+a CDN because the page is served from an ephemeral loopback port inside Medusa's
+own binary: a review that has to reach the internet to colour a diff is blank on
+a plane, and asking the network for the code that renders a local file is not a
+dependency this tool should have. It is served from its own token-scoped route
+so the browser caches 127KB once, instead of being inlined into a page that is
+re-served on every open.
+
+Four properties are load-bearing:
+
+1. **Each side of a hunk is lexed as one block, not each row on its own.** A
+   hunk's *rows* are not source -- they interleave a removed line with the line
+   that replaced it, so joining them hands the lexer text that never existed in
+   any file. The post-image rows (context and added) are contiguous source, and
+   so are the pre-image rows (context and removed), so those are the two strings
+   that get highlighted. That is what makes a multi-line construct inside the
+   hunk come out right -- a Python docstring, a JS template literal, a C block
+   comment -- and it costs two calls per hunk rather than one per line. A
+   construct that opens *before* the hunk is still read wrong; expanding the
+   context is the answer, which is why expanded rows are lexed with the rest.
+2. **`splitHighlighted` reopens spans across newlines.** highlight.js nests
+   spans and leaves them open across a line break, so cutting its output at
+   newlines would put an unclosed span in one table cell and a stray closing tag
+   in another. What is open is closed at each break and reopened on the next
+   line. The scan only has to understand `<span>` and `</span>`, because that is
+   the whole of highlight.js's output.
+3. **The language comes from an explicit extension map** (`languageFor`), never
+   from `highlightAuto`: auto-detection on a fragment of a diff picks the wrong
+   language often enough to be worse than no colour, and does it silently.
+   Anything unmapped, or mapped to a language the bundle does not carry, renders
+   as plain text -- which is also why the `hljs.getLanguage` check is there,
+   since highlight.js *raises* on an unregistered language rather than falling
+   back, and that would take the diff pane down.
+4. **`innerHTML` receives highlight.js output and nothing else.** hljs escapes
+   its input on the way through, so the line's own text can never be treated as
+   markup; nothing else is interpolated into the cell.
+
+The result is memoised per file, hunk and expansion state, and dropped with the
+rest of a file's cached context when its digest moves (`dropStaleContext`) --
+without it the same lines are lexed several times a second, since the pane is
+rebuilt on every poll, selection and comment. Measured on this repo: ~1ms for a
+300-line Go file, 71ms for the 127KB minified bundle, ~0ms on every repaint
+after. `MAX_HL_BYTES` bounds one pass, because a file under git's 2MB "large"
+threshold can still be a single minified line of half a megabyte, and nobody
+reads a minified bundle for its keywords anyway.
+
+The token palette is **GitHub's**, in both themes, because those values are the
+ones proven legible on exactly these three backgrounds -- panel, the added tint
+and the removed tint -- which a palette picked against white alone is not. A
+highlighted added or removed row drops its green or red ink: with tokens
+coloured, the text that is *not* a token would be the only green left on the
+line. The background tint and the sign column still say which side it is. There
+are no italics: this is a monospace table, and a slanted comment run changes the
+glyph advance just enough to stop columns of code lining up.
+
+**Every changed file is on one page, and the navigator reports where the reader
+is rather than choosing what exists.** That is what a review actually is: you
+scroll through the change, and clicking a file scrolls to it
+(`selectFile` → `scrollToFile`) instead of swapping the pane.
+
+Only the files near the viewport are built. This repo's own diff is sixty files
+and twelve thousand lines; building all of it took the better part of a second,
+and the pane is rebuilt on every poll, so it would have spent half its life
+laying out code nobody was looking at. Five properties hold it together:
+
+1. **An unbuilt file is a spacer of its own height** -- estimated from its row
+   count until it has been built once, and its measured height every time after.
+   Without the estimate every section starts at zero height, they all stack at
+   the top of the pane, they all count as near the viewport, and the whole diff
+   mounts on the first render: precisely what the arrangement exists to avoid.
+2. **A built file is left alone unless something about it changed**
+   (`sectionStamp`: digest, its threads, the draft form, the expansion, the
+   layout and theme). A poll that rebuilt four screens of rows every two seconds
+   would also be rebuilding the reply box the reader is typing in.
+3. **The page order is the navigator's order**, taken from the same tree walk
+   (`orderedFiles` → `collectFiles`), because a page whose order differs from its
+   own index is worse than either order alone. `state.file` falls back to the
+   *tree's* first file, not the snapshot's -- taking the snapshot's had the
+   navigator highlighting one file while the page opened on another.
+4. **The spy names the last file whose head has reached the top of the pane**,
+   not the one nearest the middle, which flickers between neighbours on a short
+   file. It is muted while a click-scroll is in flight, or it would rename the
+   current file for every file the scroll passes over. It updates the navigator
+   and the title only -- a full render would rebuild rows on every frame.
+5. **A row's identity now includes its path.** A `@@` header is unique only
+   within one file, and every file is on the same page, so a drag keyed on the
+   header alone would have highlighted the same index in every file that happened
+   to share one.
+
+**The navigator is a directory tree, not a path list.** A flat list repeats the
+directory on every row, so on a change spanning several packages the part of each
+row that says where the file is scrolls past as noise. `buildTree` reconstructs
+the structure from the paths, and three properties keep it readable:
+
+- **A run of single-child directories folds into one row** (`collapseChain`), so
+  a Go repository reads as `internal/gitreview` rather than four nested folders
+  each holding nothing but the next. The row is keyed by the *deepest* path in
+  the chain, since that is the one whose contents its twisty shows.
+- **Collapse state lives in the page, and it is the collapsed set** — the same
+  shape, and for the same reason, as thread collapse: the navigator is rebuilt on
+  every poll, so anything derived from the snapshot would spring every folder
+  open under the reader. Collapsed rather than expanded is what makes a directory
+  the page has never seen start open; a tree that hides the changes on first load
+  defeats the point of it. Selecting a file opens the folders above it
+  (`revealFile`), or a link into a folded-away path would leave the navigator
+  showing no selection at all.
+- **A folder shows its counts only while it is shut.** Open, they duplicate the
+  rows immediately below them; shut, they are the only sign that anything in
+  there changed or has a comment waiting.
+
+**A file can be marked read, and the mark is pinned to a digest, never to a
+boolean.** `File.Digest` fingerprints one file's diff, `Session.viewed` maps a
+path to the digest that was on screen when the reader ticked it, and
+`ViewedPaths` reports only the marks that still match. So the agent touching a
+file takes its tick away with it -- a live review page still ticking a file that
+has since been rewritten tells the reader they have seen code they have never
+seen, which is worse than never having offered the tick. Invalidation is per
+file, or one edit anywhere would wipe the reader's whole progress
+(`session_viewed_test.go`).
+
+Four smaller decisions around it:
+
+1. **The server resolves what counts as read, not the page.** The digest
+   comparison has one home, and the page never holds a value it could get wrong.
+   `Event.Viewed` therefore has **no `omitempty`**: "nothing is read" is a real
+   state to render and would otherwise be indistinguishable from "this event says
+   nothing about it". Every event is built through `Session.withState` for that
+   reason, so an event about threads cannot blank the ticks and vice versa.
+2. **An unknown path is refused rather than recorded** (`SetViewed`,
+   `Session.HasFile`). That keeps the map to real files, and it is *also* what
+   makes a traversal guard unnecessary on the endpoints: the only paths that get
+   in are ones the snapshot itself produced.
+3. **Marks persist beside the comments**, for the comments' own reason -- a
+   review spanning two sittings that forgets what was already read is
+   untrustworthy. Nothing prunes them: entries are added only by an explicit
+   click and keyed by path, so re-ticking a file overwrites rather than grows.
+   That is a different shape from threads, which accumulate prose daily and do
+   need `maxPersistedThreads`.
+4. **The tick sits in the navigator's twisty column**, where folders keep their
+   chevron, so ticks line up down the left edge instead of competing with the
+   comment badge on the right -- which means something else entirely. The row is
+   dimmed as well, because a tick alone is easy to miss in a column of forty rows
+   and what the reader is looking for is the work that is *left*.
+
+**The context around a hunk can be opened up, and the lines come from the
+working tree.** `▲`/`▼` on each hunk header call `GET /api/lines`, which
+`readFileLines` answers from disk. Disk is right because neither scope passes
+`--cached`, so the `+` side of every hunk *is* the file as it is now; a read from
+anywhere else would renumber the gap the reader is trying to fill.
+
+Four properties are load-bearing (`snapshot_lines.go`, and the expansion half of
+`review.html`):
+
+1. **A gap is shared by the hunks on either side of it, so each accounts for the
+   other's expansion.** `roomAbove`/`roomBelow` subtract the neighbour's opened
+   lines, which is what stops expanding down from hunk *n* and up from hunk *n+1*
+   from rendering the same lines twice. `roomBelow(i)` and `roomAbove(i+1)`
+   therefore measure the same run of lines, which is what decides where the bars
+   go: **one bar per gap, and none where the code is continuous.**
+
+   - **One bar per gap, drawn at the gap** (`gapBar`). The two directions are
+     the same run of hidden lines seen from its two ends, so one bar offers
+     both, and each arrow reveals what lies in the direction it points --
+     counted from the nearest visible line on the *far* side of the gap. At a bar
+     between line 24 and line 142, `▲` shows what comes before 142 and `▼` shows
+     what comes after 24. It was the other way round first, which reads just as
+     coherently written down and not at all when you are looking at it; the
+     tooltips now name the line ("Show the lines before 142"), because an arrow
+     in the middle of a gap has two plausible readings and a number has one.
+   - That is the fix for two things being wrong at once. The downward arrow used
+     to live in a hunk's *header*, at the top of the hunk, while the lines it
+     revealed appeared at the bottom -- off screen for any hunk taller than the
+     viewport. And a header is only drawn while something is hidden above its
+     hunk, so opening the gap above a hunk took away the arrow that opened the
+     gap below it.
+   - The bar is dropped when its gap closes, label and all. The `@@` line marks a
+     discontinuity -- "the next thing you see is line N, not the line after the
+     one above" -- so with nothing hidden there it would sit in the middle of
+     continuous code announcing a jump that is not there. The gap after the last
+     hunk gets a bar with no label, there being no hunk below it to name.
+   - `sizeLineColumns` publishes the file's widest line number as a custom
+     property the gutter cells size from. Sized per table, two hunks expanded
+     until they touch would step sideways exactly where the bar that used to
+     separate them has just been dropped.
+2. **Expanded lines are spliced into one flat list with the hunk's own**
+   (`effectiveLines`), because range selection indexes into that list. Rendered
+   as a separate block they would be uncommentable, or would need a second code
+   path for picking that could drift from the first.
+3. **A gap's length is the same in both images**, since by definition nothing in
+   it changed -- which is what lets an expanded line carry a correct *old* and
+   *new* number without asking git anything.
+4. **The file's length is not in the snapshot, and is not guessed either.**
+   Counting it would mean reading every changed file on every two-second poll,
+   against a refresh budget of ~145ms. Assuming a gap until proven otherwise --
+   which is what it used to do -- put a bar at the foot of every diff whose last
+   hunk already reached the end of the file, an arrow that did nothing. So an
+   unknown length reads as "nothing below", and `ensureLineTotal` asks once per
+   file per digest, for the file on screen only, quietly (a deleted file must not
+   toast an error for having been opened). Untracked files are skipped outright:
+   their diff is the whole file already. `readFileLines` clamps a range past the
+   end and returns `Total` rather than refusing, so an expansion click is never
+   wasted either.
+
+**Expanded context survives both a reload and the file changing underneath it.**
+It used to survive neither -- a reload lost it with the page, and any edit to the
+file snapped every opened region shut. Three parts:
+
+- **The counts and the lines are separated.** `dropStaleContext` drops a changed
+  file's cached *lines*, which really are stale, but keeps how far the reader had
+  opened it: "twenty lines above this hunk" is still exactly what they asked for.
+  `refillExpanded` then re-reads what the counts need, in one request spanning
+  the lot -- two reads of one file cost more than one read of a few extra lines,
+  and the extra lines are ones the reader is likely to open next anyway.
+- **`clampExpansion` fits the counts to the diff as it is now**, before anything
+  builds lines from them. A count measured against hunks that have since moved,
+  or restored from a previous visit, can overshoot its gap and render lines
+  belonging to the hunk above: the same line twice, in two places, with nothing
+  to say anything is wrong. A gap is shared, so the two counts opening into it
+  are also held to its size together. The last hunk's downward count is left
+  alone while the file's length is unknown, since `gapBelow` answers 0 then and
+  clamping to it would throw a good expansion away.
+- **A reload restores them from `localStorage`**, keyed by this review's own
+  token, so an entry dies with the review it belongs to. Not through the host:
+  every click would be an HTTP round trip and a config write, for something only
+  worth keeping until the page closes. Entries other reviews left behind are
+  pruned on load, and every access is guarded -- a private window throws on the
+  accessor itself rather than returning empty.
+
+The highlight memo is keyed on the **line count** as well as the expansion
+counts. Those used to be the same thing, because a count only ever moved after
+its lines had been fetched; a restored expansion arrives before them, so the
+first render sees the counts with none of the lines, and keyed on the counts
+alone that render's short array was handed back to the render after it --
+painting the hunk's own text onto the expanded rows above it, line 1 reading
+"line 077".
+
+**Typing survives a repaint, and so does the caret.** The pane is rebuilt every
+couple of seconds while an agent works, and a textarea whose text lives only in
+the DOM loses it -- which is exactly what happened to a comment being written
+when the agent touched the file it was about. Both textareas are now rendered
+from state (`form.draft`, `state.replies[threadID]`), and the reply box in
+particular became part of the render rather than something appended on click.
+
+Keeping the words is not sufficient on its own. `captureTyping` /
+`restoreTyping` carry focus and the selection across the rebuild, keyed by the
+textarea's identity (`data-typing`) rather than the element, which is gone by the
+time it has to be found again: a repaint that restores the text but drops the
+caret to the start, or drops focus so the next keystroke goes nowhere, is only
+marginally better than losing the comment.
+
+Three consequences:
+
+1. **A card being replied to is never collapsed** (`isCollapsed` checks for an
+   open reply draft first), or folding it would hide text being typed.
+2. **Navigating away no longer discards a draft.** The form names its own path
+   and renders only on that file, so switching files -- or scopes -- and coming
+   back keeps what was typed.
+3. **A form whose anchor has left the diff renders in the orphan block**, with
+   the threads whose lines are also gone. The text is safe in state either way,
+   but a form nowhere on screen cannot be submitted or read back, which is the
+   same loss by another route.
+
+**A comment marks every line it covers, and its card renders after the last of
+them.** The bar runs down the outermost column, clear of the hover pencil in the
+gutter, and a single-line comment gets the same bar as a twenty-line one -- the
+question the reader asks of the margin is "which lines is this about", and it has
+the same answer either way. `placeThreads` walks the rendered rows in order and
+keeps the *last* one each comment covers, which is what makes a range spanning
+two hunks land at its true end and what identifies the comments with no row left
+at all (they go to the orphan list). Rendering the card **after** the range
+rather than before it is the point: above, a card is separated from its subject
+by however many lines it covers and the reader has to guess downwards; below, the
+marked lines read as the quote and the card as the response. The draft form is
+marked the same way while it is being typed (`formCovers`), since losing the
+marking the moment the drag ended made a multi-line comment look like it had
+landed on one line.
+
+**The drag repaints, it does not re-render** (`paintPick`). Rebuilding the table
+mid-drag silently loses the drag: the mousedown lands on a cell, the re-render
+destroys that cell, and Chrome then has nowhere to deliver the matching mouseup,
+so the document handler that commits the range never runs. The reader releases
+the mouse, no comment form opens, and `state.dragging` is left armed -- so their
+*next* click anywhere finishes the stale drag and opens a form on lines they are
+no longer looking at. A real mouse hid this most of the time, because any
+movement after the last re-render re-targets the pointer at a live cell;
+releasing without that final jiggle did not. Rows carry `data-i`, `data-hunk` and `data-file`
+so the selection can be shown by toggling a class on the rows already there,
+which is also simply cheaper than rebuilding every row in the hunk per row
+crossed.
+
+**And the range follows the pointer's row, not the gutter cell it started in**
+(`armDrag` / `extendPick`). Tracking entry into the cell -- which is what this
+replaced -- meant the range stopped following the moment the pointer drifted out
+of a 22px column, and a comment card, being the full width of the pane,
+guaranteed it did: no range could span one. Distance to the nearest row carries
+the selection straight over the card. The rows are measured once at mousedown, in
+scroll-invariant pane coordinates, which is only safe because the drag no longer
+re-renders: from mousedown to release, nothing but classes changes.
+
+This is also why `NewComment.normalize` only swaps two *real* line numbers. An
+omitted `EndLine` is zero, and swapping that in anchored a single-line comment
+from line 0 -- invisible while the range was only ever printed, and a marked run
+from the top of the file once the page began drawing it.
+
+**The diff's `+`/`-` is a column of its own** (`td.sign`, split off by
+`splitMarker`). Git puts it in the first character of the line, and rendered that
+way inside the code cell it reads as part of the file's text — which is how a
+reviewer comes to believe an added line begins with a plus sign. Anything else in
+that position is passed through whole rather than trimmed: git's
+`\ No newline at end of file` is not a line of the file and has no marker to
+strip.
+
+Serving follows `internal/skillstats`: ephemeral loopback port, started on first
+press, `Close` on shutdown. Each session's URL additionally carries a random
+token, because the composed review hands that URL to the agent — a guessable one
+would let anything else on the machine post replies as the agent. An unknown
+token answers **404, not 403**: a wrong token is indistinguishable from a review
+that has been closed, and "exists but forbidden" tells a guesser they found a
+real session.
+
+**The round trip is asynchronous, and has to be.** The page posts a submit to an
+HTTP goroutine; pasting into a tab's PTY belongs to whatever owns the tabs. So
+the handler calls a `send` hook that enqueues `messages.GitReviewSubmitted`
+through `enqueueExternalMsg`, the app pastes it on the UI thread, and
+`Service.ConfirmSend` reports back over the live stream. Two consequences:
+
+1. **Threads stay `Sent: false` until the host confirms.** A failed paste — no
+   agent tab open — surfaces on the page and leaves the comments pending, so the
+   user retries instead of retyping. Marking them sent at submit time loses them.
+2. **`GitReviewSubmitted` is a critical external message.** The non-critical
+   queue drops under load, and a review is written by hand and submitted once:
+   dropping it loses the user's comments with nothing to retry from and leaves
+   the page reporting "sending" forever.
+
+**Claude answers comments over HTTP.** `Compose` puts the `curl` for
+`POST /api/reply` **before** the notes, and tags every note with its thread id.
+Both halves are load-bearing: an agent that reads the notes first has already
+decided what to do by the time it reaches the tail of a long review and will not
+go back for a protocol it did not know it needed, and without an id it can reply
+but not say which comment it is answering. Replies render under their comment
+with a `claude` pill.
+
+Two things about that preamble are deliberate, and both are omissions:
+
+1. **It is short.** Every line of it is read before the agent sees a single
+   comment, so protocol pushes the review itself further down. One curl, one
+   sentence on where the thread id comes from, and the reply style -- nothing
+   else.
+2. **Resolving is never mentioned.** The endpoint still accepts `resolved` and
+   the page still offers Resolve/Reopen, but the composed message says nothing
+   about either: closing a comment is the user's judgement on whether their
+   point was met, and an agent told it may resolve closes things it has not
+   really dealt with. `TestComposeSaysNothingAboutResolving` guards the
+   omission, so a later edit cannot reintroduce it as a helpful aside.
+
+The reply style is stated because leaving it unsaid produces several paragraphs
+in answer to a one-line comment, which is unreadable in a card the width of a
+diff: simple, direct English (ASD-STE100 style), one or two sentences, three at
+the very most (`TestComposeAsksForShortRepliesInPlainEnglish`).
+
+**"Send as I comment" delivers each comment as it is written, and the second
+message is not the first one again.** The toggle in the top bar is off by
+default; with it on, the request that saves a comment also submits, so there is
+no window in which the comment exists as a draft a reload could present as
+unsent. `ComposeFollowUp` is what an agent mid-task gets: the file, the lines,
+the comment and the thread id, and none of the framing -- repeating the curl and
+the reply style costs it context and tells it nothing it does not already know.
+Separators are drawn only between several comments, since one at a time is what
+auto-send produces.
+
+Four decisions hold it up:
+
+1. **The mode is session state, not something the page remembers.** It decides
+   where the reader's comments go, so a page that quietly forgot it -- on a
+   reload, or in a second tab -- would leave them queueing while the reader
+   believed each one had gone. It *is* remembered across sessions, but by the
+   host rather than here (see **Sticky review settings** below).
+2. **`handleComments` reads the mode from the session, never from the request.**
+   A page holding a stale toggle would otherwise queue a comment the review
+   considers already sent (`TestAutoSendIsReadFromTheSessionNotTheRequest`).
+3. **The question is "has *this* agent been told how to reply", not "have we
+   sent before".** A review page outlives the tab it was opened against, and
+   `Retarget` can point it at another agent; one that never saw the curl cannot
+   answer, and a follow-up that assumes it did fails silently. So
+   `Session.needsProtocol` compares against the agent session, and a changed one
+   gets the instructions in full again.
+4. **The protocol counts as delivered only when the paste lands.** It is recorded
+   in `MarkSent`'s success path, not at compose time: a review that failed to
+   paste -- no agent tab open -- taught nobody anything, and recording it would
+   make the retry a follow-up to a message the agent never received
+   (`TestNeedsProtocolUntilASendActuallyLands`).
+
+**A card header is one line, always, and a resolved one wears a single pill.**
+Everything in it is fixed-size or ellipsizes: a pill allowed to wrap broke "1
+reply" across two lines and made a shut card taller than an open one's first
+line, and the anchor did the same by splitting a line range down the middle. Two
+details are less obvious than they look:
+
+- **The anchor does not shrink at all** (`flex: 0 0 auto`, capped by
+  `max-width`). Allowed to, it ellipsized a range that fitted perfectly: the
+  header is letter-spaced, so the last glyph carries a fraction of trailing
+  space, the content measured a sub-pixel over an integer box, and
+  `text-overflow` duly cut the `:31-48` off the end. The preview takes a shrink
+  factor of 100 and absorbs the slack instead -- it is a convenience, and the
+  anchor is the answer to "where".
+- **Resolved replaces both the sent pill and the reply count.** How many times a
+  thread was discussed and whether the agent was told are both answers to "what
+  is left to do here", and the answer is nothing; `resolved` is filled rather
+  than outlined because it is now the only thing on the row worth reading.
+  `draft` survives being resolved, since a comment closed without ever being
+  sent is worth knowing about in a way that "sent" is not.
+
+**A reply is pending work in its own right.** `Reply.Sent` exists for the same
+reason `Thread.Sent` does: a thread delivered an hour ago is no longer pending,
+so with the flag only on the thread, a reply written under one reached nobody --
+not on submit, which only looked at unsent threads, and not under auto-send,
+which had hidden the submit bar anyway. `PendingReplies` reports the user's
+unsent replies and `submitPending` sends them with everything else.
+
+Five details:
+
+1. **Only replies on threads the agent *has* are announced separately.** A reply
+   under a comment that is itself still a draft is folded into that comment's
+   note (`composeNotes`, as an `also:` line) and marked delivered with it --
+   announcing a reply to something the agent has never seen tells it about half a
+   conversation, and not marking it would re-announce it on the next submit.
+2. **An agent's own reply is never pending**: it came from there, so `AddReply`
+   stores it already sent (`TestAnAgentsOwnReplyIsNeverSentBack`).
+3. **Threads and replies share one id space.** Both are minted by `newID` with
+   different prefixes, so `MarkSent` takes one list and looks up either kind --
+   `SendRequest.ThreadIDs` and `ConfirmSend` did not have to grow a second list,
+   and the host stayed out of it.
+4. **One paste, not two.** New comments and replies are composed separately and
+   joined, because each send is a separate prompt: splitting them would interrupt
+   the agent twice for one gesture, and let it start on the first half before it
+   had read the rest.
+5. **`storeVersion` went to 2.** A v1 file has no `sent` on its replies, so every
+   one of them decodes as unsent and the first submit after an upgrade would
+   announce the entire reply history. Loading a v1 file marks them all sent,
+   reading them as the past -- which loses the delivery state of a reply written
+   just before a restart, and that is much the smaller failure
+   (`TestUpgradingTheStoreDoesNotReAnnounceOldReplies`).
+
+`ComposeReplies` names its thread twice over, by id and by file and lines, and
+quotes the comment being replied to: a reply on its own names no place at all,
+and an agent several turns into the task may no longer have the original in
+front of it.
+
+**Under auto-send there is no queue, so there is no submit bar.** It is hidden
+outright rather than shown with its buttons removed: a bar reporting comments
+with no way to act on them is worse than no bar. That is also why turning the
+mode *on* flushes whatever was already queued (`handleAutoSend` →
+`submitPending`) -- with nothing left to press, a comment left behind would sit
+there unreachable. The flush is reported to the reader rather than done quietly,
+since they flipped a toggle and several comments left as a result. If it fails
+-- no agent tab -- the error is toasted and turning the mode back off brings the
+bar, and those comments, straight back; that is what makes "off" the recovery
+path (`TestTurningAutoSendOffSendsNothing`).
+
+The toggle sits left of the scope tabs, so the header reads outward from what the
+review *is* toward how it is being run.
+
+**Every event goes through `Session.withState`, and building one by hand is a
+bug.** The page cannot tell an absent JSON field from a false one, so an event
+that omits the read ticks or the send mode does not leave them alone -- it clears
+them. `handleLive`'s opening event was built by hand and did exactly that: a page
+loaded its state correctly from `/api/snapshot` and then had the ticks and the
+toggle wiped the instant the live stream connected. Regression cover:
+`TestTheOpeningLiveEventCarriesTheWholeState`.
+
+**Sticky review settings live in `config.UI`, and travel through the host.**
+`last_review_scope`, `last_review_autosend` and `last_review_split` join the
+other "last used" values (`last_fullscreen`, `last_assistant`,
+`last_create_worktree`): the reader ticks "Send as I comment", switches to Since
+base or picks the split view once, and every review after that opens the same
+way. The layout is carried through the session even though nothing on the server
+reads it, because the page has nowhere durable of its own -- each review is
+served from a fresh ephemeral port, so anything the browser stored would be lost
+on the next restart. `internal/gitreview` deliberately knows nothing about a
+config file -- it reports a `Preferences` value through the `OnPreferences` hook
+and the host decides what remembering means.
+
+Four properties:
+
+1. **The save happens on the UI thread.** The change is noticed on an HTTP
+   goroutine, and `config.UI` belongs to the UI thread, so it rides the message
+   pump as `GitReviewPrefsChanged` exactly as a submitted review does. Writing it
+   from the handler is a data race the detector would find. Unlike a submitted
+   review it is **not** critical: a dropped preference costs a re-tick, where a
+   dropped review costs the user's comments.
+
+   Both hooks are connected in `wireGitReview` rather than inline in `App.New`,
+   because the second one is easy to lose: registered in the wrong scope it still
+   compiles, and the symptom is a preference that silently never saves -- which
+   is exactly what happened, the hook having landed *inside* the send callback,
+   where it would not have run until a review was submitted. Named, one test
+   covers the wiring (`TestWiringRegistersBothReviewHooks`, which fails if the
+   registration moves back inside).
+2. **Both settings are reported together**, read off the session rather than
+   taken as arguments, so a caller that has just changed one cannot overwrite the
+   other with a stale value.
+3. **A no-op is not a change.** The page asks for its scope on every load, so
+   reporting unconditionally would rewrite the config file on every refresh
+   (`TestAskingForTheScopeAlreadyShownReportsNothing`, and the handler compares
+   before saving).
+4. **Auto-send is now remembered across restarts, which it deliberately was
+   not.** The old reasoning was that a mode chosen in an earlier sitting should
+   never silently send comments; as an explicit sticky preference, alongside the
+   others, that is exactly what the reader is asking for. A *fresh* config still
+   defaults it off (`TestReviewSettingsRoundTrip` asserts both defaults), and a
+   blank stored scope falls back to working rather than becoming the scope.
+
+An existing session keeps the scope, mode and layout its open page is already
+showing rather than being re-seeded on reopen -- which is the same value anyway,
+since every change is reported back.
+
+The chain has two ends and both are covered: `TestOpenSeedsTheReviewFromThe`
+`RememberedPrefs` drives `handleOpenGitReview` over a real repo and asserts the
+session opens with all three, because saving a preference is pointless if the
+next press of Review Changes does not open with it.
+
+**Untracked files are enumerated with `ls-files --others --exclude-standard`,
+never `git.GetStatus`.** Status runs `--untracked-files=normal` (deliberately —
+see `internal/git/status.go`), which stops at untracked-directory boundaries, so
+a new package arrives as the single entry `internal/thing/`. That is right for
+the dashboard's change indicator, which only needs a count, and fatal here
+twice: the directory row has no diff to show, so its files are unreviewable, and
+because that row's content never changes the snapshot digest does not move, so
+editing anything inside it never repaints an open page. An agent creating a new
+package is the common case. `--exclude-standard` is what keeps this affordable
+on every poll by respecting `.gitignore`; `maxUntrackedFiles` caps the
+pathological repo and says so on the page. Regression cover:
+`TestBuildListsFilesInsideANewDirectory` and
+`TestDigestMovesWhenAFileInANewDirectoryChanges`.
+
+**Live refresh has two signals, and neither replaces the other.**
+`Service.NotifyRootChanged`, called from `handleFileWatcherEvent`, makes git
+operations repaint at once. It cannot be the only signal: Medusa's file watcher
+watches a workspace's **`.git` directory** (see `internal/git/watcher.go`), so it
+fires on commits, staging, checkouts and ref updates and **not at all** when an
+agent simply edits a file in the working tree -- which is the review page's main
+case. So the tick stays, and dropping it would freeze a page for as long as an
+agent works without committing. Both paths refresh on the one poll goroutine, so
+a burst of pokes cannot fan out into concurrent git runs over the same repo, and
+the poke is a non-blocking send because it comes from the UI thread. Every git
+read passes `--no-optional-locks`, which is also what stops the review's own
+polling from touching `.git` and waking itself in a loop.
+
+Polling only runs while a page is open (`Session.watched`), so a review left in a
+background tab does not run git over the repo forever. The **digest covers every
+hunk's content**, not just the file list and line counts: an agent rewriting a
+line in place leaves both of those identical, and a page that does not repaint
+for that is showing code that is no longer there. A scope change repaints
+regardless, or two scopes producing the same diff would leave the page labelled
+with the one it is not showing.
+
+**A refresh is two git invocations, not one per file.** The obvious shape --
+list the files, then `git diff -- <path>` for each -- measured ~800ms on a
+33-file change, which at a 2s tick is a 40% duty cycle of git subprocesses. Now
+one `--name-status` gives the authoritative list and one bulk diff is split at
+its `diff --git` boundaries (`snapshot_diff.go`), which is ~145ms for the same
+change. Two things make that safe:
+
+- **Sections are attributed by order, then verified.** Paths in diff headers may
+  be C-quoted, and misreading one attaches the wrong patch to the wrong file, so
+  nothing is parsed out of them: git emits `--name-status` and a plain diff in
+  the same order, each section is checked against the entry it was matched with,
+  and *any* mismatch abandons the whole fast path for per-file calls rather than
+  guessing. A quoted header is simply not decoded, so it falls back.
+- **A rename must be asked for by both paths.** `git diff <rev> -- <newpath>`
+  cannot see the rename pair and reports the file as newly added, so a pure
+  rename came back as every line added. The bulk diff is not path-limited and
+  gets this right; `diffAgainst` passes `oldPath` too so the fallback agrees.
+  `TestBulkDiffMatchesPerFileDiff` compares the two paths file by file, hunk by
+  hunk, and is what caught this.
+
+New files are read from disk rather than diffed (`untrackedDiff`), since an
+agent's work is mostly new files and that was the rest of the cost. Reading them
+directly means this code owns what git used to absorb: NUL bytes mean binary, a
+size check comes before the read, and anything that is not a regular file is
+refused rather than followed -- a symlink's target is not this workspace's
+business. `TestUntrackedDiffMatchesGit` holds it equivalent to what git produced.
+
+**`broadcast` holds the session lock across its sends.** Sending on a closed
+channel is a panic and `unsubscribe` closes, so copying the subscriber list and
+releasing the lock — the obvious shape — meant a review tab closed while the
+poller broadcast took the whole TUI process down. Holding it is affordable
+precisely because every send is non-blocking: the critical section is bounded by
+the number of open pages, never by how fast any of them reads. Dropping an event
+is safe because each one carries the whole state it describes and the poller
+guarantees a next. Callers must therefore not hold the lock, and must resolve
+arguments like `Threads()` before calling. Regression cover:
+`TestBroadcastRacesUnsubscribe` (needs `-race`).
+
+**Both assistants can be reviewed, but only one can always answer.** The button,
+the diff and the send path are assistant-agnostic -- `isAgentAssistant` admits
+anything that is not a script or a shell -- so a review reaches a Codex tab
+exactly as it reaches a Claude one. The **reply path does not survive Codex's
+default sandbox**: under `workspace-write` Seatbelt denies network, so the
+loopback POST cannot connect, and it fails as an ordinary "couldn't connect"
+rather than as a permission error. Undetected, the agent concludes the review
+server is down and sends the user hunting for a server that is running perfectly
+well.
+
+So the capability is resolved before the page says anything about replies.
+`reviewAgentProfile` (`app_git_review_agent.go`) maps the tab's assistant and
+sandbox to a `gitreview.AgentProfile`, which rides in on `OpenRequest`, is
+stamped onto every snapshot, and drives three things: the page names the agent
+(a Codex tab labelled "Submit to Claude" is simply wrong), a banner states that
+replies are unavailable and gives the exact fix, and `Compose` **omits the reply
+protocol entirely** rather than handing the agent instructions that will fail.
+
+Four details are load-bearing:
+
+1. **`workspace-write` is checked against the profile's config, not assumed.**
+   `config.CodexNetworkAccessEnabled` reads `<CODEX_HOME>/config.toml` for
+   `sandbox_workspace_write.network_access`, so a user who has already enabled it
+   is not told replies are off. The file is **read and never rewritten**, for the
+   same reason `InjectCodexTrustedDirectory` appends text: Codex owns it and
+   keeps its own state there.
+2. **An unknown or unset sandbox reads as "cannot reply".** Over-warning costs a
+   dismissible banner; under-warning leaves the user waiting for replies that can
+   never arrive.
+3. **The fix names the profile's `CODEX_HOME`**, not `~/.codex/config.toml`.
+   Medusa points `CODEX_HOME` at the profile directory, so the global file is the
+   one Codex ignores and following that advice would change nothing. It also says
+   that enabling this grants network access generally, since it does.
+4. **Claude is treated as reply-capable.** True for every tab in practice, though
+   a tab launched with the Sandboxed toggle may be subject to the same
+   restriction -- what Claude Code's own sandbox does to loopback traffic has not
+   been established, and claiming either way without knowing would be worse than
+   the status quo. It is one more case in the same switch when it is.
+
+Deliberately *not* done: a second, file-based reply channel. `$TMPDIR` and the
+worktree are both writable under `workspace-write`, so a drop box would work --
+but silently routing around a sandbox the user chose is not this feature's call
+to make, and writing into the worktree would show up in the review's own diff.
+
+Five smaller properties:
+
+1. **The page opens on Uncommitted, and the branch scope diffs the merge base
+   rather than the base branch tip.** Uncommitted is the work the user opened the
+   review to look at -- what the agent has just done. The branch view is the step
+   back from that, and it has to be the merge base: diffing the tip attributes
+   every commit made on main since the workspace forked to the workspace, burying
+   the actual change. It covers committed *and* uncommitted work, because an
+   agent that commits as it works would otherwise have a review that hides all of
+   it. `ParseScope` defaults to working, so a page that asks for no scope gets the
+   same view as one that has never been touched
+   (`TestParseScopeDefaultsToUncommitted`).
+
+   **The base is re-resolved on every refresh, against the newest of two
+   candidate refs** (`snapshot_base.go`). Both halves matter, and each was a bug:
+
+   - *Newest of two.* `git.GetBaseBranch` returns a branch **name**, so "main"
+     resolves to the local branch -- which in a worktree may not have moved since
+     the workspace was cut, while the rebase went onto `origin/main`. The merge
+     base against that stale ref is the old fork point, so every commit the
+     rebase brought in showed up as the workspace's own change. The local branch
+     can equally be the newer of the two, when the user has pulled it and not the
+     remote ref, so neither is right on its own: `newestMergeBase` takes the merge
+     base furthest forward in history, because of two candidate fork points the
+     later one excludes more history the user did not write.
+   - *Every refresh.* Resolved once at open time, a rebase mid-session would leave
+     the review measuring from a fork point that no longer exists.
+
+   `BaseRev` is part of the snapshot digest, because a rebase can move the fork
+   point while leaving the resulting diff byte-for-byte identical, and a page that
+   does not repaint for that goes on naming a commit the review is no longer
+   measured from. The top bar prints the base's short hash and subject next to
+   the branch names for the same reason the field exists: the base is derived
+   rather than chosen and it moves under the reader, so a bar reading only "main"
+   gives them no way to tell which fork point they are looking at. Regression
+   cover: `snapshot_base_test.go` builds a rebased worktree with a stale local
+   base and asserts the upstream commit stays out of the review.
+2. **The button is not gated on a dirty worktree**, unlike the one it replaces.
+   The branch scope reviews committed work, so a clean tree is exactly when the
+   old button vanished and the new one is most needed.
+3. **Comments anchor to `OldLine`/`NewLine` and quote their lines.** The
+   rendered row index names no real place in a file, so it cannot be reported to
+   an agent; the quote is what lets the agent find the place when the line number
+   has since moved. A path from the browser is checked with `staysInWorkspace`, so a
+   comment on `../../.ssh/config` is never quoted back as a file in this
+   workspace.
+4. **Threads persist to `<MetadataRoot>/<workspaceID>/review-comments.json`**
+   (`store.go`), beside that workspace's `workspace.json`. They are outstanding
+   work: a sent thread is something an agent was told about and may still be
+   acting on, and a draft is something the user typed and has not sent -- losing
+   either to a restart makes the page untrustworthy for any review spanning more
+   than one sitting. Written temp-plus-rename, so a crash cannot leave a
+   half-written file where the comments were; a corrupt or hand-edited file
+   degrades to "no history" and is **left on disk** rather than deleted, so it
+   stays recoverable. `maxPersistedThreads` prunes resolved threads before
+   unresolved ones, because an unresolved comment is the last thing that should
+   quietly disappear. An empty metadata dir disables persistence instead of
+   failing, which is what tests and a Service built without one get.
+5. **The navigator badge shows only what is outstanding**, and is not the read
+   tick, which lives on the other side of the row. That means a count of
+   *unresolved* comments and nothing at all for a file whose comments are all
+   resolved: a navigator marked up with finished work competes with the work
+   that is left, which is the only thing the column is for. Alongside it, a dot
+   marks a file where the agent has replied and the reader has not looked --
+   `state.unread`, page state because "have I read this" is a fact about the
+   person looking and a second tab is a second reader. It is set by
+   `announceAgentReplies` (which already had to notice a reply arriving on a file
+   other than the current one) and cleared by `selectFile`. Clearing is not
+   enough on its own: `readUnread` also **expands** the threads that carried the
+   replies, since a resolved thread starts collapsed and would otherwise be
+   marked read by a glance that could not possibly have included it. A shut
+   folder carries both marks over everything inside it (`badgeHTML` is shared),
+   so folding a directory away cannot hide either.
+
 ### Configuration
 
 Per-repo workspace config lives at `.medusa/workspaces.json` (setup-workspace, run, archive). Environment variables passed to those commands include `$ROOT_WORKSPACE_PATH` plus an auto-allocated free port (`internal/process/env.go`).
