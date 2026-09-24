@@ -146,50 +146,6 @@ func (m *Model) HandleMonitorInput(tabID TabID, msg tea.Msg) tea.Cmd {
 				}
 				return nil
 
-			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+u"))):
-				if m.isTabActorReady() {
-					if m.sendTabEvent(tabEvent{
-						tab:         tab,
-						workspaceID: wtID,
-						tabID:       tab.ID,
-						kind:        tabEventScrollPage,
-						scrollPage:  1,
-					}) {
-						return nil
-					}
-				}
-				{
-					tab.mu.Lock()
-					if tab.Terminal != nil {
-						tab.Terminal.ScrollView(tab.Terminal.Height / 4)
-						tab.monitorDirty = true
-					}
-					tab.mu.Unlock()
-				}
-				return nil
-
-			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+d"))):
-				if m.isTabActorReady() {
-					if m.sendTabEvent(tabEvent{
-						tab:         tab,
-						workspaceID: wtID,
-						tabID:       tab.ID,
-						kind:        tabEventScrollPage,
-						scrollPage:  -1,
-					}) {
-						return nil
-					}
-				}
-				{
-					tab.mu.Lock()
-					if tab.Terminal != nil {
-						tab.Terminal.ScrollView(-tab.Terminal.Height / 4)
-						tab.monitorDirty = true
-					}
-					tab.mu.Unlock()
-				}
-				return nil
-
 			case key.Matches(msg, key.NewBinding(key.WithKeys("home"))):
 				if m.isTabActorReady() {
 					if m.sendTabEvent(tabEvent{

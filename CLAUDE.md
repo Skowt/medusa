@@ -150,6 +150,12 @@ Regression cover: `internal/ui/common/keys_test.go`.
 
 Note that `ctrl+a` never reaches the agent: it is medusa's tmux-style prefix
 key. Press it twice to send a literal `ctrl+a` (`sendPrefixToTerminal`).
+It is the **only** ctrl key an agent tab or monitor tile intercepts. Tab
+switching and closing are `ctrl+a n/p/x`, not direct `ctrl+n/p/w/]`, and the
+monitor scrolls on PgUp/PgDn, not `ctrl+u/d`: agents bind all of those
+(Codex's `ctrl+[`, readline's `ctrl+w` word-delete), so a direct shortcut takes
+the key away from the agent. Regression cover:
+`internal/ui/center/model_input_ctrl_passthrough_test.go`.
 
 ### OSC 8 hyperlinks
 

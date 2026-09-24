@@ -162,15 +162,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 		// When Info tab is active, handle navigation keys and settings keys
 		if m.infoTabActive && m.focused {
 			switch {
-			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+n"))):
-				m.nextTab()
-				return m, m.tabSelectionChangedCmd()
-			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+p"))):
-				m.prevTab()
-				return m, m.tabSelectionChangedCmd()
-			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+w"))):
-				// Info tab is not closeable, ignore
-				return m, nil
 			case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
 				m.infoTabCursorDown()
 				return m, nil
@@ -200,20 +191,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			dv := tab.DiffViewer
 			tab.mu.Unlock()
 			if dv != nil {
-				// Handle ctrl+w for closing tab
-				if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+w"))) {
-					return m, m.closeCurrentTab()
-				}
-				// Handle ctrl+n/p for tab switching
-				if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+n"))) {
-					m.nextTab()
-					return m, m.tabSelectionChangedCmd()
-				}
-				if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+p"))) {
-					m.prevTab()
-					return m, m.tabSelectionChangedCmd()
-				}
-				// Forward all other keys to diff viewer
+				// Tab switching and closing go through the prefix (ctrl+a n/p/x).
 				if handled, cmd := m.dispatchDiffInput(tab, msg); handled {
 					return m, cmd
 				}
@@ -221,39 +199,9 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			}
 
 			if tab.Agent != nil && tab.Agent.Terminal != nil {
-				// Only intercept these specific keys - everything else goes to terminal
-				switch {
-				case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+n"))):
-					m.nextTab()
-					return m, m.tabSelectionChangedCmd()
-
-				case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+p"))):
-					m.prevTab()
-					return m, m.tabSelectionChangedCmd()
-
-				case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+w"))):
-					// Close tab
-					return m, m.closeCurrentTab()
-
-				case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+]"))):
-					// Switch to next tab (escape hatch that won't conflict)
-					m.nextTab()
-					return m, m.tabSelectionChangedCmd()
-
-				case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+["))):
-					// This is Escape - let it go to terminal
-					if err := tab.Agent.Terminal.SendString("\x1b"); err != nil {
-						logging.Warn("Escape key failed for tab %s: %v", tab.ID, err)
-						tab.mu.Lock()
-						tab.Running = false
-						tab.Detached = true
-						tab.mu.Unlock()
-						return m, func() tea.Msg {
-							return TabInputFailed{TabID: tab.ID, WorkspaceID: m.workspaceID(), Err: err}
-						}
-					}
-					return m, nil
-				}
+				// No ctrl shortcuts are intercepted here: agents bind most of
+				// them (ctrl+w, ctrl+n/p, ctrl+[ as Esc), so tab switching and
+				// closing live behind the prefix instead (ctrl+a n/p/x).
 
 				// PgUp/PgDown scroll medusa's own scrollback ONLY for tabs whose
 				// agent streams a transcript (default-mode Claude). An agent
