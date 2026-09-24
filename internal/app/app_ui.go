@@ -198,7 +198,7 @@ func (a *App) handlePrefixCommand(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			if !a.tmuxAvailable {
 				return true, a.toast.ShowError("tmux required to create tabs. " + a.tmuxInstallHint)
 			}
-			launch := a.lastUsedLaunch(a.activeWorkspace, a.config.UI.LastAssistant)
+			launch := a.lastUsedLaunch(a.activeWorkspace, a.stickyAssistant(a.activeWorkspace))
 			return true, func() tea.Msg { return launch }
 		}
 		return true, nil

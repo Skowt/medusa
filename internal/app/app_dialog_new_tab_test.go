@@ -153,3 +153,28 @@ func TestDefaultCodexSandboxFallsBack(t *testing.T) {
 		t.Errorf("defaultCodexSandbox = %q, want the stored policy", got)
 	}
 }
+
+// The dialog and the no-dialog launch paths open on the assistant last used
+// under the workspace's own profile, not the one used last anywhere.
+func TestStickyAssistantFollowsTheWorkspaceProfile(t *testing.T) {
+	cfg := testConfig(t)
+	a := &App{config: cfg}
+	work := &data.Workspace{Profile: "Work"}
+	personal := &data.Workspace{Profile: "Default"}
+
+	a.newTabLaunchFromDialog(work, common.DialogResult{ID: DialogCustomizeTab, SelectValue: assistantClaude})
+	a.newTabLaunchFromDialog(personal, common.DialogResult{ID: DialogCustomizeTab, SelectValue: assistantCodex})
+
+	if got := a.stickyAssistant(work); got != assistantClaude {
+		t.Errorf("Work workspace opens on %q, want claude", got)
+	}
+	if got := a.stickyAssistant(personal); got != assistantCodex {
+		t.Errorf("Default workspace opens on %q, want codex", got)
+	}
+
+	a.activeWorkspace = work
+	a.handleShowCustomizeTabDialog()
+	if got := a.dialog.SelectValue(); got != assistantClaude {
+		t.Errorf("dialog for Work opened on %q, want claude", got)
+	}
+}

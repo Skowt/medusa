@@ -12,21 +12,22 @@ type UISettings struct {
 	HideSidebar                  bool
 	HideTerminal                 bool
 	AutoStartAgent               bool
-	LastProfile                  string // Most recently selected profile name
-	LastWorkspace                string // ID of the workspace active when medusa last exited
-	LastIsolated                 bool   // Last state of "run isolated" checkbox for new workspaces
-	LastAllowUnsandboxedCommands bool   // Last state of "allow unsandboxed commands" checkbox
-	LastPermissionMode           string // Last selected starting mode (default "auto")
-	LastFullscreen               bool   // Last state of "Fullscreen TUI" checkbox (default on)
-	LastCreateWorktree           bool   // Last state of "Create a git worktree" checkbox in New Workspace (default on)
-	LastAssistant                string // Assistant the New Tab dialog opens on (claude, codex)
-	LastCodexSandbox             string // Last codex --sandbox policy
-	LastCodexStartingMode        string // Last Codex starting mode (default, auto)
-	LastReviewScope              string // Scope the review page opens on (working, branch)
-	LastReviewAutoSend           bool   // Last state of the review page's "Send as I comment" toggle
-	LastReviewSplit              bool   // Review page shows diffs side by side rather than unified
-	LastReviewTheme              string // Review page theme: "light", "dark", or "" to follow the OS
-	Theme                        string // Theme ID, defaults to "gruvbox"
+	LastProfile                  string            // Most recently selected profile name
+	LastWorkspace                string            // ID of the workspace active when medusa last exited
+	LastIsolated                 bool              // Last state of "run isolated" checkbox for new workspaces
+	LastAllowUnsandboxedCommands bool              // Last state of "allow unsandboxed commands" checkbox
+	LastPermissionMode           string            // Last selected starting mode (default "auto")
+	LastFullscreen               bool              // Last state of "Fullscreen TUI" checkbox (default on)
+	LastCreateWorktree           bool              // Last state of "Create a git worktree" checkbox in New Workspace (default on)
+	LastAssistant                string            // Assistant the New Tab dialog opens on (claude, codex); fallback for profiles with no entry below
+	LastAssistantByProfile       map[string]string // Assistant last launched under each profile, keyed by profile name
+	LastCodexSandbox             string            // Last codex --sandbox policy
+	LastCodexStartingMode        string            // Last Codex starting mode (default, auto)
+	LastReviewScope              string            // Scope the review page opens on (working, branch)
+	LastReviewAutoSend           bool              // Last state of the review page's "Send as I comment" toggle
+	LastReviewSplit              bool              // Review page shows diffs side by side rather than unified
+	LastReviewTheme              string            // Review page theme: "light", "dark", or "" to follow the OS
+	Theme                        string            // Theme ID, defaults to "gruvbox"
 	TmuxServer                   string
 	TmuxConfigPath               string
 	TmuxSyncInterval             string
@@ -70,35 +71,36 @@ func loadUISettings(path string) UISettings {
 
 	var raw struct {
 		UI struct {
-			ShowKeymapHints              *bool           `json:"show_keymap_hints"`
-			HideSidebar                  *bool           `json:"hide_sidebar"`
-			HideTerminal                 *bool           `json:"hide_terminal"`
-			AutoStartAgent               *bool           `json:"auto_start_agent"`
-			LastProfile                  *string         `json:"last_profile"`
-			LastWorkspace                *string         `json:"last_workspace"`
-			LastIsolated                 *bool           `json:"last_isolated"`
-			LastSkipPermissions          *bool           `json:"last_skip_permissions"` // legacy → coalesced into LastPermissionMode
-			LastAllowUnsandboxedCommands *bool           `json:"last_allow_unsandboxed_commands"`
-			LastPermissionMode           *string         `json:"last_permission_mode"`
-			LastFullscreen               *bool           `json:"last_fullscreen"`
-			LastCreateWorktree           *bool           `json:"last_create_worktree"`
-			LastAssistant                *string         `json:"last_assistant"`
-			LastCodexSandbox             *string         `json:"last_codex_sandbox"`
-			LastCodexStartingMode        *string         `json:"last_codex_starting_mode"`
-			LastReviewScope              *string         `json:"last_review_scope"`
-			LastReviewAutoSend           *bool           `json:"last_review_autosend"`
-			LastReviewSplit              *bool           `json:"last_review_split"`
-			LastReviewTheme              *string         `json:"last_review_theme"`
-			Theme                        *string         `json:"theme"`
-			TmuxServer                   *string         `json:"tmux_server"`
-			TmuxConfigPath               *string         `json:"tmux_config"`
-			TmuxSyncInterval             *string         `json:"tmux_sync_interval"`
-			TmuxPersistence              *bool           `json:"tmux_persistence"`
-			NotificationSound            *string         `json:"notification_sound"`
-			IDE                          *string         `json:"ide"`
-			IDEAlwaysOpen                *bool           `json:"ide_always_open"`
-			CollapsedGroups              map[string]bool `json:"collapsed_groups"`
-			GroupOrder                   []string        `json:"group_order"`
+			ShowKeymapHints              *bool             `json:"show_keymap_hints"`
+			HideSidebar                  *bool             `json:"hide_sidebar"`
+			HideTerminal                 *bool             `json:"hide_terminal"`
+			AutoStartAgent               *bool             `json:"auto_start_agent"`
+			LastProfile                  *string           `json:"last_profile"`
+			LastWorkspace                *string           `json:"last_workspace"`
+			LastIsolated                 *bool             `json:"last_isolated"`
+			LastSkipPermissions          *bool             `json:"last_skip_permissions"` // legacy → coalesced into LastPermissionMode
+			LastAllowUnsandboxedCommands *bool             `json:"last_allow_unsandboxed_commands"`
+			LastPermissionMode           *string           `json:"last_permission_mode"`
+			LastFullscreen               *bool             `json:"last_fullscreen"`
+			LastCreateWorktree           *bool             `json:"last_create_worktree"`
+			LastAssistant                *string           `json:"last_assistant"`
+			LastAssistantByProfile       map[string]string `json:"last_assistant_by_profile"`
+			LastCodexSandbox             *string           `json:"last_codex_sandbox"`
+			LastCodexStartingMode        *string           `json:"last_codex_starting_mode"`
+			LastReviewScope              *string           `json:"last_review_scope"`
+			LastReviewAutoSend           *bool             `json:"last_review_autosend"`
+			LastReviewSplit              *bool             `json:"last_review_split"`
+			LastReviewTheme              *string           `json:"last_review_theme"`
+			Theme                        *string           `json:"theme"`
+			TmuxServer                   *string           `json:"tmux_server"`
+			TmuxConfigPath               *string           `json:"tmux_config"`
+			TmuxSyncInterval             *string           `json:"tmux_sync_interval"`
+			TmuxPersistence              *bool             `json:"tmux_persistence"`
+			NotificationSound            *string           `json:"notification_sound"`
+			IDE                          *string           `json:"ide"`
+			IDEAlwaysOpen                *bool             `json:"ide_always_open"`
+			CollapsedGroups              map[string]bool   `json:"collapsed_groups"`
+			GroupOrder                   []string          `json:"group_order"`
 		} `json:"ui"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -142,6 +144,9 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.LastAssistant != nil && *raw.UI.LastAssistant != "" {
 		settings.LastAssistant = *raw.UI.LastAssistant
+	}
+	if raw.UI.LastAssistantByProfile != nil {
+		settings.LastAssistantByProfile = raw.UI.LastAssistantByProfile
 	}
 	if raw.UI.LastCodexSandbox != nil && *raw.UI.LastCodexSandbox != "" {
 		settings.LastCodexSandbox = *raw.UI.LastCodexSandbox
@@ -227,6 +232,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["last_fullscreen"] = settings.LastFullscreen
 	ui["last_create_worktree"] = settings.LastCreateWorktree
 	ui["last_assistant"] = settings.LastAssistant
+	ui["last_assistant_by_profile"] = settings.LastAssistantByProfile
 	ui["last_codex_sandbox"] = settings.LastCodexSandbox
 	delete(ui, "last_codex_approval")
 	delete(ui, "last_codex_search")

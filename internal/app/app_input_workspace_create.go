@@ -194,7 +194,7 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 		// Only agent tabs suppress auto-launch — a script tab created by the
 		// `run` command shouldn't prevent the initial Claude tab from opening.
 		if !a.center.HasAgentTabsForWorkspace(wsID) && !workspaceHasLiveAgentTabs(msg.Workspace) {
-			launch := a.lastUsedLaunch(msg.Workspace, a.config.UI.LastAssistant)
+			launch := a.lastUsedLaunch(msg.Workspace, a.stickyAssistant(msg.Workspace))
 			cmds = append(cmds, func() tea.Msg { return launch })
 		}
 	}

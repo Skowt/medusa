@@ -215,8 +215,11 @@ false "ready" ping mid-work.
 ### Codex tabs
 
 A tab's assistant is picked in the New Tab dialog's "Assistant" cycler, which
-is **sticky** (`config.UI.LastAssistant`) and drives every no-dialog launch
-path too. Cycling it rebuilds the dialog: Claude's permission modes and Codex's
+is **sticky per profile** (`config.UI.LastAssistantByProfile`, falling back to
+the global `LastAssistant` for a profile that has never launched one) and drives
+every no-dialog launch path too. Always resolve it through `stickyAssistant(ws)`
+rather than reading `LastAssistant`, or a Work profile on Claude opens on Codex
+because a Default workspace used it last. Cycling it rebuilds the dialog: Claude's permission modes and Codex's
 sandbox policies share no values, so the fields below the assistant belong to
 one of them and to no other (`app_dialog_new_tab.go`). Per-tab Codex policies
 persist in `data.TabInfo`, and `agentTabOptions.forAssistant` strips the other

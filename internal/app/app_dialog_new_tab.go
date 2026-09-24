@@ -7,9 +7,21 @@ import (
 )
 
 // handleShowCustomizeTabDialog opens the New Tab dialog on the assistant the
-// user last launched.
+// user last launched under the active workspace's profile.
 func (a *App) handleShowCustomizeTabDialog() {
-	a.showNewTabDialog(defaultAssistant(a.config.UI.LastAssistant))
+	a.showNewTabDialog(a.stickyAssistant(a.activeWorkspace))
+}
+
+// stickyAssistant is the assistant a new tab in ws opens on. It is remembered
+// per profile, since profiles tend to be tied to one assistant (a work profile
+// on Claude, a personal one on Codex), and falls back to the global last-used
+// assistant for a profile that has never launched one.
+func (a *App) stickyAssistant(ws *data.Workspace) string {
+	profile := ""
+	if ws != nil {
+		profile = ws.Profile
+	}
+	return defaultAssistant(a.config.UI.AssistantFor(profile))
 }
 
 // showNewTabDialog builds the New Tab dialog for one assistant: an "Assistant"
@@ -95,7 +107,11 @@ func (a *App) handleDialogSelectChanged(msg common.DialogSelectChanged) {
 // persisting the choices so the next tab opens on them.
 func (a *App) newTabLaunchFromDialog(ws *data.Workspace, result common.DialogResult) messages.LaunchAgent {
 	assistant := defaultAssistant(result.SelectValue)
-	a.config.UI.LastAssistant = assistant
+	profile := ""
+	if ws != nil {
+		profile = ws.Profile
+	}
+	a.config.UI.RememberAssistant(profile, assistant)
 
 	launch := messages.LaunchAgent{Assistant: assistant, Workspace: ws}
 	if assistant == assistantCodex {

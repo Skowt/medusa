@@ -72,8 +72,9 @@ func (a *App) handleRenameProfile(msg messages.RenameProfile) tea.Cmd {
 
 	if a.config.UI.LastProfile == oldName {
 		a.config.UI.LastProfile = newName
-		_ = a.config.SaveUISettings()
 	}
+	a.config.UI.RenameProfileAssistant(oldName, newName)
+	_ = a.config.SaveUISettings()
 
 	// Update in-memory state
 	for _, ws := range a.allWorkspaces {
@@ -179,8 +180,9 @@ func (a *App) handleDeleteProfile(msg messages.DeleteProfile) tea.Cmd {
 
 	if a.config.UI.LastProfile == profile {
 		a.config.UI.LastProfile = ""
-		_ = a.config.SaveUISettings()
 	}
+	a.config.UI.ForgetProfileAssistant(profile)
+	_ = a.config.SaveUISettings()
 
 	// Update in-memory state
 	for _, ws := range a.allWorkspaces {
