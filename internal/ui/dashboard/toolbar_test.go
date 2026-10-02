@@ -83,3 +83,49 @@ func TestToolbarClickHitsEachButton(t *testing.T) {
 		t.Errorf("last toolbar button is %v, want toolbarSkillUsage", last.kind)
 	}
 }
+
+// TestToolbarCaffeinateHiddenUntilSupported verifies [C] only appears once the
+// app has said caffeinate is available, so non-macOS users never see it.
+func TestToolbarCaffeinateHiddenUntilSupported(t *testing.T) {
+	m := New()
+	m.width = 40
+	if strings.Contains(m.renderToolbar(), "[C]") {
+		t.Fatal("[C] rendered before caffeinate was marked available")
+	}
+	m.SetCaffeinate(true, false)
+	if !strings.Contains(m.renderToolbar(), "[C]") {
+		t.Fatal("[C] missing once caffeinate is available")
+	}
+	if got := strings.Count(m.renderToolbar(), "\n"); got != 0 {
+		t.Errorf("toolbar with [C] wrapped onto %d extra rows", got)
+	}
+}
+
+func TestToolbarCaffeinateCommand(t *testing.T) {
+	m := New()
+	cmd := m.toolbarCommand(toolbarCaffeinate)
+	if cmd == nil {
+		t.Fatal("toolbarCaffeinate produced no command")
+	}
+	if _, ok := cmd().(messages.ToggleCaffeinate); !ok {
+		t.Errorf("command emitted %T, want messages.ToggleCaffeinate", cmd())
+	}
+}
+
+// TestToolbarCaffeinateChangesColourWhenOn verifies the button looks different
+// while caffeinate runs, both focused and unfocused.
+func TestToolbarCaffeinateChangesColourWhenOn(t *testing.T) {
+	for _, focused := range []bool{false, true} {
+		m := New()
+		m.width = 40
+		m.toolbarFocused = focused
+		m.SetCaffeinate(true, false)
+		m.toolbarIndex = len(m.toolbarItems()) - 1
+		off := m.renderToolbar()
+		m.SetCaffeinate(true, true)
+		on := m.renderToolbar()
+		if off == on {
+			t.Errorf("focused=%v: [C] renders the same on and off", focused)
+		}
+	}
+}

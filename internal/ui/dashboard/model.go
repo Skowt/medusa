@@ -65,6 +65,7 @@ const (
 	toolbarMonitor
 	toolbarSettings
 	toolbarSkillUsage
+	toolbarCaffeinate
 )
 
 // toolbarButton tracks a clickable button in the toolbar
@@ -92,6 +93,8 @@ type Model struct {
 	toolbarY        int             // Y position of toolbar in content coordinates
 	toolbarFocused  bool            // Whether toolbar actions are focused
 	toolbarIndex    int             // Focused toolbar action index
+	caffeinateShown bool            // Whether [C] is offered (macOS only)
+	caffeinated     bool            // Whether caffeinate is keeping the Mac awake
 	wsButtonHits    []wsButtonHit   // clickable action buttons of the currently selected workspace row
 	collapsedGroups map[string]bool // Group label ("" = Ungrouped) → collapsed
 	groupOrder      []string        // Manual section order; labels absent from it fall back to alphabetical
@@ -194,6 +197,13 @@ func (m *Model) SetCollapsedGroups(cg map[string]bool) {
 // SetShowKeymapHints controls whether helper text is rendered.
 func (m *Model) SetShowKeymapHints(show bool) {
 	m.showKeymapHints = show
+}
+
+// SetCaffeinate controls the [C] toolbar button: whether it is shown at all,
+// and whether it renders as on.
+func (m *Model) SetCaffeinate(shown, active bool) {
+	m.caffeinateShown = shown
+	m.caffeinated = active
 }
 
 // SetStyles updates the component's styles.

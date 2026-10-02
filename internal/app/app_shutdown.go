@@ -31,5 +31,8 @@ func (a *App) Shutdown() {
 		if a.gitReview != nil {
 			_ = a.gitReview.Close()
 		}
+		if a.caffeinate != nil {
+			a.caffeinate.Stop()
+		}
 	})
 }

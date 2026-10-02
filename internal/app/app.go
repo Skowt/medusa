@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Skowt/medusa/internal/caffeinate"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -180,6 +182,10 @@ type App struct {
 	// skillUsage serves the skill-usage dashboard. It stays idle until the
 	// toolbar's [U] button is pressed for the first time.
 	skillUsage *skillstats.Service
+
+	// caffeinate holds `caffeinate -d` while the toolbar's [C] is on. Nil
+	// where caffeinate is unavailable, which hides the button.
+	caffeinate *caffeinate.Keeper
 
 	// gitReview serves the live diff-review pages. It stays idle until
 	// [Review Changes] is pressed for the first time.
@@ -416,6 +422,10 @@ func New(version, commit, date string) (*App, error) {
 	app.layout.SetSidebarHidden(cfg.UI.HideSidebar)
 	app.layout.SetTerminalHidden(cfg.UI.HideTerminal)
 	app.setKeymapHintsEnabled(cfg.UI.ShowKeymapHints)
+	if caffeinate.Supported() {
+		app.caffeinate = caffeinate.New()
+		app.dashboard.SetCaffeinate(true, false)
+	}
 	// Propagate tmux config to components
 	app.center.SetTmuxConfig(tmuxOpts.ServerName, tmuxOpts.ConfigPath)
 	app.supervisor.Start("center.tab_actor", app.center.RunTabActor, supervisor.WithRestartPolicy(supervisor.RestartAlways))

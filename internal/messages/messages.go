@@ -140,6 +140,9 @@ type ToggleMonitor struct{}
 // The server starts on first request and stays up for the rest of the session.
 type OpenSkillUsage struct{}
 
+// ToggleCaffeinate requests starting or stopping `caffeinate -d` (macOS only).
+type ToggleCaffeinate struct{}
+
 // ToggleHelp requests toggling the help overlay
 type ToggleHelp struct{}
 

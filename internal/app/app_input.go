@@ -205,6 +205,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.OpenSkillUsage:
 		cmds = append(cmds, a.handleOpenSkillUsage())
 
+	case messages.ToggleCaffeinate:
+		cmds = append(cmds, a.handleToggleCaffeinate())
+
 	case messages.ToggleHelp:
 		a.helpOverlay.SetSize(a.width, a.height)
 		a.helpOverlay.Toggle()

@@ -16,12 +16,16 @@ type toolbarItem struct {
 }
 
 func (m *Model) toolbarItems() []toolbarItem {
-	return []toolbarItem{
+	items := []toolbarItem{
 		{kind: toolbarHelp, label: "?"},
 		{kind: toolbarMonitor, label: "M"},
 		{kind: toolbarSettings, label: "S"},
 		{kind: toolbarSkillUsage, label: "U"},
 	}
+	if m.caffeinateShown {
+		items = append(items, toolbarItem{kind: toolbarCaffeinate, label: "C"})
+	}
+	return items
 }
 
 func (m *Model) toolbarCommand(kind toolbarButtonKind) tea.Cmd {
@@ -34,6 +38,8 @@ func (m *Model) toolbarCommand(kind toolbarButtonKind) tea.Cmd {
 		return func() tea.Msg { return messages.ShowSettingsDialog{} }
 	case toolbarSkillUsage:
 		return func() tea.Msg { return messages.OpenSkillUsage{} }
+	case toolbarCaffeinate:
+		return func() tea.Msg { return messages.ToggleCaffeinate{} }
 	default:
 		return nil
 	}
@@ -82,6 +88,11 @@ func (m *Model) renderToolbar() string {
 			style := inactiveStyle
 			if m.toolbarFocused && itemIndex == m.toolbarIndex {
 				style = activeStyle
+			}
+			// [C] keeps its colour while on, focused or not, so a Mac held
+			// awake is visible at a glance.
+			if item.kind == toolbarCaffeinate && m.caffeinated {
+				style = style.Foreground(common.ColorWarning)
 			}
 			rendered := style.Render(label)
 			width := lipgloss.Width(rendered)
