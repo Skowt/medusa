@@ -1,4 +1,4 @@
-package app
+package workspaceops
 
 import (
 	"os"
@@ -60,7 +60,7 @@ func TestCopyIgnoredFiles(t *testing.T) {
 	run("add", "README.md")
 	run("commit", "-m", "add readme")
 
-	copyIgnoredFiles(src, dst)
+	CopyIgnoredFiles(src, dst)
 
 	// Should exist (ignored files)
 	for _, path := range []string{
@@ -149,7 +149,7 @@ func TestCopyIgnoredFilesPreservesSymlinks(t *testing.T) {
 		t.Fatalf("symlink interpreter: %v", err)
 	}
 
-	copyIgnoredFiles(src, dst)
+	CopyIgnoredFiles(src, dst)
 
 	for _, name := range []string{"key-alias.pem", "interpreter"} {
 		path := filepath.Join(dst, "secrets", name)
@@ -189,8 +189,8 @@ func TestCopyIgnoredFilesSymlinkCopyIsIdempotent(t *testing.T) {
 		t.Fatalf("symlink: %v", err)
 	}
 
-	copyIgnoredFiles(src, dst)
-	copyIgnoredFiles(src, dst)
+	CopyIgnoredFiles(src, dst)
+	CopyIgnoredFiles(src, dst)
 
 	link := filepath.Join(dst, "secrets", "key-alias.pem")
 	info, err := os.Lstat(link)
@@ -223,7 +223,7 @@ func TestCopyIgnoredFilesSkipsBuildAndEnvDirs(t *testing.T) {
 		t.Fatalf("write .env: %v", err)
 	}
 
-	copyIgnoredFiles(src, dst)
+	CopyIgnoredFiles(src, dst)
 
 	for _, rel := range []string{
 		".venv/bin/python",

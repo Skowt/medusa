@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -36,6 +34,15 @@ type AgentOptions struct {
 	// approval review. Web search is always enabled for Codex launches.
 	CodexSandbox string
 	CodexAuto    bool
+	// InitialPromptFile names a file holding the agent's first prompt. The
+	// command reads it into the positional argument after "--" (so text
+	// starting with a dash is not read as a flag) and deletes it. The prompt
+	// travels by file because tmux refuses a command over ~16 KB, and the
+	// agent command is part of a tmux new-session command line. It applies to
+	// a fresh launch only and is never written to TabInfo, so a restore,
+	// reattach or restart cannot replay it. Command substitution drops
+	// trailing newlines, which a prompt does not miss.
+	InitialPromptFile string
 }
 
 // buildAgentCommand assembles the env-prefixed shell command for an agent.
@@ -74,7 +81,17 @@ func buildAgentCommand(agentType AgentType, command, sessionName, profileDir str
 		// session in that profile had ever run /tui fullscreen.
 		cmd = "CLAUDE_CODE_NO_FLICKER=" + noFlickerValue(opts.Fullscreen) + " " + cmd
 	}
-	return cmd
+	return cmd + initialPromptArg(opts)
+}
+
+// initialPromptArg returns the trailing "-- <prompt>" for a fresh launch, and
+// nothing on a resume: a resumed conversation already had its first prompt.
+func initialPromptArg(opts AgentOptions) string {
+	if opts.InitialPromptFile == "" || opts.Resume {
+		return ""
+	}
+	file := shellutil.Quote(opts.InitialPromptFile)
+	return ` -- "$(cat ` + file + `; rm -f ` + file + `)"`
 }
 
 func noFlickerValue(fullscreen bool) string {
@@ -144,79 +161,24 @@ func NewAgentManager(cfg *config.Config) *AgentManager {
 
 // CreateAgentWithTags creates a new agent for the given workspace with tmux tags.
 func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentType, sessionName string, rows, cols uint16, tags tmux.SessionTags, opts AgentOptions) (*Agent, error) {
-	if isAgentAssistant(agentType) && ws.Profile == "" {
-		return nil, fmt.Errorf("cannot start %s agent without a profile (workspace %q)", agentType, ws.Name)
-	}
-	assistantCfg, ok := m.config.Assistants[string(agentType)]
-	if !ok {
-		return nil, fmt.Errorf("unknown agent type: %s", agentType)
-	}
-	if sessionName == "" {
-		sessionName, _ = tmux.NextUniqueSessionName(ws.Name, tmux.DefaultOptions())
-	}
-	if err := tmux.EnsureAvailable(); err != nil {
+	p, err := PrepareAgent(m.config, ws, agentType, sessionName, opts)
+	if err != nil {
 		return nil, err
 	}
-
-	// Build environment
-	env := []string{
-		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root()),
-		fmt.Sprintf("WORKSPACE_NAME=%s", ws.Name),
-		"LINES=",   // Unset to force ioctl usage
-		"COLUMNS=", // Unset to force ioctl usage
-		"COLORTERM=truecolor",
-	}
-
-	var profileDir string
-	if agentType == AgentClaude && ws.Profile != "" {
-		profileDir = filepath.Join(m.config.Paths.ProfilesRoot, ws.Profile)
-		_ = os.MkdirAll(profileDir, 0755)
-	}
-
-	// A Codex tab's profileDir is its CODEX_HOME, which also carries the
-	// worktree trust entry and the activity hooks Codex reads.
-	if agentType == AgentCodex && ws.Profile != "" {
-		profileDir = config.CodexHomeDir(m.config.Paths.ProfilesRoot, ws.Profile)
-		prepareCodexHome(profileDir, ws.Root(), m.config.Paths.HooksDir, config.ResolveHookEmitBinary())
-	}
-
-	// Pre-trust the workspace directory so Claude doesn't prompt
-	// Use profile config dir if set, otherwise default ~/.claude.json
-	if agentType == AgentClaude {
-		_ = config.InjectTrustedDirectory(ws.Root(), profileDir)
-	}
-
-	// The pane starts in ws.Root() (see ClientCommandWithTags below), which is
-	// the cwd Claude Code encodes into its transcript directory.
-	opts.Cwd = ws.Root()
-	agentCommand := buildAgentCommand(agentType, assistantCfg.Command, sessionName, profileDir, opts)
-
-	// Create terminal with agent command, falling back to shell on exit
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/bash"
-	}
-
-	// Execute agent, then reset terminal state and drop to shell
-	// Reset sequence: stty sane (terminal modes), exit alt screen, show cursor, reset attrs, RIS
-	// Use -l flag to start login shell so .zshrc/.bashrc are loaded
-	fullCommand := fmt.Sprintf("%s; stty sane; printf '\\033[?1049l\\033[?25h\\033[0m\\033c'; echo 'Agent exited. Dropping to shell...'; export TERM=xterm-256color; exec %s -l", agentCommand, shell)
-
 	// Fullscreen mark and the CLAUDE_CODE_NO_FLICKER env var must agree: both
 	// are gated on agentType == AgentClaude, matching buildAgentCommand's gate.
-	tags.Fullscreen = agentType == AgentClaude && opts.Fullscreen
-	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root(), fullCommand, tmux.DefaultOptions(), tags)
-	term, err := NewWithSize(termCommand, ws.Root(), env, rows, cols)
+	tags.Fullscreen = p.Fullscreen
+	termCommand := tmux.ClientCommandWithTags(p.SessionName, ws.Root(), p.Command, tmux.DefaultOptions(), tags)
+	term, err := NewWithSize(termCommand, ws.Root(), p.Env, rows, cols)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create terminal: %w", err)
 	}
-
 	agent := &Agent{
 		Type:      agentType,
 		Terminal:  term,
 		Workspace: ws,
-		Config:    assistantCfg,
-		Session:   sessionName,
+		Config:    p.Config,
+		Session:   p.SessionName,
 	}
 
 	m.mu.Lock()

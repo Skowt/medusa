@@ -251,6 +251,16 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 			return messages.Error{Err: fmt.Errorf("missing workspace or agent"), Context: "creating terminal tab"}
 		}
 	}
+	// A create that was in flight when the workspace started closing lands
+	// here afterwards. Close its tmux client instead of keeping it as a tab.
+	if m.closingWorkspaces[string(msg.Workspace.ID())] {
+		if m.agentManager != nil {
+			_ = m.agentManager.CloseAgent(msg.Agent)
+		} else if msg.Agent.Terminal != nil {
+			_ = msg.Agent.Terminal.Close()
+		}
+		return nil
+	}
 
 	// msg.Rows/Cols were captured when this (async) create was initiated and
 	// may be stale by the time the result arrives. Size the vterm/PTY from the

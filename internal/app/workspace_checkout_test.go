@@ -9,6 +9,7 @@ import (
 	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
 // newCheckoutTestRepo builds a git repo with one commit and returns its path.
@@ -183,7 +184,7 @@ func TestRemovableWorktrees_SkipsAPathThatIsNotAWorktree(t *testing.T) {
 	notAWorktree := newCheckoutTestRepo(t)
 
 	ws := data.NewWorkspace("ws", "ws", "main", repo, notAWorktree)
-	if specs := removableWorktrees(ws); len(specs) != 0 {
+	if specs := workspaceops.RemovableWorktrees(ws); len(specs) != 0 {
 		t.Errorf("removableWorktrees = %v, want none", specs)
 	}
 }
@@ -198,7 +199,7 @@ func TestRemovableWorktrees_KeepsARealWorktree(t *testing.T) {
 	runGit(t, repo, "worktree", "add", "--no-track", "-b", "feature", worktreePath, "main")
 
 	ws := data.NewWorkspace("feature", "feature", "main", repo, worktreePath)
-	specs := removableWorktrees(ws)
+	specs := workspaceops.RemovableWorktrees(ws)
 	if len(specs) != 1 || specs[0].WorkspacePath != worktreePath {
 		t.Fatalf("removableWorktrees = %v, want one spec for %s", specs, worktreePath)
 	}
@@ -338,7 +339,7 @@ func TestPullBeforeOpen_PullsACleanRepo(t *testing.T) {
 		t.Fatal("the clone should start out behind origin")
 	}
 
-	if notice := pullBeforeOpen(clone); notice != "" {
+	if notice := workspaceops.PullBeforeOpen(clone); notice != "" {
 		t.Errorf("notice = %q, want none for a clean pull", notice)
 	}
 	if _, err := os.Stat(filepath.Join(clone, "NEW.md")); err != nil {
@@ -356,7 +357,7 @@ func TestPullBeforeOpen_LeavesADirtyRepoAlone(t *testing.T) {
 		t.Fatalf("dirty the tree: %v", err)
 	}
 
-	notice := pullBeforeOpen(clone)
+	notice := workspaceops.PullBeforeOpen(clone)
 	if notice == "" {
 		t.Error("a skipped pull must be explained, or being behind origin has no visible reason")
 	}
@@ -375,7 +376,7 @@ func TestPullBeforeOpen_SkipsARepoWithNoUpstream(t *testing.T) {
 	skipIfNoGit(t)
 
 	repo := newCheckoutTestRepo(t)
-	if notice := pullBeforeOpen(repo); notice != "" {
+	if notice := workspaceops.PullBeforeOpen(repo); notice != "" {
 		t.Errorf("notice = %q, want none for a branch with no upstream", notice)
 	}
 }
@@ -399,7 +400,7 @@ func TestPullBeforeOpen_RefusesToMergeADivergedBranch(t *testing.T) {
 		t.Fatalf("GetCurrentBranch: %v", err)
 	}
 
-	if notice := pullBeforeOpen(clone); notice == "" {
+	if notice := workspaceops.PullBeforeOpen(clone); notice == "" {
 		t.Error("a refused pull must be explained")
 	}
 	if _, err := os.Stat(filepath.Join(clone, "NEW.md")); !os.IsNotExist(err) {

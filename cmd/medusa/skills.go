@@ -23,34 +23,44 @@ import (
 // for headless use — a scan from a script, or a report without a browser.
 const skillsCommandName = "skills"
 
-// runSkillsCommand implements `medusa skills`. It owns its own FlagSet so the
-// subcommand's flags stay independent of the TUI's argument handling.
-func runSkillsCommand(args []string) error {
-	fs := flag.NewFlagSet("medusa "+skillsCommandName, flag.ExitOnError)
-	addr := fs.String("addr", "127.0.0.1:7788", "listen address for the dashboard")
+// skillsCommand is `medusa skills`.
+func skillsCommand() *command {
+	return &command{
+		name:    skillsCommandName,
+		summary: "Report which Claude Code skills were invoked",
+		usage:   "medusa skills [flags]",
+		long: "Reports which Claude Code skills were invoked, grouped by plugin.\n" +
+			"With no flags, serves the dashboard until interrupted.",
+		examples: []string{
+			"medusa skills                       # serve the dashboard on 127.0.0.1:7788",
+			"medusa skills --report --gran week --profile Work",
+		},
+		bind: bindSkillsFlags,
+	}
+}
+
+func bindSkillsFlags(fs *flag.FlagSet) func(c *cliContext, args []string) error {
+	addr := fs.String("addr", "127.0.0.1:7788", "listen `address` for the dashboard")
 	scanOnly := fs.Bool("scan", false, "scan transcripts, print a summary, and exit")
 	report := fs.Bool("report", false, "print a text report to stdout and exit")
-	gran := fs.String("gran", "day", "report granularity: hour, day, or week")
-	profile := fs.String("profile", "", "limit the report to one Medusa profile")
+	gran := fs.String("gran", "day", "report granularity `unit`: hour, day, or week")
+	profile := fs.String("profile", "", "limit the report to the Medusa profile `name`")
 	noClaude := fs.Bool("no-claude-dir", false, "ignore ~/.claude/projects (non-Medusa sessions)")
-	fs.Usage = func() {
-		// fs.Output() is a plain io.Writer, so unlike the os.Stderr calls below
-		// errcheck does not treat the error as safe to drop implicitly.
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: medusa %s [flags]\n\n"+
-			"Reports which Claude Code skills were invoked, grouped by plugin.\n"+
-			"With no flags, serves the dashboard until interrupted.\n\nFlags:\n", skillsCommandName)
-		fs.PrintDefaults()
+	return func(_ *cliContext, args []string) error {
+		if len(args) > 0 {
+			return usagef("unexpected argument %q", args[0])
+		}
+		return runSkills(*addr, *scanOnly, *report, *gran, *profile, *noClaude)
 	}
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
+}
 
+func runSkills(addr string, scanOnly, report bool, gran, profile string, noClaude bool) error {
 	paths, err := config.DefaultPaths()
 	if err != nil {
 		return fmt.Errorf("resolve medusa paths: %w", err)
 	}
 	claudeProjects := ""
-	if !*noClaude {
+	if !noClaude {
 		if home, err := os.UserHomeDir(); err == nil {
 			claudeProjects = filepath.Join(home, ".claude", "projects")
 		}
@@ -64,18 +74,18 @@ func runSkillsCommand(args []string) error {
 
 	result := store.Scan()
 	switch {
-	case *scanOnly:
+	case scanOnly:
 		printSkillScan(storeDir, result, store)
 		return nil
-	case *report:
-		printSkillReport(store, *gran, *profile)
+	case report:
+		printSkillReport(store, gran, profile)
 		return nil
 	}
 
 	fmt.Printf("scanned %d transcripts (%d read) in %s, %d new invocations, %d total\n",
 		result.FilesConsidered, result.FilesRead, result.Duration.Round(time.Millisecond),
 		result.NewEvents, len(store.Events()))
-	return serveSkills(*addr, store)
+	return serveSkills(addr, store)
 }
 
 // serveSkills starts the dashboard and blocks until interrupted.

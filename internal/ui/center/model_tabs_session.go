@@ -191,6 +191,19 @@ func (m *Model) tabSelectionChangedCmd() tea.Cmd {
 	}
 }
 
+// SetWorkspaceClosing marks a workspace as being deleted from outside the
+// TUI, so nothing restores or creates tabs for it until the mark is cleared.
+func (m *Model) SetWorkspaceClosing(wsID string, closing bool) {
+	if !closing {
+		delete(m.closingWorkspaces, wsID)
+		return
+	}
+	if m.closingWorkspaces == nil {
+		m.closingWorkspaces = make(map[string]bool)
+	}
+	m.closingWorkspaces[wsID] = true
+}
+
 // RestoreTabsFromWorkspace recreates tabs from persisted workspace metadata.
 // Only agent tabs with known assistants are restored.
 func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
@@ -198,7 +211,7 @@ func (m *Model) RestoreTabsFromWorkspace(ws *data.Workspace) tea.Cmd {
 		return nil
 	}
 	wsID := string(ws.ID())
-	if len(m.tabsByWorkspace[wsID]) > 0 {
+	if len(m.tabsByWorkspace[wsID]) > 0 || m.closingWorkspaces[wsID] {
 		return nil
 	}
 	if _, ok := m.restoredWorkspaces[wsID]; ok {

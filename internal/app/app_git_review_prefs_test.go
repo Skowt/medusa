@@ -164,6 +164,9 @@ func TestOpenSeedsTheReviewFromTheRememberedPrefs(t *testing.T) {
 	if !sessions[0].Split() {
 		t.Error("opened unified, having remembered the split view")
 	}
+	if urls := openedURLs(); len(urls) == 0 {
+		t.Error("opening a review did not hand its URL to the browser opener")
+	}
 }
 
 func skipWithoutGit(t *testing.T) {

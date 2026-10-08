@@ -111,9 +111,12 @@ func (a *App) handlePersistDebounce(msg persistDebounceMsg) tea.Cmd {
 	if len(snapshots) == 0 {
 		return nil
 	}
-	store := a.workspaces
+	store, registry := a.workspaces, a.registry
 	return func() tea.Msg {
 		for _, snap := range snapshots {
+			if !persistSnapshotAllowed(registry, snap.ID()) {
+				continue
+			}
 			if err := store.Save(snap); err != nil {
 				logging.Warn("Failed to save workspace tabs: %v", err)
 			}

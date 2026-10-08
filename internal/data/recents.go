@@ -27,7 +27,13 @@ func NewRecentsStore(path string) *RecentsStore {
 
 // Add prepends a repo combination to the recents list, deduplicating by repo paths
 func (s *RecentsStore) Add(repos []RepoRef) error {
-	entries, _ := s.List() // ignore error, start fresh if file missing
+	return withFileLock(s.path, true, func() error {
+		return s.addLocked(repos)
+	})
+}
+
+func (s *RecentsStore) addLocked(repos []RepoRef) error {
+	entries, _ := s.list() // ignore error, start fresh if file missing
 
 	// Build key for dedup
 	newKey := repoKey(repos)
@@ -53,6 +59,16 @@ func (s *RecentsStore) Add(repos []RepoRef) error {
 
 // List returns all recent entries
 func (s *RecentsStore) List() ([]RecentEntry, error) {
+	var entries []RecentEntry
+	err := withFileLock(s.path, false, func() error {
+		var err error
+		entries, err = s.list()
+		return err
+	})
+	return entries, err
+}
+
+func (s *RecentsStore) list() ([]RecentEntry, error) {
 	raw, err := os.ReadFile(s.path)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -78,7 +94,7 @@ func (s *RecentsStore) save(entries []RecentEntry) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, raw, 0644)
+	return writeFileAtomic(s.path, raw, 0644)
 }
 
 // repoKey creates a dedup key from repo paths (sorted)

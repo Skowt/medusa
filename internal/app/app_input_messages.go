@@ -393,8 +393,12 @@ func (a *App) handleOpenSkillUsage() tea.Cmd {
 	}
 }
 
-// openInBrowser hands a URL to the platform's opener.
-func openInBrowser(url string) error {
+// openInBrowser hands a URL to the platform's opener. It is a variable so the
+// package's tests can replace it: they drive the real review and skill-usage
+// handlers, and must not open tabs on the machine running them.
+var openInBrowser = openURLInBrowser
+
+func openURLInBrowser(url string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":

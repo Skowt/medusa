@@ -4,6 +4,7 @@ import (
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
 // handleShowCustomizeTabDialog opens the New Tab dialog on the assistant the
@@ -21,7 +22,7 @@ func (a *App) stickyAssistant(ws *data.Workspace) string {
 	if ws != nil {
 		profile = ws.Profile
 	}
-	return defaultAssistant(a.config.UI.AssistantFor(profile))
+	return workspaceops.DefaultAssistant(a.config.UI.AssistantFor(profile))
 }
 
 // showNewTabDialog builds the New Tab dialog for one assistant: an "Assistant"
@@ -65,7 +66,7 @@ func (a *App) showNewTabDialogWithCodexValues(assistant, codexMode, codexSandbox
 // select wired to claude --permission-mode, the sandbox pair, and the
 // fullscreen renderer toggle.
 func (a *App) configureClaudeTabFields() {
-	a.dialog.SetSelect2("Starting Mode:", permissionModeOptions(), defaultPermissionMode(a.config.UI.LastPermissionMode))
+	a.dialog.SetSelect2("Starting Mode:", permissionModeOptions(), workspaceops.DefaultPermissionMode(a.config.UI.LastPermissionMode))
 	a.dialog.SetCheckbox("Sandboxed", a.config.UI.LastIsolated)
 	a.dialog.SetCheckboxDescription(1, "Sandboxes subprocess calls including Bash commands. Tool use does not use sandbox (e.g. Write, Edit).")
 	a.dialog.SetCheckbox2("Allow unsandboxed commands", a.config.UI.LastAllowUnsandboxedCommands)
@@ -79,10 +80,10 @@ func (a *App) configureClaudeTabFields() {
 // rather than through a settings file, so its sandbox is a policy select rather
 // than Claude's checkbox pair, and it has no fullscreen renderer to choose.
 func (a *App) configureCodexTabFields(mode, sandbox string) {
-	mode = defaultCodexStartingMode(mode)
+	mode = workspaceops.DefaultCodexStartingMode(mode)
 	a.dialog.SetSelect2("Starting Mode:", codexStartingModeOptions(), mode)
 	a.dialog.SetSelectNotifiesChange(1)
-	a.dialog.SetSelect3("Sandbox:", codexSandboxOptions(), defaultCodexSandbox(sandbox))
+	a.dialog.SetSelect3("Sandbox:", codexSandboxOptions(), workspaceops.DefaultCodexSandbox(sandbox))
 	a.dialog.SetSelectDisabled(2, mode == "auto")
 }
 
@@ -93,7 +94,7 @@ func (a *App) handleDialogSelectChanged(msg common.DialogSelectChanged) {
 		return
 	}
 	if msg.Slot == 0 {
-		a.showNewTabDialog(defaultAssistant(msg.Value))
+		a.showNewTabDialog(workspaceops.DefaultAssistant(msg.Value))
 		return
 	}
 	if msg.Slot == 1 && a.dialog.SelectValue() == assistantCodex {
@@ -106,7 +107,7 @@ func (a *App) handleDialogSelectChanged(msg common.DialogSelectChanged) {
 // newTabLaunchFromDialog turns a New Tab dialog result into a launch request,
 // persisting the choices so the next tab opens on them.
 func (a *App) newTabLaunchFromDialog(ws *data.Workspace, result common.DialogResult) messages.LaunchAgent {
-	assistant := defaultAssistant(result.SelectValue)
+	assistant := workspaceops.DefaultAssistant(result.SelectValue)
 	profile := ""
 	if ws != nil {
 		profile = ws.Profile
@@ -115,15 +116,15 @@ func (a *App) newTabLaunchFromDialog(ws *data.Workspace, result common.DialogRes
 
 	launch := messages.LaunchAgent{Assistant: assistant, Workspace: ws}
 	if assistant == assistantCodex {
-		mode := defaultCodexStartingMode(result.Select2Value)
-		launch.CodexSandbox = defaultCodexSandbox(result.Select3Value)
+		mode := workspaceops.DefaultCodexStartingMode(result.Select2Value)
+		launch.CodexSandbox = workspaceops.DefaultCodexSandbox(result.Select3Value)
 		launch.CodexAuto = mode == "auto"
 		a.config.UI.LastCodexSandbox = launch.CodexSandbox
 		a.config.UI.LastCodexStartingMode = mode
 	} else {
 		launch.Isolated = result.CheckboxValue
 		launch.AllowUnsandboxedCommands = result.Checkbox2Value
-		launch.PermissionMode = defaultPermissionMode(result.Select2Value)
+		launch.PermissionMode = workspaceops.DefaultPermissionMode(result.Select2Value)
 		launch.Fullscreen = result.Checkbox3Value
 		a.config.UI.LastIsolated = launch.Isolated
 		a.config.UI.LastAllowUnsandboxedCommands = launch.AllowUnsandboxedCommands
@@ -136,17 +137,22 @@ func (a *App) newTabLaunchFromDialog(ws *data.Workspace, result common.DialogRes
 
 // lastUsedLaunch builds a launch request from the sticky New Tab settings, for
 // the paths that open a tab without asking: the new-agent-tab key, a profile
-// launch, and a freshly created workspace.
+// launch, and a freshly created workspace. The headless CLI resolves through
+// the same workspaceops.ResolveLaunch.
 func (a *App) lastUsedLaunch(ws *data.Workspace, assistant string) messages.LaunchAgent {
-	launch := messages.LaunchAgent{Assistant: defaultAssistant(assistant), Workspace: ws}
-	if launch.Assistant == assistantCodex {
-		launch.CodexSandbox = defaultCodexSandbox(a.config.UI.LastCodexSandbox)
-		launch.CodexAuto = defaultCodexStartingMode(a.config.UI.LastCodexStartingMode) == "auto"
-		return launch
+	profile := ""
+	if ws != nil {
+		profile = ws.Profile
 	}
-	launch.Isolated = a.config.UI.LastIsolated
-	launch.AllowUnsandboxedCommands = a.config.UI.LastAllowUnsandboxedCommands
-	launch.PermissionMode = defaultPermissionMode(a.config.UI.LastPermissionMode)
-	launch.Fullscreen = a.config.UI.LastFullscreen
-	return launch
+	l := workspaceops.ResolveLaunch(a.config.UI, profile, workspaceops.LaunchOverrides{Assistant: assistant})
+	return messages.LaunchAgent{
+		Assistant:                l.Assistant,
+		Workspace:                ws,
+		Isolated:                 l.Isolated,
+		AllowUnsandboxedCommands: l.AllowUnsandboxedCommands,
+		PermissionMode:           l.PermissionMode,
+		Fullscreen:               l.Fullscreen,
+		CodexSandbox:             l.CodexSandbox,
+		CodexAuto:                l.CodexAuto,
+	}
 }

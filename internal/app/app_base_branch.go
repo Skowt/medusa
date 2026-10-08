@@ -3,39 +3,26 @@ package app
 import (
 	"fmt"
 
-	"github.com/Skowt/medusa/internal/logging"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Skowt/medusa/internal/data"
-	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
 // Base-branch resolution — step 1 of workspace creation. Each function below
-// backs one option of the Base Branch dialog, resolves a base ref per repo, and
-// hands the result to createWorkspace via messages.WorkspaceFetchDone. The base
-// is the commit the new worktree's branch starts from; see git.CreateWorkspace.
+// backs one option of the Base Branch dialog and hands the result to
+// createWorkspace via messages.WorkspaceFetchDone. The resolution itself lives
+// in workspaceops, which the headless CLI shares.
 
 // fetchRemoteBase resolves each repo's default branch (main/master/develop),
 // fetching origin first if the last fetch is stale.
 func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile, group string, copyIgnored bool) tea.Cmd {
-	reposCopy := make([]data.RepoRef, len(repos))
-	copy(reposCopy, repos)
+	reposCopy := copyRepos(repos)
 	return func() tea.Msg {
-		bases := make([]string, len(reposCopy))
-		for i, repo := range reposCopy {
-			base, err := git.GetFreshRemoteBase(repo.Path)
-			if err != nil {
-				base = "HEAD"
-			}
-			// Verify the base ref resolves to a commit
-			if err := git.ValidateRef(repo.Path, base); err != nil {
-				return messages.WorkspaceCreateFailed{
-					Err: fmt.Errorf("%s: repo has no commits on %q", repo.Name, base),
-				}
-			}
-			bases[i] = base
+		bases, err := workspaceops.RemoteBases(reposCopy)
+		if err != nil {
+			return messages.WorkspaceCreateFailed{Err: err}
 		}
 		return messages.WorkspaceFetchDone{
 			Name:        name,
@@ -51,22 +38,11 @@ func (a *App) fetchRemoteBase(repos []data.RepoRef, name, profile, group string,
 
 // fetchCheckedOutBase resolves the currently checked-out branch as the base (no fetch).
 func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile, group string, copyIgnored bool) tea.Cmd {
-	reposCopy := make([]data.RepoRef, len(repos))
-	copy(reposCopy, repos)
+	reposCopy := copyRepos(repos)
 	return func() tea.Msg {
-		bases := make([]string, len(reposCopy))
-		for i, repo := range reposCopy {
-			base, err := git.GetCheckedOutBase(repo.Path)
-			if err != nil {
-				base = "HEAD"
-			}
-			// Verify the base ref resolves to a commit
-			if err := git.ValidateRef(repo.Path, base); err != nil {
-				return messages.WorkspaceCreateFailed{
-					Err: fmt.Errorf("%s: repo has no commits — make an initial commit first", repo.Name),
-				}
-			}
-			bases[i] = base
+		bases, err := workspaceops.CheckedOutBases(reposCopy)
+		if err != nil {
+			return messages.WorkspaceCreateFailed{Err: err}
 		}
 		return messages.WorkspaceFetchDone{
 			Name:        name,
@@ -80,50 +56,16 @@ func (a *App) fetchCheckedOutBase(repos []data.RepoRef, name, profile, group str
 	}
 }
 
-// fetchCustomBase fetches if stale, then resolves a named branch in each repo,
-// looking locally first and then on origin.
-//
-// A repo that doesn't have the branch is only fatal if *no* repo has it — in a
-// multi-repo workspace a feature branch commonly lives in one repo while the
-// others stay on their default branch, and that should still create. Repos
-// without the branch fall back to their default branch, and the caller warns
-// about them (FallbackRepos) so the fallback is never silent.
+// fetchCustomBase fetches if stale, then resolves a named branch in each repo;
+// repos without it fall back to their default branch and are reported in
+// FallbackRepos so the caller can warn.
 func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, group, customBranch string, copyIgnored bool) tea.Cmd {
-	reposCopy := make([]data.RepoRef, len(repos))
-	copy(reposCopy, repos)
+	reposCopy := copyRepos(repos)
 	return func() tea.Msg {
-		bases := make([]string, len(reposCopy))
-		var fallbackRepos []string
-		for i, repo := range reposCopy {
-			_ = git.FetchIfStale(repo.Path)
-
-			base, err := git.ResolveCustomBranch(repo.Path, customBranch)
-			if err == nil {
-				bases[i] = base
-				continue
-			}
-
-			base, fbErr := git.GetFreshRemoteBase(repo.Path)
-			if fbErr != nil {
-				return messages.WorkspaceCreateFailed{
-					Err: fmt.Errorf("%s: %w", repo.Name, err),
-				}
-			}
-			if vErr := git.ValidateRef(repo.Path, base); vErr != nil {
-				return messages.WorkspaceCreateFailed{
-					Err: fmt.Errorf("%s: repo has no commits on %q", repo.Name, base),
-				}
-			}
-			bases[i] = base
-			fallbackRepos = append(fallbackRepos, repo.Name)
+		bases, fallbackRepos, err := workspaceops.CustomBases(reposCopy, customBranch)
+		if err != nil {
+			return messages.WorkspaceCreateFailed{Err: err}
 		}
-
-		if len(fallbackRepos) == len(reposCopy) {
-			return messages.WorkspaceCreateFailed{
-				Err: fmt.Errorf("branch %q not found locally or on origin", customBranch),
-			}
-		}
-
 		return messages.WorkspaceFetchDone{
 			Name:          name,
 			Repos:         reposCopy,
@@ -139,27 +81,15 @@ func (a *App) fetchCustomBase(repos []data.RepoRef, name, profile, group, custom
 }
 
 // resolveCheckoutBase is the no-worktree counterpart of the three functions
-// above. Nothing is branched: the workspace opens on the repo exactly as it
-// stands, so the only thing to resolve is the branch it is already on, recorded
-// so the UI has something to show.
-//
-// It does pull first, which the name understates. Opening an agent on a repo
-// that is a week behind is the common way to start work on stale code, and the
-// worktree path already fetches for exactly that reason. See pullBeforeOpen for
-// the conditions.
+// above: nothing is branched, the repo is pulled (see
+// workspaceops.PullBeforeOpen) and the branch it is on is recorded.
 func (a *App) resolveCheckoutBase(repos []data.RepoRef, name, profile, group string) tea.Cmd {
-	reposCopy := make([]data.RepoRef, len(repos))
-	copy(reposCopy, repos)
+	reposCopy := copyRepos(repos)
 	return func() tea.Msg {
 		if len(reposCopy) == 0 {
 			return messages.WorkspaceCreateFailed{Err: fmt.Errorf("missing repo")}
 		}
-		repoPath := reposCopy[0].Path
-		notice := pullBeforeOpen(repoPath)
-		branch, err := git.GetCurrentBranch(repoPath)
-		if err != nil {
-			branch = ""
-		}
+		branch, notice := workspaceops.CheckoutBranch(reposCopy[0].Path)
 		return messages.WorkspaceFetchDone{
 			Name:       name,
 			Repos:      reposCopy,
@@ -172,36 +102,8 @@ func (a *App) resolveCheckoutBase(repos []data.RepoRef, name, profile, group str
 	}
 }
 
-// pullBeforeOpen brings a repo up to date before an agent starts working in it,
-// and returns what to tell the user when it did not. An empty string means there
-// is nothing worth saying: it pulled, or there was nothing to pull.
-//
-// Three conditions gate it, and each one is a case where pulling would be worse
-// than being out of date:
-//
-//  1. **A dirty working tree is left alone.** The user has work in progress
-//     there; a pull that touches it is medusa moving their files around. They
-//     are told, so "why is this behind origin" has an answer on screen.
-//  2. **A branch with no upstream is skipped silently.** A local-only branch and
-//     a detached HEAD have nothing to pull from, and warning about it every time
-//     would be noise rather than information.
-//  3. **Only a fast-forward counts.** git.PullFastForward refuses a diverged
-//     branch rather than writing a merge commit into the user's history.
-func pullBeforeOpen(repoPath string) string {
-	status, err := git.GetStatus(repoPath)
-	if err != nil {
-		logging.Warn("Skipping pull for %s: %v", repoPath, err)
-		return ""
-	}
-	if !status.Clean {
-		return "Uncommitted changes in the repo, so it was opened without pulling"
-	}
-	if !git.HasUpstream(repoPath) {
-		return ""
-	}
-	if err := git.PullFastForward(repoPath); err != nil {
-		logging.Warn("Pull failed for %s: %v", repoPath, err)
-		return "Could not pull the repo, so it was opened as it stands"
-	}
-	return ""
+func copyRepos(repos []data.RepoRef) []data.RepoRef {
+	out := make([]data.RepoRef, len(repos))
+	copy(out, repos)
+	return out
 }

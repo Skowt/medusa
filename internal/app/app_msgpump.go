@@ -135,6 +135,12 @@ func isCriticalExternalMsg(msg tea.Msg) bool {
 	switch msg.(type) {
 	case messages.Error, messages.SidebarPTYStopped, center.PTYStopped:
 		return true
+	case messages.RefreshDashboard, workspaceClosingMsg:
+		// Sent by `medusa workspace` once per change. Dropped, the TUI would
+		// show a deleted workspace or miss a new one until something else
+		// reloaded, and a closing workspace would keep tabs that reattach
+		// as their sessions are killed.
+		return true
 	case messages.GitReviewSubmitted:
 		// A review is written by hand and submitted once. Dropping it under
 		// load would lose the user's comments with nothing to retry from, and

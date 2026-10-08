@@ -100,7 +100,7 @@ func buildCodexCommand(command, sessionName, codexHome string, opts AgentOptions
 		cmd += " --approve-for-me"
 	}
 	cmd += codexSessionArgs(codexHome, opts) + codexPolicyArgs(opts)
-	return cmd
+	return cmd + initialPromptArg(opts)
 }
 
 // prepareCodexHome creates a profile's CODEX_HOME, trusts the worktree, and

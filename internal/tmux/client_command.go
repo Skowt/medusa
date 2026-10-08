@@ -34,6 +34,19 @@ func clientCommand(sessionName, workDir, command string, opts Options, tags Sess
 	create := fmt.Sprintf("%s new-session -Ads %s -c %s sh -lc %s",
 		base, session, dir, cmd)
 
+	settings := sessionSettings(base, session, opts, tags)
+
+	// Use attach -d to detach other clients (handles multi-instance gracefully)
+	attach := fmt.Sprintf("%s attach -dt %s", base, session)
+
+	return fmt.Sprintf("%s && %s%s", create, settings, attach)
+}
+
+// sessionSettings returns the set-option commands that make a session behave
+// as a medusa tab, each terminated by "; ". It is shared by the attaching
+// client command and by StartDetachedSession, so a session started by the CLI
+// is indistinguishable from one the TUI started.
+func sessionSettings(base, session string, opts Options, tags SessionTags) string {
 	var settings strings.Builder
 	// Disable tmux prefix for this session only (not global) to make it transparent
 	fmt.Fprintf(&settings, "%s set-option -t %s prefix None 2>/dev/null; ", base, session)
@@ -57,10 +70,7 @@ func clientCommand(sessionName, workDir, command string, opts Options, tags Sess
 	appendHyperlinkFeature(&settings, base)
 	appendSessionTags(&settings, base, session, tags)
 
-	// Use attach -d to detach other clients (handles multi-instance gracefully)
-	attach := fmt.Sprintf("%s attach -dt %s", base, session)
-
-	return fmt.Sprintf("%s && %s%s", create, settings.String(), attach)
+	return settings.String()
 }
 
 // appendHyperlinkFeature tells tmux that medusa's client understands OSC 8.

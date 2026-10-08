@@ -123,8 +123,11 @@ type App struct {
 	centerBtnIndex   int
 
 	// UI Components
-	layout          *layout.Manager
-	dashboard       *dashboard.Model
+	layout    *layout.Manager
+	dashboard *dashboard.Model
+	// externalClosing holds workspaces an outside delete announced, whose
+	// deleting spinner the next reload clears.
+	externalClosing map[string]time.Time
 	center          *center.Model
 	sidebar         *sidebar.TabbedSidebar
 	sidebarTerminal *sidebar.TerminalModel

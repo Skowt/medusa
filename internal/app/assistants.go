@@ -3,13 +3,14 @@ package app
 import (
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
 // Assistants the New Tab dialog can launch. The values are what ride in
 // data.TabInfo.Assistant and pty.AgentType, so they must not change.
 const (
-	assistantClaude = "claude"
-	assistantCodex  = "codex"
+	assistantClaude = workspaceops.AssistantClaude
+	assistantCodex  = workspaceops.AssistantCodex
 )
 
 // assistantOptions returns the "Assistant" cycler's choices. Cycling it
@@ -28,15 +29,6 @@ func assistantOptions() []common.SelectOption {
 			Description: "OpenAI's Codex CLI. Its first tab in a profile asks you to trust Medusa's activity hooks once.",
 		},
 	}
-}
-
-// defaultAssistant returns the assistant the dialog opens on: the last one
-// used, falling back to Claude.
-func defaultAssistant(last string) string {
-	if last == assistantCodex {
-		return assistantCodex
-	}
-	return assistantClaude
 }
 
 // codexSandboxOptions returns the "Sandbox" cycler's choices, the policies
@@ -62,15 +54,6 @@ func codexSandboxOptions() []common.SelectOption {
 	}
 }
 
-// defaultCodexSandbox falls back to Codex's own default policy.
-func defaultCodexSandbox(last string) string {
-	switch last {
-	case appPty.CodexSandboxReadOnly, appPty.CodexSandboxWorkspace, appPty.CodexSandboxFullAccess:
-		return last
-	}
-	return appPty.CodexSandboxWorkspace
-}
-
 func codexStartingModeOptions() []common.SelectOption {
 	return []common.SelectOption{
 		{
@@ -84,11 +67,4 @@ func codexStartingModeOptions() []common.SelectOption {
 			Description: "Codex automatically reviews approvals and uses its required workspace-write sandbox. The Sandbox setting below applies to Default mode.",
 		},
 	}
-}
-
-func defaultCodexStartingMode(last string) string {
-	if last == "default" {
-		return "default"
-	}
-	return "auto"
 }

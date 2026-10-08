@@ -36,11 +36,17 @@ func NewRegistry(path string) *Registry {
 func (r *Registry) ListWorkspaces() ([]registryWorkspace, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.loadLocked()
+	var workspaces []registryWorkspace
+	err := withFileLock(r.path, false, func() error {
+		var err error
+		workspaces, err = r.loadLocked()
+		return err
+	})
+	return workspaces, err
 }
 
 // loadLocked reads workspace entries without acquiring locks.
-// The caller must hold at least r.mu.RLock().
+// The caller must hold at least r.mu.RLock() and a shared file lock.
 func (r *Registry) loadLocked() ([]registryWorkspace, error) {
 	raw, err := os.ReadFile(r.path)
 	if os.IsNotExist(err) {
@@ -58,22 +64,25 @@ func (r *Registry) loadLocked() ([]registryWorkspace, error) {
 }
 
 // modifyWorkspaces loads, modifies, and saves workspace entries atomically
-// under a single write lock.
+// under a single write lock, held against other processes as well as other
+// goroutines.
 func (r *Registry) modifyWorkspaces(fn func([]registryWorkspace) ([]registryWorkspace, error)) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	workspaces, err := r.loadLocked()
-	if err != nil {
-		return err
-	}
+	return withFileLock(r.path, true, func() error {
+		workspaces, err := r.loadLocked()
+		if err != nil {
+			return err
+		}
 
-	workspaces, err = fn(workspaces)
-	if err != nil {
-		return err
-	}
+		workspaces, err = fn(workspaces)
+		if err != nil {
+			return err
+		}
 
-	return r.saveLocked(workspaces)
+		return r.saveLocked(workspaces)
+	})
 }
 
 // AddWorkspace adds a workspace to the registry
@@ -157,7 +166,7 @@ func (r *Registry) ClearProfile(profile string) error {
 }
 
 // saveLocked writes the workspace entries to the registry file.
-// The caller must hold r.mu.Lock().
+// The caller must hold r.mu.Lock() and the exclusive file lock.
 func (r *Registry) saveLocked(workspaces []registryWorkspace) error {
 	dir := filepath.Dir(r.path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -174,5 +183,19 @@ func (r *Registry) saveLocked(workspaces []registryWorkspace) error {
 		return err
 	}
 
-	return os.WriteFile(r.path, raw, 0644)
+	return writeFileAtomic(r.path, raw, 0644)
+}
+
+// Has reports whether the registry holds an entry with the given ID.
+func (r *Registry) Has(id string) (bool, error) {
+	workspaces, err := r.ListWorkspaces()
+	if err != nil {
+		return false, err
+	}
+	for _, ws := range workspaces {
+		if ws.ID == id {
+			return true, nil
+		}
+	}
+	return false, nil
 }

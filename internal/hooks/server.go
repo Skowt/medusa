@@ -101,11 +101,12 @@ func (s *Server) handleConn(conn net.Conn) {
 		ClaudeSessionID string `json:"claude_session_id"`
 		AgentType       string `json:"agent_type"`
 		Cwd             string `json:"cwd"`
+		Workspace       string `json:"workspace"`
 	}
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		return
 	}
-	if raw.Event == "" || raw.Session == "" {
+	if raw.Event == "" || (raw.Session == "" && !IsControlEvent(EventType(raw.Event))) {
 		return
 	}
 	outstanding := OutstandingUnknown
@@ -123,6 +124,7 @@ func (s *Server) handleConn(conn net.Conn) {
 			ClaudeSessionID: raw.ClaudeSessionID,
 			AgentType:       raw.AgentType,
 			Cwd:             raw.Cwd,
+			WorkspaceID:     raw.Workspace,
 		})
 	}
 }

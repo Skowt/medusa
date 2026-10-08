@@ -8,18 +8,6 @@ import (
 	"github.com/Skowt/medusa/internal/perf"
 )
 
-// joinStrings joins strings with a separator.
-func joinStrings(strs []string, sep string) string {
-	result := ""
-	for i, s := range strs {
-		if i > 0 {
-			result += sep
-		}
-		result += s
-	}
-	return result
-}
-
 // requestGitStatus requests git status for a workspace (always fetches fresh).
 //
 // Coalesces concurrent requests for the same root: if a fetch is already in

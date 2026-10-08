@@ -63,6 +63,9 @@ type HookEvent struct {
 	// session name alone cannot say whether an event belongs to the tab's own
 	// conversation; the cwd can. Empty for hook emitters that predate it.
 	Cwd string
+	// WorkspaceID is set on control events about one workspace
+	// (EventWorkspaceClosing). Agent hooks never carry it.
+	WorkspaceID string
 }
 
 // questionTools are the tool names whose PreToolUse means the agent has put a

@@ -143,6 +143,10 @@ type Model struct {
 	// second restore arriving before creation lands (e.g. WorkspacesLoaded
 	// racing WorkspaceActivated after an unarchive).
 	restoredWorkspaces map[string]struct{}
+	// closingWorkspaces are being deleted from outside the TUI. They get no
+	// tabs: attaching runs new-session -A, which would recreate a session the
+	// delete is about to kill, or has just killed.
+	closingWorkspaces map[string]bool
 	// restoreOrder remembers, per workspace, the position each tab held when
 	// the workspace was last saved, keyed by tmux session name (or display
 	// name for a persisted tab that never got a session). Restoring is

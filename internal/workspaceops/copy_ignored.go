@@ -1,4 +1,4 @@
-package app
+package workspaceops
 
 import (
 	"os"
@@ -46,12 +46,12 @@ func isSkippedPath(relPath string) bool {
 	return false
 }
 
-// copyIgnoredFiles copies all gitignored files from the source repo into the
+// CopyIgnoredFiles copies all gitignored files from the source repo into the
 // destination worktree, preserving directory structure and symlinks. It uses
 // "git ls-files --others --ignored --exclude-standard" to discover which files
 // are present but ignored by .gitignore rules (e.g. .env, secrets, credentials),
 // minus anything under skippedDirs.
-func copyIgnoredFiles(repoPath, dstPath string) {
+func CopyIgnoredFiles(repoPath, dstPath string) {
 	output, err := git.RunGit(repoPath, "ls-files", "--others", "--ignored", "--exclude-standard")
 	if err != nil {
 		logging.Warn("Failed to list ignored files in %s: %v", repoPath, err)

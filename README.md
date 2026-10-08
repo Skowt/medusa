@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="#command-line">Command line</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#features">Features</a> ·
   <a href="#configuration">Configuration</a> ·
@@ -65,6 +66,104 @@ To update manually, re-run the install script:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Skowt/medusa/main/install.sh | sh
 ```
+
+## Command line
+
+You can create, list and delete workspaces from the shell, without opening the
+TUI. This is useful for scripts, and for agents that hand work to other agents.
+The TUI does not need to be running. If it is running, it shows the change
+straight away: a new workspace and its agent appear in the dashboard, and a
+deleted one goes away.
+
+### Getting help
+
+Every command has help:
+
+```bash
+medusa help                     # all commands
+medusa workspace help           # the workspace commands
+medusa workspace new --help     # one command, with its flags and examples
+medusa help workspace new       # the same
+```
+
+`-h`, `--help`, `help` and `?` all work at every level. In zsh and bash, `?` is
+a wildcard, so quote it: `medusa '?'`.
+
+### Create a workspace
+
+Run this from inside a git repo:
+
+```bash
+medusa workspace new fix-login --prompt "Fix the login redirect loop"
+```
+
+This creates a git worktree and a branch called `fix-login`, runs the repo's
+setup scripts, and starts an agent in it with that first prompt. `ws` is a
+short alias for `workspace`.
+
+When you leave a setting out, medusa uses what you last used in the TUI:
+
+| Setting | Default |
+|---|---|
+| Profile (`--profile`) | The profile you last picked in the TUI, or `Default` |
+| Assistant (`--agent`) | The assistant you last used in that profile |
+| Permission mode, fullscreen, sandbox | The values you last picked in the New Tab dialog |
+| Worktree or checkout (`--no-worktree`) | What you last picked in the New Workspace dialog |
+| Base branch (`--base`, `--from-current`) | The remote's main branch |
+| Start an agent | The "Auto start agent in new worktrees" setting. `--prompt` or `--agent` always starts one, and `--no-agent` never does |
+
+Flags only apply to that one command. They never change your saved settings.
+
+Some more examples:
+
+```bash
+# Use the Work profile and Codex with a read-only sandbox
+medusa ws new spike --profile Work --agent codex --sandbox read-only
+
+# Use the repo's own checkout, and start no agent
+medusa ws new quick --no-worktree --no-agent
+
+# Read a long prompt from a file, or from stdin with "-"
+cat task.md | medusa ws new task-42 --prompt-file -
+```
+
+Workspace names may use letters, numbers, dots, dashes and underscores, and
+must start with a letter or a number. The profile must already exist; create
+new profiles in the TUI.
+
+### List and delete
+
+```bash
+medusa ws list                  # NAME, PROFILE, GROUP, BRANCH, LIVE, STATE, ROOT
+medusa ws delete fix-login      # asks first
+medusa ws delete fix-login --yes
+```
+
+`delete` stops the workspace's agents and removes the worktree and branch that
+medusa made. For a workspace over a repo's own checkout (`--no-worktree`), it
+never removes the repo. Without a terminal to ask on, `delete` needs `--yes`, so
+a script cannot delete a workspace by accident.
+
+### Scripting
+
+Add `--json` to any of the three commands to get a result a script can read.
+Progress and warnings go to stderr, so stdout stays clean:
+
+```bash
+root=$(medusa ws new fix-login --no-agent --json | jq -r .root)
+medusa ws list --json | jq -r '.[] | select(.live > 0) | .name'
+```
+
+The exit code is `0` on success, `1` when the command failed, and `2` when it
+was called wrongly (for example an unknown flag, or two flags that conflict).
+
+### Limits
+
+- `run` scripts from `.medusa/workspaces.json` are not started. In the TUI they
+  open as tabs, and the CLI has no tabs to open.
+- A Codex agent started while the TUI is closed cannot be resumed after a
+  restart. Codex reports its session ID through a hook that only the TUI
+  receives. The agent itself runs normally.
 
 ## How it works
 

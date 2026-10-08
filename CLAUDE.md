@@ -671,9 +671,63 @@ Pure type declarations; no package may import app/ui code. Split into several fi
 
 Subcommands of `cmd/medusa` run instead of the TUI and are dispatched in
 `main()` before any TUI or logging setup, so they work headlessly:
-`medusa skills` (`cmd/medusa/skills.go`). The separate helper binaries above are
-separate only because Claude Code invokes them as external hook commands — a
-subcommand cannot serve that role.
+`medusa workspace` (alias `ws`) and `medusa skills`. They hang off one command
+tree in `cmd/medusa/cli.go`, which also owns help: `help`, `?`, `-h` and
+`--help` work at every level, and a leaf's flags may come before or after its
+positional arguments (`parseInterspersed` — the flag package alone stops at the
+first positional and would silently drop every flag after a workspace name).
+`medusa` with no arguments starts the TUI; an unknown first argument is an
+error. The separate helper binaries above are separate only because Claude Code
+invokes them as external hook commands — a subcommand cannot serve that role.
+
+### Workspace CLI: `medusa workspace new|list|delete`
+
+Creates, lists and deletes workspaces without the TUI, for scripts and for
+agents handing work to other agents. Five properties are load-bearing:
+
+1. **One implementation.** Creation, deletion and launch resolution live in
+   `internal/workspaceops`, which the TUI calls too (`App.workspaceOps()`), so
+   a script gets the same result whether or not the TUI is open. The package
+   must not import `internal/app` or `internal/ui`. Agent settings resolve
+   through `workspaceops.ResolveLaunch` — the per-profile assistant, then the
+   global `Last*` values — exactly as the TUI's no-dialog launches do. **CLI
+   flags never write `config.json`**: a one-off flag in a script must not change
+   what the user's next tab opens with.
+2. **Two processes write the registry.** `data.Registry` and `RecentsStore`
+   take an `flock` on a sibling `.lock` file and write temp-plus-rename
+   (`internal/data/filelock.go`). The in-process mutex alone lost entries and
+   let a reader see a half-written file, which empties the dashboard.
+3. **The agent is adopted, not attached.** The CLI starts the agent in a
+   *detached* tmux session (`tmux.StartDetachedSession`, sharing
+   `sessionSettings` with the client command so the session is
+   indistinguishable from a TUI one) and records it in `OpenTabs`; the TUI's
+   ordinary reload adopts it. `pty.PrepareAgent` is the terminal-free half of
+   `CreateAgentWithTags`. The first prompt goes after `--` on a fresh launch only
+   and is never written to `TabInfo`, so no restore path can replay it. It
+   travels in a 0600 temp file (`AgentOptions.InitialPromptFile`) that the
+   agent command reads and deletes, **not** on the command line: the command is
+   part of a `tmux new-session` line, and tmux refuses one over ~16 KB.
+4. **A running TUI is told over the hooks socket.** `medusa:workspaces-changed`
+   becomes `RefreshDashboard`; `medusa:workspace-closing` drops a workspace's
+   tabs. Both are control events (`hooks.IsControlEvent`), exempt from the
+   server's session-name check, and critical in `isCriticalExternalMsg`.
+5. **Delete must not kill sessions a TUI is attached to.** A tab whose session
+   dies is auto-reattached or auto-restarted, and the restart's
+   `new-session -A` would start a *new* agent in the worktree being deleted. So
+   delete sends `workspace-closing`, waits (up to 5s) for every client to
+   detach, and only then kills. The closing mark (`center.SetWorkspaceClosing`)
+   also blocks the eager restore and any tab create already in flight, and
+   stays until a reload no longer lists the workspace (or 30s pass) — a reload
+   that read the registry before the delete still lists it, and lifting the
+   mark there let it reattach. The CLI kills the sessions once more after the
+   delete. Backstops: a reload drops tabs of any workspace
+   that vanished (unless its name is still present — an ID migration), and
+   persistence refuses to save a workspace the registry no longer lists.
+
+Regression cover: `cmd/medusa/cli_test.go`, `cmd/medusa/workspace_test.go`
+(including a fake agent on `PATH` and a private tmux server),
+`internal/workspaceops/*_test.go`, `internal/data/filelock_test.go`,
+`internal/hooks/control_test.go`, `internal/app/app_external_control_test.go`.
 
 ### Skill-usage tracking: `internal/skillstats`
 

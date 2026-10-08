@@ -30,12 +30,3 @@ func permissionModeOptions() []common.SelectOption {
 		},
 	}
 }
-
-// defaultPermissionMode returns the user's last-selected mode, falling back
-// to "auto" when nothing's been saved yet.
-func defaultPermissionMode(last string) string {
-	if last == "" {
-		return "auto"
-	}
-	return last
-}

@@ -76,6 +76,10 @@ func (a *App) routePTYMsg(msg tea.Msg, cmds *[]tea.Cmd) bool {
 		*cmds = append(*cmds, a.handlePTYWatchdogTick()...)
 	case hookActivityEvent:
 		*cmds = append(*cmds, a.handleHookActivityEvent(msg)...)
+	case workspaceClosingMsg:
+		if cmd := a.handleWorkspaceClosing(msg); cmd != nil {
+			*cmds = append(*cmds, cmd)
+		}
 	case tmuxAvailableResult:
 		*cmds = append(*cmds, a.handleTmuxAvailableResult(msg)...)
 	case messages.TmuxSyncTick:

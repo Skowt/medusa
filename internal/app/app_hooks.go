@@ -8,6 +8,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/supervisor"
 )
 
@@ -42,6 +43,14 @@ func (a *App) initHooksServer() {
 	}
 
 	onEvent := func(he hooks.HookEvent) {
+		switch he.Event {
+		case hooks.EventWorkspacesChanged:
+			a.enqueueExternalMsg(messages.RefreshDashboard{})
+			return
+		case hooks.EventWorkspaceClosing:
+			a.enqueueExternalMsg(workspaceClosingMsg{WorkspaceID: he.WorkspaceID})
+			return
+		}
 		a.enqueueExternalMsg(hookActivityEvent{
 			SessionName:     he.SessionName,
 			Event:           he.Event,

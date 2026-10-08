@@ -13,11 +13,17 @@ import (
 )
 
 func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
+	// An unreadable registry says nothing about which workspaces exist. Keep
+	// what is on screen: read as an empty list, it would close every tab.
+	if msg.Err != nil {
+		return nil
+	}
+	a.dropVanishedWorkspaces(msg.Workspaces)
 	a.allWorkspaces = msg.Workspaces
 	a.dashboard.SetWorkspaces(a.allWorkspaces)
 	// Restore hook states from workspace JSON so indicators (e.g. '!') survive restarts.
 	a.restoreHookStatesFromWorkspaces()
-	var cmds []tea.Cmd
+	cmds := a.clearExternalClosing(msg.Workspaces)
 	if syncCmd := a.syncActiveWorkspacesToDashboard(); syncCmd != nil {
 		cmds = append(cmds, syncCmd)
 	}

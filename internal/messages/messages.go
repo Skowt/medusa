@@ -19,6 +19,9 @@ const (
 // WorkspacesLoaded is sent when workspaces have been loaded/reloaded
 type WorkspacesLoaded struct {
 	Workspaces []*data.Workspace
+	// Err is set when the registry could not be read. Workspaces is then
+	// empty and means nothing: it is not a list of zero workspaces.
+	Err error
 }
 
 // WorkspaceActivated is sent when a workspace is selected

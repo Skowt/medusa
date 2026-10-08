@@ -7,6 +7,7 @@ import (
 	"github.com/Skowt/medusa/internal/data"
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/ui/common"
+	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
 // testConfig returns a config rooted in a temp MEDUSA_HOME, so saving the
@@ -135,21 +136,21 @@ func TestNewTabLaunchPersistsAndReplays(t *testing.T) {
 // there.
 func TestDefaultAssistantFallsBackToClaude(t *testing.T) {
 	for _, in := range []string{"", "gemini", "CODEX"} {
-		if got := defaultAssistant(in); got != assistantClaude {
-			t.Errorf("defaultAssistant(%q) = %q, want claude", in, got)
+		if got := workspaceops.DefaultAssistant(in); got != assistantClaude {
+			t.Errorf("workspaceops.DefaultAssistant(%q) = %q, want claude", in, got)
 		}
 	}
-	if got := defaultAssistant(assistantCodex); got != assistantCodex {
-		t.Errorf("defaultAssistant(codex) = %q", got)
+	if got := workspaceops.DefaultAssistant(assistantCodex); got != assistantCodex {
+		t.Errorf("workspaceops.DefaultAssistant(codex) = %q", got)
 	}
 }
 
 // Likewise an unknown sandbox policy: codex exits on one it does not know.
 func TestDefaultCodexSandboxFallsBack(t *testing.T) {
-	if got := defaultCodexSandbox("bypassPermissions"); got != appPty.CodexSandboxWorkspace {
+	if got := workspaceops.DefaultCodexSandbox("bypassPermissions"); got != appPty.CodexSandboxWorkspace {
 		t.Errorf("defaultCodexSandbox = %q, want workspace-write", got)
 	}
-	if got := defaultCodexSandbox(appPty.CodexSandboxFullAccess); got != appPty.CodexSandboxFullAccess {
+	if got := workspaceops.DefaultCodexSandbox(appPty.CodexSandboxFullAccess); got != appPty.CodexSandboxFullAccess {
 		t.Errorf("defaultCodexSandbox = %q, want the stored policy", got)
 	}
 }
