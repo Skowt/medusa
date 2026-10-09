@@ -162,7 +162,10 @@ func (m *TerminalModel) Update(msg tea.Msg) (*TerminalModel, tea.Cmd) {
 		tab := m.getTabByID(wsID, tabID)
 		if tab != nil && tab.State != nil {
 			ts := tab.State
-			ts.pendingOutput = append(ts.pendingOutput, msg.Data...)
+			// From the reader this is only a signal: the bytes are already in
+			// ts.output. Data is accepted for direct senders.
+			ts.output.ClearSignal()
+			ts.output.Append(msg.Data)
 			ts.lastOutputAt = time.Now()
 			if !ts.flushScheduled {
 				ts.flushScheduled = true
@@ -201,23 +204,16 @@ func (m *TerminalModel) Update(msg tea.Msg) (*TerminalModel, tea.Cmd) {
 
 			ts.flushScheduled = false
 			ts.flushPendingSince = time.Time{}
-			if len(ts.pendingOutput) > 0 {
-				var chunk []byte
+			if chunk := ts.output.Peek(ptyFlushChunkSize); len(chunk) > 0 {
 				ts.mu.Lock()
 				if ts.VTerm != nil {
-					chunkSize := len(ts.pendingOutput)
-					if chunkSize > ptyFlushChunkSize {
-						chunkSize = ptyFlushChunkSize
-					}
-					chunk = append(chunk, ts.pendingOutput[:chunkSize]...)
-					copy(ts.pendingOutput, ts.pendingOutput[chunkSize:])
-					ts.pendingOutput = ts.pendingOutput[:len(ts.pendingOutput)-chunkSize]
 					ts.VTerm.Write(chunk)
+					ts.output.Consume(len(chunk))
 				} else {
-					ts.pendingOutput = nil
+					ts.output.Reset()
 				}
 				ts.mu.Unlock()
-				if len(ts.pendingOutput) > 0 {
+				if ts.output.Len() > 0 {
 					ts.flushScheduled = true
 					ts.flushPendingSince = time.Now()
 					tabIDLocal := msg.TabID

@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Skowt/medusa/internal/perf"
 	appPty "github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/safego"
 )
@@ -23,7 +24,7 @@ const (
 	// Cap bytes parsed per flush so tab.mu isn't held for long stretches.
 	// VTerm.Write is O(bytes) at ~30-50 MB/s, and rendering also takes tab.mu,
 	// so one unchunked flush on a big backlog freezes the UI for the duration.
-	// pendingOutput remains uncapped; if more remains after a chunk, we reschedule.
+	// tab.output remains uncapped; if more remains after a chunk, we reschedule.
 	ptyFlushChunkSize     = 32 * 1024
 	ptyReadBufferSize     = 32 * 1024
 	ptyReadQueueSize      = 64
@@ -114,9 +115,9 @@ func (m *Model) flushTiming(tab *Tab, active bool) (time.Duration, time.Duration
 
 	// Apply backpressure when pending output exceeds threshold
 	// This prevents renderer thrashing during heavy output (like builds)
-	if tab.Terminal != nil && len(tab.pendingOutput) > 0 {
+	if pending := tab.output.Len(); tab.Terminal != nil && pending > 0 {
 		threshold := ptyBackpressureMultiplier * tab.Terminal.Width * tab.Terminal.Height
-		if len(tab.pendingOutput) > threshold {
+		if pending > threshold {
 			// Under backpressure: use minimum flush interval
 			if quiet < ptyBackpressureFlushMin {
 				quiet = ptyBackpressureFlushMin
@@ -146,7 +147,11 @@ func (m *Model) flushTiming(tab *Tab, active bool) (time.Duration, time.Duration
 	return quiet, maxInterval
 }
 
-func (m *Model) forwardPTYMsgs(msgCh <-chan tea.Msg) {
+// forwardPTYMsgs moves a reader's output into tab.output and signals the UI
+// thread, passing every other message on unchanged. gen is the stream the
+// reader belongs to; output from a reader that has since been replaced is
+// dropped rather than mixed into the new stream.
+func (m *Model) forwardPTYMsgs(tab *Tab, gen uint64, msgCh <-chan tea.Msg) {
 	for msg := range msgCh {
 		if msg == nil {
 			continue
@@ -158,47 +163,11 @@ func (m *Model) forwardPTYMsgs(msgCh <-chan tea.Msg) {
 			}
 			continue
 		}
-
-		merged := out
-		for {
-			select {
-			case next, ok := <-msgCh:
-				if !ok {
-					if m.msgSink != nil && len(merged.Data) > 0 {
-						m.msgSink(merged)
-					}
-					return
-				}
-				if next == nil {
-					continue
-				}
-				if nextOut, ok := next.(PTYOutput); ok &&
-					nextOut.WorkspaceID == merged.WorkspaceID &&
-					nextOut.TabID == merged.TabID {
-					merged.Data = append(merged.Data, nextOut.Data...)
-					if len(merged.Data) >= ptyMaxPendingBytes {
-						if m.msgSink != nil && len(merged.Data) > 0 {
-							m.msgSink(merged)
-						}
-						merged.Data = nil
-					}
-					continue
-				}
-				if m.msgSink != nil && len(merged.Data) > 0 {
-					m.msgSink(merged)
-				}
-				if m.msgSink != nil {
-					m.msgSink(next)
-				}
-				goto nextMsg
-			default:
-				if m.msgSink != nil && len(merged.Data) > 0 {
-					m.msgSink(merged)
-				}
-				goto nextMsg
-			}
+		m.tracePTYOutput(tab, out.Data)
+		perf.Count("pty_output_bytes", int64(len(out.Data)))
+		if tab.output.AppendFrom(gen, out.Data) && m.msgSink != nil {
+			m.msgSink(PTYOutput{WorkspaceID: out.WorkspaceID, TabID: out.TabID})
 		}
-	nextMsg:
 	}
 }
 
@@ -356,13 +325,14 @@ func (m *Model) startPTYReader(wtID string, tab *Tab) tea.Cmd {
 	cancel := tab.readerCancel
 	msgCh := tab.ptyMsgCh
 	tab.mu.Unlock()
+	gen := tab.output.Generation()
 
 	safego.Go("center.pty_reader", func() {
 		defer m.markPTYReaderStopped(tab)
 		runPTYReader(term, msgCh, cancel, wtID, tabID, &tab.ptyHeartbeat)
 	})
 	safego.Go("center.pty_forward", func() {
-		m.forwardPTYMsgs(msgCh)
+		m.forwardPTYMsgs(tab, gen, msgCh)
 	})
 	return nil
 }

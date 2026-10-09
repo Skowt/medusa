@@ -11,26 +11,34 @@ import (
 	"github.com/Skowt/medusa/internal/ui/common"
 )
 
-// updatePTYOutput handles PTYOutput.
+// updatePTYOutput handles PTYOutput. From the PTY reader it is only a signal --
+// the bytes are already in tab.output. Data is accepted for direct senders.
 func (m *Model) updatePTYOutput(msg PTYOutput) tea.Cmd {
-	var cmds []tea.Cmd
 	tab := m.getTabByID(msg.WorkspaceID, msg.TabID)
-	if tab != nil && !tab.isClosed() {
-		m.tracePTYOutput(tab, msg.Data)
-		tab.pendingOutput = append(tab.pendingOutput, msg.Data...)
-		perf.Count("pty_output_bytes", int64(len(msg.Data)))
-		tab.lastOutputAt = time.Now()
-		if !tab.flushScheduled {
-			tab.flushScheduled = true
-			tab.flushPendingSince = tab.lastOutputAt
-			quiet, _ := m.flushTiming(tab, m.isActiveTab(msg.WorkspaceID, msg.TabID))
-			tabID := msg.TabID // Capture for closure
-			cmds = append(cmds, common.SafeTick(quiet, func(t time.Time) tea.Msg {
-				return PTYFlush{WorkspaceID: msg.WorkspaceID, TabID: tabID}
-			}))
-		}
+	if tab == nil || tab.isClosed() {
+		return nil
 	}
-	return common.SafeBatch(cmds...)
+	tab.output.ClearSignal()
+	if len(msg.Data) > 0 {
+		m.tracePTYOutput(tab, msg.Data)
+		tab.output.Append(msg.Data)
+	}
+	tab.lastOutputAt = time.Now()
+	return m.scheduleFlush(msg.WorkspaceID, tab)
+}
+
+// scheduleFlush arms a PTYFlush for tab unless one is already pending.
+func (m *Model) scheduleFlush(wsID string, tab *Tab) tea.Cmd {
+	if tab.flushScheduled {
+		return nil
+	}
+	tab.flushScheduled = true
+	tab.flushPendingSince = time.Now()
+	quiet, _ := m.flushTiming(tab, m.isActiveTab(wsID, tab.ID))
+	tabID := tab.ID
+	return common.SafeTick(quiet, func(t time.Time) tea.Msg {
+		return PTYFlush{WorkspaceID: wsID, TabID: tabID}
+	})
 }
 
 // updatePTYFlush handles PTYFlush.
@@ -60,48 +68,59 @@ func (m *Model) updatePTYFlush(msg PTYFlush) tea.Cmd {
 
 		tab.flushScheduled = false
 		tab.flushPendingSince = time.Time{}
-		if len(tab.pendingOutput) > 0 {
-			var chunk []byte
-			writeOutput := false
-			tab.mu.Lock()
-			if tab.Terminal != nil {
-				chunkSize := len(tab.pendingOutput)
-				if chunkSize > ptyFlushChunkSize {
-					chunkSize = ptyFlushChunkSize
-				}
-				chunk = append(chunk, tab.pendingOutput[:chunkSize]...)
-				copy(tab.pendingOutput, tab.pendingOutput[chunkSize:])
-				tab.pendingOutput = tab.pendingOutput[:len(tab.pendingOutput)-chunkSize]
-				writeOutput = true
+		tab.mu.Lock()
+		hasTerminal := tab.Terminal != nil
+		tab.mu.Unlock()
+		if !hasTerminal {
+			tab.output.Reset()
+			return nil
+		}
+		retry := time.Millisecond
+		if chunk := tab.output.Peek(ptyFlushChunkSize); len(chunk) > 0 {
+			if m.deliverTabOutput(msg.WorkspaceID, tab, chunk) {
+				tab.output.Consume(len(chunk))
 			} else {
-				tab.pendingOutput = nil
+				// Earlier chunks are still queued; give the actor a moment.
+				retry = ptyFlushQuiet
 			}
-			tab.mu.Unlock()
-			if writeOutput && len(chunk) > 0 {
-				// Hand the chunk to the tab actor when it is up; parse it here
-				// when it is not, or when its queue rejected the event.
-				ev := tabEvent{
-					tab:         tab,
-					workspaceID: msg.WorkspaceID,
-					tabID:       msg.TabID,
-					kind:        tabEventWriteOutput,
-					output:      chunk,
-				}
-				if !m.isTabActorReady() || !m.sendTabEvent(ev) {
-					writeTabOutput(tab, chunk)
-				}
-			}
-			if len(tab.pendingOutput) > 0 {
-				tab.flushScheduled = true
-				tab.flushPendingSince = time.Now()
-				tabID := msg.TabID
-				cmds = append(cmds, common.SafeTick(time.Millisecond, func(t time.Time) tea.Msg {
-					return PTYFlush{WorkspaceID: msg.WorkspaceID, TabID: tabID}
-				}))
-			}
+		}
+		if tab.output.Len() > 0 {
+			tab.flushScheduled = true
+			tab.flushPendingSince = time.Now()
+			tabID := msg.TabID
+			cmds = append(cmds, common.SafeTick(retry, func(t time.Time) tea.Msg {
+				return PTYFlush{WorkspaceID: msg.WorkspaceID, TabID: tabID}
+			}))
 		}
 	}
 	return common.SafeBatch(cmds...)
+}
+
+// deliverTabOutput parses chunk, or hands it to the tab actor to parse, and
+// reports false when it must wait. Chunks must reach the vterm in the order
+// they were read, so a chunk is never parsed here while earlier ones sit in
+// the actor's queue, and never parsed here because that queue is full.
+func (m *Model) deliverTabOutput(wsID string, tab *Tab, chunk []byte) bool {
+	if m.isTabActorReady() {
+		tab.outputInFlight.Add(1)
+		ev := tabEvent{
+			tab:         tab,
+			workspaceID: wsID,
+			tabID:       tab.ID,
+			kind:        tabEventWriteOutput,
+			output:      chunk,
+		}
+		if m.sendTabEvent(ev) {
+			return true
+		}
+		tab.outputInFlight.Add(-1)
+		return false
+	}
+	if tab.outputInFlight.Load() > 0 {
+		return false
+	}
+	writeTabOutput(tab, chunk)
+	return true
 }
 
 // updatePTYStopped handles PTYStopped.

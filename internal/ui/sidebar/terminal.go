@@ -54,8 +54,9 @@ type TerminalState struct {
 	lastWidth  int
 	lastHeight int
 
-	// PTY output buffering
-	pendingOutput     []byte
+	// PTY output buffering. The reader appends here directly; see
+	// common.PTYBuffer for why the bytes never ride on a message.
+	output            common.PTYBuffer
 	flushScheduled    bool
 	lastOutputAt      time.Time
 	flushPendingSince time.Time

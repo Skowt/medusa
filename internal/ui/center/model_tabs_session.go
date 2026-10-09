@@ -53,7 +53,7 @@ func (m *Model) detachTab(tab *Tab, index int) tea.Cmd {
 	tab.mu.Lock()
 	tab.Running = false
 	tab.Detached = true
-	tab.pendingOutput = nil
+	tab.output.Reset()
 	if tab.Agent != nil && tab.SessionName == "" {
 		tab.SessionName = tab.Agent.Session
 	}

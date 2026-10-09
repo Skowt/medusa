@@ -65,7 +65,7 @@ func (m *Model) Close() {
 				tab.ptyTraceFile = nil
 				tab.ptyTraceClosed = true
 			}
-			tab.pendingOutput = nil
+			tab.output.Reset()
 			tab.DiffViewer = nil
 			tab.Terminal = nil
 			tab.cachedSnap = nil

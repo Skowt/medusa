@@ -419,7 +419,7 @@ func (m *Model) closeTabAt(index int) tea.Cmd {
 	tab.cachedSnap = nil
 	tab.Workspace = nil
 	tab.Running = false
-	tab.pendingOutput = nil
+	tab.output.Reset()
 	tab.mu.Unlock()
 	tab.markClosed()
 

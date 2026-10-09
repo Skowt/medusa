@@ -57,9 +57,14 @@ type Tab struct {
 	closing         uint32
 	Running         bool // Whether the agent is actively running
 	readerActive    bool // Guard to ensure only one PTY read loop per tab
-	// Buffer PTY output to avoid rendering partial screen updates.
-
-	pendingOutput     []byte
+	// Buffer PTY output to avoid rendering partial screen updates. The reader
+	// appends here directly; see common.PTYBuffer for why the bytes never ride
+	// on a message.
+	output common.PTYBuffer
+	// outputInFlight counts chunks handed to the tab actor and not yet
+	// parsed. While it is non-zero, no chunk may be parsed anywhere else, or
+	// it would land ahead of the ones still queued.
+	outputInFlight    atomic.Int32
 	flushScheduled    bool
 	lastOutputAt      time.Time
 	HookState         string

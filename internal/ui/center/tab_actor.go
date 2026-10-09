@@ -437,6 +437,7 @@ func (m *Model) handleTabEvent(ev tabEvent) {
 		}
 	case tabEventWriteOutput:
 		writeTabOutput(tab, ev.output)
+		tab.outputInFlight.Add(-1)
 	default:
 		logging.Debug("unknown tab event: %v", ev.kind)
 	}

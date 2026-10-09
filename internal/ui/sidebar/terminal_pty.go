@@ -12,6 +12,7 @@ import (
 	"github.com/Skowt/medusa/internal/messages"
 	"github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/safego"
+	"github.com/Skowt/medusa/internal/ui/common"
 )
 
 const (
@@ -206,19 +207,22 @@ func (m *TerminalModel) startPTYReader(wsID string, tabID TerminalTabID) tea.Cmd
 	cancel := ts.readerCancel
 	msgCh := ts.ptyMsgCh
 	ts.mu.Unlock()
+	gen := ts.output.Generation()
 
 	safego.Go("sidebar.pty_reader", func() {
 		defer m.markPTYReaderStopped(ts)
 		runPTYReader(term, msgCh, cancel, wsID, string(tabID), &ts.ptyHeartbeat)
 	})
 	safego.Go("sidebar.pty_forward", func() {
-		m.forwardPTYMsgs(msgCh)
+		m.forwardPTYMsgs(ts, gen, msgCh)
 	})
 	return nil
 }
 
-// StartPTYReaders ensures PTY readers are running for all tabs.
+// StartPTYReaders ensures PTY readers are running for all tabs. It runs on the
+// PTY watchdog tick, so it also flushes output whose signal was lost.
 func (m *TerminalModel) StartPTYReaders() tea.Cmd {
+	var cmds []tea.Cmd
 	for wsID, tabs := range m.tabsByWorkspace {
 		for _, tab := range tabs {
 			if tab == nil {
@@ -234,13 +238,27 @@ func (m *TerminalModel) StartPTYReaders() tea.Cmd {
 					if lastBeat > 0 && time.Since(time.Unix(0, lastBeat)) > ptyReaderStallTimeout {
 						logging.Warn("Sidebar PTY reader stalled for workspace %s tab %s; restarting", wsID, tab.ID)
 						m.stopPTYReader(ts)
+						// Keep the stalled reader's leftovers out of the new stream.
+						ts.output.Reset()
 					}
 				}
 			}
 			_ = m.startPTYReader(wsID, tab.ID)
+			if ts != nil && ts.output.Len() > 0 && !ts.flushScheduled {
+				// Output is waiting and no flush is coming: its signal was
+				// dropped. Take the signal back so new output raises one again.
+				ts.output.ClearSignal()
+				ts.flushScheduled = true
+				ts.flushPendingSince = time.Now()
+				quiet, _ := m.flushTiming()
+				wsIDLocal, tabID := wsID, string(tab.ID)
+				cmds = append(cmds, common.SafeTick(quiet, func(time.Time) tea.Msg {
+					return messages.SidebarPTYFlush{WorkspaceID: wsIDLocal, TabID: tabID}
+				}))
+			}
 		}
 	}
-	return nil
+	return common.SafeBatch(cmds...)
 }
 
 // CloseTerminal closes all terminal tabs for the given workspace
@@ -301,7 +319,7 @@ func (m *TerminalModel) closeState(ts *TerminalState) {
 	term := ts.Terminal
 	ts.Terminal = nil
 	ts.Running = false
-	ts.pendingOutput = nil
+	ts.output.Reset()
 	ts.mu.Unlock()
 	if term != nil {
 		_ = term.Close()

@@ -8,6 +8,8 @@ import (
 
 	"github.com/Skowt/medusa/internal/hooks"
 	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/tmux"
+	"github.com/Skowt/medusa/internal/ui/common"
 	"github.com/Skowt/medusa/internal/ui/compositor"
 )
 
@@ -173,7 +175,9 @@ func (m *Model) isChatTab(tab *Tab) bool {
 	return tab.Assistant == "claude"
 }
 
-// StartPTYReaders starts reading from all PTYs across all workspaces
+// StartPTYReaders starts reading from all PTYs across all workspaces. It runs
+// on the PTY watchdog tick, so it is also where output whose signal was lost
+// gets flushed, and where a tab whose reader had to be replaced is redrawn.
 func (m *Model) StartPTYReaders() tea.Cmd {
 	if m.isTabActorReady() {
 		lastBeat := atomic.LoadInt64(&m.tabActorHeartbeat)
@@ -182,6 +186,7 @@ func (m *Model) StartPTYReaders() tea.Cmd {
 			atomic.StoreUint32(&m.tabActorReady, 0)
 		}
 	}
+	var cmds []tea.Cmd
 	for wtID, tabs := range m.tabsByWorkspace {
 		for _, tab := range tabs {
 			if tab == nil || tab.isClosed() {
@@ -195,12 +200,44 @@ func (m *Model) StartPTYReaders() tea.Cmd {
 				if lastBeat > 0 && time.Since(time.Unix(0, lastBeat)) > ptyReaderStallTimeout {
 					logging.Warn("PTY reader stalled for tab %s; restarting", tab.ID)
 					m.stopPTYReader(tab)
+					// Whatever the stalled reader held is gone, and its
+					// leftovers must not mix with the new reader's stream.
+					// Start clean and have tmux redraw the whole screen.
+					tab.output.Reset()
+					cmds = append(cmds, m.redrawTabCmd(tab))
 				}
 			}
 			_ = m.startPTYReader(wtID, tab)
+			if tab.output.Len() > 0 && !tab.flushScheduled {
+				// Output is waiting and no flush is coming: its signal was
+				// dropped. Take the signal back so new output raises one again.
+				tab.output.ClearSignal()
+				cmds = append(cmds, m.scheduleFlush(wtID, tab))
+			}
 		}
 	}
-	return nil
+	return common.SafeBatch(cmds...)
+}
+
+// redrawTabCmd asks tmux to repaint the tab's whole screen, which puts a vterm
+// that missed part of the stream back in step with the pane.
+func (m *Model) redrawTabCmd(tab *Tab) tea.Cmd {
+	tab.mu.Lock()
+	sessionName := tab.SessionName
+	if sessionName == "" && tab.Agent != nil {
+		sessionName = tab.Agent.Session
+	}
+	tab.mu.Unlock()
+	if sessionName == "" {
+		return nil
+	}
+	opts := m.getTmuxOptions()
+	return func() tea.Msg {
+		if err := tmux.RefreshSessionClients(sessionName, opts); err != nil {
+			logging.Warn("redrawing tmux clients of %s failed: %v", sessionName, err)
+		}
+		return nil
+	}
 }
 
 // TerminalLayer returns a VTermLayer for the active terminal, if any.

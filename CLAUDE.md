@@ -65,6 +65,33 @@ When adding a new message handler, decide first which of these layers owns it �
 - an `internal/pty.Terminal` + `internal/vterm.VTerm` pair (the PTY reader goroutine writes raw bytes; VTerm renders them),
 - a pending-output buffer with debounced flushes (`model_input_pty.go`: `updatePTYOutput` → `updatePTYFlush`).
 
+**The byte stream from a tab's PTY to its vterm must be lossless and in
+order.** tmux sends a client only the cells that changed, so a chunk that is
+dropped or parsed out of order is never corrected: the tab shows blank rows and
+half-drawn lines (a Codex input box gone, a "Working" line reduced to its timer
+digits) until those cells happen to change again. Two properties hold it:
+
+1. **The bytes never ride on a message.** The forwarder appends them to the
+   tab's `common.PTYBuffer` and sends `PTYOutput` only as a signal. That signal
+   goes through `enqueueExternalMsg`, whose non-critical queue drops under load
+   — which, when it carried the bytes, is exactly what corrupted tabs. A lost
+   signal costs latency only: one is outstanding per tab at a time, and the PTY
+   watchdog (`StartPTYReaders`) flushes any output nobody announced. The sidebar
+   terminal uses the same buffer.
+2. **No chunk overtakes another.** `deliverTabOutput` hands chunks to the tab
+   actor, and `Tab.outputInFlight` counts the ones it has not parsed yet. A
+   chunk the actor's queue refuses stays at the front of the buffer and is
+   retried; it is never parsed inline instead, and nothing is parsed inline
+   while earlier chunks are still queued (the actor stall detector clears
+   readiness without draining the queue).
+
+The one remaining loss is a reader replaced after a stall: its leftovers are
+discarded (`PTYBuffer.Reset` moves the generation on, so they cannot mix into
+the new stream) and `tmux.RefreshSessionClients` has tmux redraw the whole
+screen. That same command — `tmux refresh-client -t <client>` — repairs a tab
+by hand. Regression cover: `model_pty_integrity_test.go`,
+`common/pty_buffer_test.go`, `tmux/refresh_test.go`.
+
 PTY readers run as long-lived goroutines. They capture the workspace ID at start
 and embed it in every message they emit, which is why a workspace's ID must not
 change under them. It no longer can: the ID is minted once at creation and

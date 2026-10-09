@@ -356,7 +356,7 @@ func (m *Model) CleanupWorkspace(ws *data.Workspace) {
 			tab.ptyTraceFile = nil
 			tab.ptyTraceClosed = true
 		}
-		tab.pendingOutput = nil
+		tab.output.Reset()
 		tab.DiffViewer = nil
 		tab.Terminal = nil
 		tab.cachedSnap = nil
