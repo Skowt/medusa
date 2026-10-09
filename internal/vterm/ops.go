@@ -49,21 +49,13 @@ func (v *VTerm) putChar(r rune) {
 			v.markDirtyLine(v.CursorY)
 		}
 		v.CursorX = 0
-		v.CursorY++
-		if v.CursorY >= v.ScrollBottom {
-			v.scrollUp(1)
-			v.CursorY = v.ScrollBottom - 1
-		}
+		v.index()
 	}
 
 	// Normal auto-wrap check
 	if v.CursorX >= v.Width {
 		v.CursorX = 0
-		v.CursorY++
-		if v.CursorY >= v.ScrollBottom {
-			v.scrollUp(1)
-			v.CursorY = v.ScrollBottom - 1
-		}
+		v.index()
 	}
 
 	// Place the character
@@ -117,12 +109,22 @@ func (v *VTerm) putChar(r rune) {
 // newline moves cursor down, scrolling if needed
 func (v *VTerm) newline() {
 	prevX, prevY := v.CursorX, v.CursorY
-	v.CursorY++
-	if v.CursorY >= v.ScrollBottom {
-		v.scrollUp(1)
-		v.CursorY = v.ScrollBottom - 1
-	}
+	v.index()
 	v.bumpVersionIfCursorMoved(prevX, prevY)
+}
+
+// index moves the cursor down a row, scrolling the region only when the cursor
+// is on its bottom margin. Below the region the cursor just moves down, and on
+// the last row nothing happens. tmux relies on this: it leaves a region set
+// and moves the cursor down with a bare LF, so scrolling there would shift
+// rows that never moved in the pane.
+func (v *VTerm) index() {
+	switch {
+	case v.CursorY == v.ScrollBottom-1:
+		v.scrollUp(1)
+	case v.CursorY < v.Height-1:
+		v.CursorY++
+	}
 }
 
 // carriageReturn moves cursor to beginning of line
