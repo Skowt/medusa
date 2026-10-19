@@ -680,6 +680,21 @@ guards against renaming a primary checkout or a main/master branch existed
 because of what the rename did on disk. Regression cover:
 `app_rename_permissions_test.go`, `workspace_checkout_test.go`.
 
+**A renamed session does not rename the agent's hooks.** An agent's hooks send
+the `MEDUSA_SESSION_NAME` it was launched with, and a running process cannot
+learn a new one. So after a rename every hook named a session no tab had, and
+`handleHookActivityEvent` dropped it silently: the tab showed no activity until
+its agent was restarted. This hit Claude and Codex alike. The first rename
+records the old name as `TabInfo.LaunchSessionName` (persisted, since the agent
+outlives a Medusa restart in tmux), and `tabSessionInfoByName` resolves either
+name. Every hook table is keyed by the tab's *current* name. A tab's own
+current name always wins over another tab's launch name, so a new workspace
+that reuses an old name keeps its own hooks. The launch name is retired by a
+`SessionStart` under the current name, which proves the agent was relaunched
+with it. A `SessionStart` under the launch name proves nothing, because a
+`/clear` in the original agent fires one too. Regression cover:
+`app_hooks_rename_test.go`, `center/model_launch_session_test.go`.
+
 **Auto-start applies to every workspace**, including one whose root is the
 source repo: a workspace exists because the user made it, and pointing it at a
 repo checkout is a choice they made in the New Workspace dialog. The e2e

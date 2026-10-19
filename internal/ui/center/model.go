@@ -42,21 +42,24 @@ type SelectionState struct {
 
 // Tab represents a single tab in the center pane
 type Tab struct {
-	ID              TabID // Unique identifier that survives slice reordering
-	Name            string
-	Assistant       string
-	Workspace       *data.Workspace
-	Agent           *appPty.Agent
-	SessionName     string
-	ClaudeSessionID string
-	Detached        bool
-	Terminal        *vterm.VTerm // Virtual terminal emulator with scrollback
-	DiffViewer      *diff.Model  // Native diff viewer (replaces PTY-based viewer)
-	mu              sync.Mutex   // Protects Terminal
-	closed          uint32
-	closing         uint32
-	Running         bool // Whether the agent is actively running
-	readerActive    bool // Guard to ensure only one PTY read loop per tab
+	ID          TabID // Unique identifier that survives slice reordering
+	Name        string
+	Assistant   string
+	Workspace   *data.Workspace
+	Agent       *appPty.Agent
+	SessionName string
+	// LaunchSessionName is the session name the agent was launched with, set
+	// when a rename moved SessionName away from it (see data.TabInfo).
+	LaunchSessionName string
+	ClaudeSessionID   string
+	Detached          bool
+	Terminal          *vterm.VTerm // Virtual terminal emulator with scrollback
+	DiffViewer        *diff.Model  // Native diff viewer (replaces PTY-based viewer)
+	mu                sync.Mutex   // Protects Terminal
+	closed            uint32
+	closing           uint32
+	Running           bool // Whether the agent is actively running
+	readerActive      bool // Guard to ensure only one PTY read loop per tab
 	// Buffer PTY output to avoid rendering partial screen updates. The reader
 	// appends here directly; see common.PTYBuffer for why the bytes never ride
 	// on a message.

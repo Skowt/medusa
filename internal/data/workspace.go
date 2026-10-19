@@ -72,9 +72,14 @@ type WorktreeRef struct {
 
 // TabInfo stores information about an open tab
 type TabInfo struct {
-	Assistant                string `json:"assistant"`
-	Name                     string `json:"name"`
-	SessionName              string `json:"session_name,omitempty"`
+	Assistant   string `json:"assistant"`
+	Name        string `json:"name"`
+	SessionName string `json:"session_name,omitempty"`
+	// LaunchSessionName is the MEDUSA_SESSION_NAME the tab's agent was started
+	// with, recorded when a workspace rename moves SessionName away from it.
+	// The running agent cannot learn the new name, so its hooks keep sending
+	// this one until it is relaunched.
+	LaunchSessionName        string `json:"launch_session_name,omitempty"`
 	Status                   string `json:"status,omitempty"`
 	ActivityState            string `json:"activity_state,omitempty"`
 	ClaudeSessionID          string `json:"claude_session_id,omitempty"`

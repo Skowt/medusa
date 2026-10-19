@@ -194,6 +194,7 @@ func (a *App) renameWorkspaceSessions(wsID, oldName, newName string) {
 	}
 	a.center.RenameTabSessions(wsID, renamed)
 	a.center.AgentManager().RenameAgentSessions(data.WorkspaceID(wsID), renamed)
+	a.renameHookSessions(renamed)
 }
 
 // errText returns err's message, or fallback when err is nil.

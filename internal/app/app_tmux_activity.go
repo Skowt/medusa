@@ -10,6 +10,9 @@ import (
 )
 
 type tabSessionInfo struct {
+	// SessionName is the tab's current session name. It differs from the key
+	// the info was found under when the key is the tab's launch name.
+	SessionName string
 	Status      string
 	WorkspaceID string
 	Assistant   string
@@ -34,11 +37,18 @@ func tabAutoReviewer(tab data.TabInfo) bool {
 }
 
 // tabSessionInfoByName builds a map from tmux session name to workspace info.
+//
+// A tab renamed while its agent runs is listed under its launch name as well,
+// since that is the name the agent's hooks carry (data.TabInfo). A current
+// name always wins over a launch name: a new tab that reuses a retired name
+// owns it.
+//
 // Concurrency safety: builds the map synchronously in the Update loop.
 // Goroutine closures capture only the returned map, never accessing
 // a.allWorkspaces or ws.OpenTabs directly.
 func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 	infoBySession := make(map[string]tabSessionInfo)
+	byLaunchName := make(map[string]tabSessionInfo)
 	assistants := map[string]struct{}{}
 	if a.config != nil {
 		for name := range a.config.Assistants {
@@ -57,12 +67,17 @@ func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 			}
 			assistant := strings.TrimSpace(tab.Assistant)
 			_, isChat := assistants[assistant]
-			infoBySession[name] = tabSessionInfo{
+			info := tabSessionInfo{
+				SessionName:  name,
 				Status:       status,
 				WorkspaceID:  string(ws.ID()),
 				Assistant:    assistant,
 				IsChat:       isChat,
 				AutoReviewer: tabAutoReviewer(tab),
+			}
+			infoBySession[name] = info
+			if launch := strings.TrimSpace(tab.LaunchSessionName); launch != "" {
+				byLaunchName[launch] = info
 			}
 		}
 	}
@@ -83,11 +98,20 @@ func (a *App) tabSessionInfoByName() map[string]tabSessionInfo {
 				}
 				assistant := strings.TrimSpace(tab.Assistant)
 				_, isChat := assistants[assistant]
-				infoBySession[name] = tabSessionInfo{
-					Status: status, WorkspaceID: wsID, Assistant: assistant, IsChat: isChat,
+				info := tabSessionInfo{
+					SessionName: name, Status: status, WorkspaceID: wsID, Assistant: assistant, IsChat: isChat,
 					AutoReviewer: tabAutoReviewer(tab),
 				}
+				infoBySession[name] = info
+				if launch := strings.TrimSpace(tab.LaunchSessionName); launch != "" {
+					byLaunchName[launch] = info
+				}
 			}
+		}
+	}
+	for launch, info := range byLaunchName {
+		if _, taken := infoBySession[launch]; !taken {
+			infoBySession[launch] = info
 		}
 	}
 	return infoBySession

@@ -79,8 +79,12 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	// Resolve session name → workspace and tab identity.
 	wsID := ""
 	infoBySession := a.tabSessionInfoByName()
+	sentName := msg.SessionName
 	if info, ok := infoBySession[msg.SessionName]; ok {
 		wsID = info.WorkspaceID
+		// An agent started before a rename sends its launch name; every table
+		// below is keyed by the tab's current one.
+		msg.SessionName = info.SessionName
 	}
 	if wsID == "" {
 		return nil
@@ -90,7 +94,16 @@ func (a *App) handleHookActivityEvent(msg hookActivityEvent) []tea.Cmd {
 	// Claude session id so a restart resumes the current conversation after a
 	// /clear (or in-session /resume) mints a new id.
 	if msg.Event == hooks.EventSessionStart {
-		return a.handleSessionStart(wsID, msg)
+		var cmds []tea.Cmd
+		// Arriving under the current name proves the agent was relaunched with
+		// it, so the launch name is dead. Under the launch name it proves
+		// nothing: a /clear in the original agent fires it too.
+		if sentName == msg.SessionName && a.center.RetireLaunchSessionName(wsID, msg.SessionName) {
+			if cmd := a.persistWorkspaceTabs(wsID); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		return append(cmds, a.handleSessionStart(wsID, msg)...)
 	}
 
 	// Reject out-of-order delivery. Events reach us over per-connection socket
@@ -374,4 +387,24 @@ func (a *App) hookActiveIDs() map[string]bool {
 		}
 	}
 	return active
+}
+
+// renameHookSessions moves per-tab hook state to the tabs' new session names.
+// Left under the old name, a tab busy at the moment of a rename would count as
+// two tabs, and the stale one would spin until the reconciler cleared it.
+func (a *App) renameHookSessions(renamed map[string]string) {
+	for oldName, newName := range renamed {
+		if evt, ok := a.hookTabStates[oldName]; ok {
+			a.hookTabStates[newName] = evt
+			delete(a.hookTabStates, oldName)
+		}
+		if stamp, ok := a.hookTabLastStamp[oldName]; ok {
+			a.hookTabLastStamp[newName] = stamp
+			delete(a.hookTabLastStamp, oldName)
+		}
+		if n, ok := a.hookTabOutstanding[oldName]; ok {
+			a.hookTabOutstanding[newName] = n
+			delete(a.hookTabOutstanding, oldName)
+		}
+	}
 }

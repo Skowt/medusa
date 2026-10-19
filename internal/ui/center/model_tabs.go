@@ -54,6 +54,10 @@ type agentTabOptions struct {
 	Fullscreen               bool
 	CodexSandbox             string
 	CodexAuto                bool
+	// LaunchSessionName is not a launch flag. It rides along so a tab restored
+	// by reattaching to a renamed session still knows the name its running
+	// agent sends on its hooks (see data.TabInfo).
+	LaunchSessionName string
 }
 
 // agentTabOptionsFromTab rebuilds the launch settings of an existing tab, for
@@ -66,6 +70,7 @@ func agentTabOptionsFromTab(tab *Tab) agentTabOptions {
 		Fullscreen:               tab.Fullscreen,
 		CodexSandbox:             tab.CodexSandbox,
 		CodexAuto:                tab.CodexAuto,
+		LaunchSessionName:        tab.LaunchSessionName,
 	}
 }
 
@@ -78,6 +83,7 @@ func agentTabOptionsFromTabInfo(info data.TabInfo) agentTabOptions {
 		Fullscreen:               info.Fullscreen,
 		CodexSandbox:             info.CodexSandbox,
 		CodexAuto:                info.CodexAuto,
+		LaunchSessionName:        info.LaunchSessionName,
 	}
 }
 
@@ -88,8 +94,9 @@ func agentTabOptionsFromTabInfo(info data.TabInfo) agentTabOptions {
 func (o agentTabOptions) forAssistant(assistant string) agentTabOptions {
 	if appPty.AgentType(assistant) == appPty.AgentCodex {
 		return agentTabOptions{
-			CodexSandbox: o.CodexSandbox,
-			CodexAuto:    o.CodexAuto,
+			CodexSandbox:      o.CodexSandbox,
+			CodexAuto:         o.CodexAuto,
+			LaunchSessionName: o.LaunchSessionName,
 		}
 	}
 	return agentTabOptions{
@@ -97,6 +104,7 @@ func (o agentTabOptions) forAssistant(assistant string) agentTabOptions {
 		AllowUnsandboxedCommands: o.AllowUnsandboxedCommands,
 		PermissionMode:           o.PermissionMode,
 		Fullscreen:               o.Fullscreen && appPty.AgentType(assistant) == appPty.AgentClaude,
+		LaunchSessionName:        o.LaunchSessionName,
 	}
 }
 
@@ -300,6 +308,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		Workspace:                msg.Workspace,
 		Agent:                    msg.Agent,
 		SessionName:              msg.Agent.Session,
+		LaunchSessionName:        msg.Options.LaunchSessionName,
 		ClaudeSessionID:          msg.ClaudeSessionID,
 		Terminal:                 term,
 		Running:                  true, // Agent/viewer starts running

@@ -130,6 +130,11 @@ func (m *Model) RenameTabSessions(wsID string, renamed map[string]string) {
 			continue
 		}
 		if newName, ok := renamed[tab.SessionName]; ok {
+			// The agent keeps the name it was launched with, so only the
+			// first rename records one: a second does not reach it either.
+			if tab.LaunchSessionName == "" {
+				tab.LaunchSessionName = tab.SessionName
+			}
 			tab.SessionName = newName
 		}
 		if tab.Agent != nil {
@@ -139,4 +144,20 @@ func (m *Model) RenameTabSessions(wsID string, renamed map[string]string) {
 		}
 	}
 	m.recordTabRestoreOrderFromTabs(wsID, m.tabsByWorkspace[wsID])
+}
+
+// RetireLaunchSessionName forgets the pre-rename name of the tab whose current
+// session is sessionName. Returns true if there was one to forget.
+func (m *Model) RetireLaunchSessionName(wsID, sessionName string) bool {
+	for _, tab := range m.tabsByWorkspace[wsID] {
+		if tab == nil || tab.SessionName != sessionName {
+			continue
+		}
+		if tab.LaunchSessionName == "" {
+			return false
+		}
+		tab.LaunchSessionName = ""
+		return true
+	}
+	return false
 }

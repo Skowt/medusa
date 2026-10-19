@@ -145,6 +145,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 		if sessionName == "" && tab.Agent != nil {
 			sessionName = tab.Agent.Session
 		}
+		launchSessionName := tab.LaunchSessionName
 		claudeSessionID := tab.ClaudeSessionID
 		isolated := tab.Isolated
 		allowUnsandboxed := tab.AllowUnsandboxedCommands
@@ -164,6 +165,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			Assistant:                tab.Assistant,
 			Name:                     tab.Name,
 			SessionName:              sessionName,
+			LaunchSessionName:        launchSessionName,
 			Status:                   status,
 			ActivityState:            tab.HookState,
 			ClaudeSessionID:          claudeSessionID,
@@ -194,6 +196,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 		if sessionName == "" && tab.Agent != nil {
 			sessionName = tab.Agent.Session
 		}
+		launchSessionName := tab.LaunchSessionName
 		claudeSessionID := tab.ClaudeSessionID
 		isolated := tab.Isolated
 		allowUnsandboxed := tab.AllowUnsandboxedCommands
@@ -213,6 +216,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			Assistant:                tab.Assistant,
 			Name:                     tab.Name,
 			SessionName:              sessionName,
+			LaunchSessionName:        launchSessionName,
 			Status:                   status,
 			ActivityState:            tab.HookState,
 			ClaudeSessionID:          claudeSessionID,
