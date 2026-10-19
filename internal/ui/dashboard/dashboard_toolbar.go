@@ -66,8 +66,10 @@ func (m *Model) renderToolbar() string {
 	activeStyle := lipgloss.NewStyle().
 		Foreground(common.ColorForeground).
 		Bold(true)
+	// Unfocused buttons wear the accent color so they read as actions; the
+	// keyboard-focused one stands out from them in bold foreground.
 	inactiveStyle := lipgloss.NewStyle().
-		Foreground(common.ColorMuted)
+		Foreground(common.ColorPrimary)
 
 	contentWidth := m.width - 3 // Account for border and padding
 

@@ -95,9 +95,11 @@ func footerButtonHits() []wsButtonHit {
 // renderFooterLine renders the action button row for a selected active row.
 // The footer only shows on the selected row, so it always uses the selected
 // tree connector and aligns its buttons under the metadata text above.
+// Buttons use the accent color, as [Review Changes] does, so they read as
+// clickable rather than as more of the muted metadata above them.
 func (m *Model) renderFooterLine() string {
 	bg := lipgloss.NewStyle().Background(common.ColorSelection)
-	btnStyle := lipgloss.NewStyle().Foreground(common.ColorMuted).Background(common.ColorSelection)
+	btnStyle := lipgloss.NewStyle().Foreground(common.ColorPrimary).Background(common.ColorSelection)
 	parts := []string{detailIndent(true)}
 	for i, b := range wsButtonDefs {
 		if i > 0 {

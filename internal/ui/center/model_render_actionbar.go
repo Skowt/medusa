@@ -43,7 +43,9 @@ func (m *Model) renderInfoBar(width int) string {
 
 	// Styles
 	mutedStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
-	branchStyle := lipgloss.NewStyle().Foreground(common.ColorInfo)
+	// The branch copies on click and [IDE] shares its style, so both wear the
+	// accent color every clickable control in medusa uses.
+	branchStyle := lipgloss.NewStyle().Foreground(common.ColorPrimary)
 	pathStyle := lipgloss.NewStyle().Foreground(common.ColorMuted)
 	separatorStyle := lipgloss.NewStyle().Foreground(common.ColorSurface2)
 
@@ -248,7 +250,7 @@ func (m *Model) copyLabel(target copyTarget, value string, width int) string {
 	} else if m.copyHoverActive && m.copyHover == target {
 		label = " click to copy "
 		badge = lipgloss.NewStyle().
-			Foreground(common.ColorInfo).
+			Foreground(common.ColorPrimary).
 			Background(common.ColorSurface1)
 		styled = true
 	}
