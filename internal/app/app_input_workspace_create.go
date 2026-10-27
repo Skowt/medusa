@@ -18,12 +18,12 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	if msg.Err != nil {
 		return nil
 	}
-	a.dropVanishedWorkspaces(msg.Workspaces)
+	cmds := a.dropVanishedWorkspaces(msg.Workspaces)
 	a.allWorkspaces = msg.Workspaces
 	a.dashboard.SetWorkspaces(a.allWorkspaces)
 	// Restore hook states from workspace JSON so indicators (e.g. '!') survive restarts.
 	a.restoreHookStatesFromWorkspaces()
-	cmds := a.clearExternalClosing(msg.Workspaces)
+	cmds = append(cmds, a.clearExternalClosing(msg.Workspaces)...)
 	if syncCmd := a.syncActiveWorkspacesToDashboard(); syncCmd != nil {
 		cmds = append(cmds, syncCmd)
 	}
@@ -41,7 +41,7 @@ func (a *App) handleWorkspacesLoaded(msg messages.WorkspacesLoaded) []tea.Cmd {
 	var autoActivateID string
 	if a.pendingAutoLaunch != "" {
 		autoActivateID = a.pendingAutoLaunch
-	} else if a.showWelcome && a.activeWorkspace == nil && len(a.allWorkspaces) > 0 {
+	} else if !a.stayHome && a.showWelcome && a.activeWorkspace == nil && len(a.allWorkspaces) > 0 {
 		autoActivateID = a.startupWorkspaceID()
 	}
 
@@ -141,6 +141,7 @@ func (a *App) handleWorkspaceActivated(msg messages.WorkspaceActivated) []tea.Cm
 	a.activeWorkspace = msg.Workspace
 	a.rememberLastWorkspace(msg.Workspace)
 	a.showWelcome = false
+	a.stayHome = false
 	a.centerBtnFocused = false
 	a.centerBtnIndex = 0
 	a.center.SetWorkspace(msg.Workspace)

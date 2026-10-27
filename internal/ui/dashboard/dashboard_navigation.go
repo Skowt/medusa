@@ -39,6 +39,50 @@ func (m *Model) findSelectableRow(from, dir int) int {
 	return -1
 }
 
+// NextVisibleWorkspace picks the workspace to land on when the one with the
+// given ID goes away: the nearest live row below it, else the nearest above.
+// Only rows on screen count, so a member of a collapsed group is never chosen.
+// When the workspace has no row of its own (its group is collapsed), the first
+// visible live workspace is used. nil means nothing visible is left.
+// alsoGone names workspaces leaving at the same time, which are skipped too.
+func (m *Model) NextVisibleWorkspace(id string, alsoGone ...string) *data.Workspace {
+	gone := map[string]bool{id: true}
+	for _, other := range alsoGone {
+		gone[other] = true
+	}
+	eligible := func(row Row) bool {
+		ws := row.Workspace
+		if row.Type != RowWorkspace || ws == nil || gone[string(ws.ID())] {
+			return false
+		}
+		if ws.Archived() || ws.IsOrphaned() {
+			return false
+		}
+		_, creating := m.creatingWorkspaces[string(ws.ID())]
+		return !creating && !m.deletingWorkspaces[string(ws.ID())]
+	}
+
+	origin := -1
+	for i, row := range m.rows {
+		if row.Type == RowWorkspace && row.Workspace != nil && string(row.Workspace.ID()) == id {
+			origin = i
+			break
+		}
+	}
+
+	for i := origin + 1; i < len(m.rows); i++ {
+		if eligible(m.rows[i]) {
+			return m.rows[i].Workspace
+		}
+	}
+	for i := origin - 1; i >= 0; i-- {
+		if eligible(m.rows[i]) {
+			return m.rows[i].Workspace
+		}
+	}
+	return nil
+}
+
 // moveCursor moves the cursor by delta, skipping non-selectable rows
 func (m *Model) moveCursor(delta int) {
 	if len(m.rows) == 0 {

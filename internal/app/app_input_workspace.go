@@ -224,6 +224,7 @@ func (a *App) handleDeleteWorkspace(msg messages.DeleteWorkspace) []tea.Cmd {
 	if cleanup := a.cleanupWorkspaceTmuxSessions(msg.Workspace); cleanup != nil {
 		cmds = append(cmds, cleanup)
 	}
+	cmds = append(cmds, a.leaveWorkspace(msg.Workspace)...)
 	if cmd := a.dashboard.SetWorkspaceDeleting(string(msg.Workspace.ID()), true); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -332,11 +333,8 @@ func (a *App) handleWorkspaceDeleted(msg messages.WorkspaceDeleted) []tea.Cmd {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
-		// If the deleted workspace was active, clear it so the next
-		// loadWorkspaces cycle auto-activates the nearest workspace.
-		if a.activeWorkspace != nil && a.activeWorkspace.ID() == msg.Workspace.ID() {
-			a.goHome()
-		}
+		// Normally left already, when the delete started.
+		cmds = append(cmds, a.leaveWorkspace(msg.Workspace)...)
 	}
 	if msg.BranchWarning != "" && !msg.Silent {
 		cmds = append(cmds, a.toast.ShowWarning(msg.BranchWarning))

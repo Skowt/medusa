@@ -50,10 +50,8 @@ func (a *App) handleArchiveWorkspace(msg messages.ArchiveWorkspace) []tea.Cmd {
 		a.fileWatcher.Unwatch(ws.PrimaryWorktreeRoot())
 	}
 
-	// 5. If active, go home
-	if a.activeWorkspace != nil && a.activeWorkspace.ID() == ws.ID() {
-		a.goHome()
-	}
+	// 5. If active, move to the next visible workspace, or home.
+	cmds = append(cmds, a.leaveWorkspace(ws)...)
 
 	// 6. Prune excess archived workspaces
 	cmds = append(cmds, a.pruneArchivedWorkspaces()...)

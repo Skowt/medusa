@@ -104,6 +104,7 @@ type App struct {
 	loggedFirstMotion   bool // one-time log of the first pointer-motion event, for diagnosing hover
 	mouseModePhase      int  // 0 = not started, 1 = nudging, 2 = settled (see mouseMode)
 	showWelcome         bool
+	stayHome            bool // set by goHome: no reload may auto-activate a workspace
 	monitorMode         bool
 	monitorFilter       string
 	monitorLayoutKey    string

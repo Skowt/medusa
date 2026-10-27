@@ -35,48 +35,55 @@ func (a *App) handleWorkspaceClosing(msg workspaceClosingMsg) tea.Cmd {
 	if a.center != nil {
 		a.center.SetWorkspaceClosing(msg.WorkspaceID, true)
 	}
-	a.dropWorkspaceTabs(ws)
+	cmds := a.dropWorkspaceTabs(ws)
 	if a.externalClosing == nil {
 		a.externalClosing = make(map[string]time.Time)
 	}
 	a.externalClosing[msg.WorkspaceID] = time.Now()
-	if a.dashboard == nil {
-		return nil
+	if a.dashboard != nil {
+		cmds = append(cmds, a.dashboard.SetWorkspaceDeleting(msg.WorkspaceID, true))
 	}
-	return a.dashboard.SetWorkspaceDeleting(msg.WorkspaceID, true)
+	return tea.Batch(cmds...)
 }
 
 // dropWorkspaceTabs closes a workspace's tabs without touching its sessions,
-// leaves it if it is active, and stops it being persisted again.
-func (a *App) dropWorkspaceTabs(ws *data.Workspace) {
+// leaves it if it is active, and stops it being persisted again. alsoGone
+// names workspaces dropped at the same time, so leaving never lands on one.
+func (a *App) dropWorkspaceTabs(ws *data.Workspace, alsoGone ...*data.Workspace) []tea.Cmd {
 	id := string(ws.ID())
 	if a.center != nil {
 		a.center.CleanupWorkspace(ws)
 	}
-	if a.activeWorkspace != nil && string(a.activeWorkspace.ID()) == id {
-		a.goHome()
-	}
+	cmds := a.leaveWorkspace(ws, alsoGone...)
 	delete(a.dirtyWorkspaces, id)
+	return cmds
 }
 
 // dropVanishedWorkspaces is the backstop for a delete the TUI was not warned
 // about: any live workspace in the current list that the reload no longer
 // has loses its tabs. A workspace whose name is still present is left alone,
 // since an ID migration looks the same as a delete by ID alone.
-func (a *App) dropVanishedWorkspaces(loaded []*data.Workspace) {
+func (a *App) dropVanishedWorkspaces(loaded []*data.Workspace) []tea.Cmd {
 	ids := make(map[data.WorkspaceID]bool, len(loaded))
 	names := make(map[string]bool, len(loaded))
 	for _, ws := range loaded {
 		ids[ws.ID()] = true
 		names[ws.Name] = true
 	}
+	var vanished []*data.Workspace
 	for _, ws := range a.allWorkspaces {
 		if ws == nil || ws.IsOrphaned() || ids[ws.ID()] || names[ws.Name] {
 			continue
 		}
-		logging.Info("Workspace %s disappeared on reload; dropping its tabs", ws.Name)
-		a.dropWorkspaceTabs(ws)
+		vanished = append(vanished, ws)
 	}
+
+	var cmds []tea.Cmd
+	for _, ws := range vanished {
+		logging.Info("Workspace %s disappeared on reload; dropping its tabs", ws.Name)
+		cmds = append(cmds, a.dropWorkspaceTabs(ws, vanished...)...)
+	}
+	return cmds
 }
 
 // externalClosingGrace is how long a workspace an outside delete announced
