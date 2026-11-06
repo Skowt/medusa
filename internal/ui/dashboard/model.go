@@ -216,6 +216,12 @@ func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
+// rowSelected reports whether row i is drawn highlighted: the cursor row,
+// unless the keyboard has moved past the rows onto the toolbar.
+func (m *Model) rowSelected(i int) bool {
+	return i == m.cursor && !m.toolbarFocused
+}
+
 // View renders the dashboard
 func (m *Model) View() string {
 	var b strings.Builder
@@ -243,7 +249,7 @@ func (m *Model) View() string {
 	var archivedBuf strings.Builder
 	if archivedStart >= 0 {
 		for i := archivedStart; i < len(m.rows); i++ {
-			line := m.renderRow(m.rows[i], i == m.cursor && !m.toolbarFocused)
+			line := m.renderRow(m.rows[i], m.rowSelected(i))
 			archivedBuf.WriteString(line)
 			archivedBuf.WriteString("\n")
 		}
@@ -294,7 +300,7 @@ func (m *Model) View() string {
 		if lineOffset >= m.scrollOffset+mainVisibleHeight {
 			break
 		}
-		line := m.renderRow(m.rows[i], i == m.cursor && !m.toolbarFocused)
+		line := m.renderRow(m.rows[i], m.rowSelected(i))
 		b.WriteString(line)
 		b.WriteString("\n")
 		lineOffset += lines

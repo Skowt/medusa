@@ -158,10 +158,11 @@ func (m *Model) handleToolbarClick(screenX, screenY int) tea.Cmd {
 	// Calculate Y relative to toolbar start
 	localY := contentY - m.toolbarY
 
-	// Check toolbar button hits
+	// Check toolbar button hits. A click runs the button and leaves toolbar
+	// focus alone: that focus is a keyboard position, and taking it hides the
+	// open workspace's highlight until a row is clicked.
 	for i, hit := range m.toolbarHits {
 		if hit.region.Contains(contentX, localY) {
-			m.toolbarFocused = true
 			m.toolbarIndex = i
 			return m.toolbarCommand(hit.kind)
 		}

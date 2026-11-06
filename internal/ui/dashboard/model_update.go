@@ -193,6 +193,7 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			m.activeID = string(msg.Workspace.ID())
 			m.MarkRead(m.activeID)
 			m.moveCursorToWorkspace(m.activeID)
+			m.toolbarFocused = false
 		}
 
 	case messages.WorkspacePreviewed:
