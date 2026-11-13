@@ -87,7 +87,7 @@ func (d Deps) StartAgent(ws *data.Workspace, l Launch, prompt string) (StartedAg
 		CreatedAt:   time.Now().Unix(),
 		Fullscreen:  prepared.Fullscreen,
 	}
-	if err := tmux.StartDetachedSession(prepared.SessionName, ws.Root(), prepared.Command, prepared.Env, tmuxOpts, tags); err != nil {
+	if err := tmux.StartDetachedSession(prepared.SessionName, ws.Root(), prepared.Command, prepared.SessionEnv, tmuxOpts, tags); err != nil {
 		return StartedAgent{}, err
 	}
 	promptHandedOver = true

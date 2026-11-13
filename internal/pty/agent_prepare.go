@@ -17,9 +17,12 @@ import (
 type PreparedAgent struct {
 	SessionName string
 	Command     string   // agent command, then a reset and a login shell
-	Env         []string // environment for the process that starts the session
-	Fullscreen  bool     // Claude with Fullscreen set; never Codex
-	Config      config.AssistantConfig
+	Env         []string // client process env: terminal settings only
+	// SessionEnv is set on the tmux session (new-session -e): the workspace
+	// identity and port. It must never ride on Env — see agentClientEnv.
+	SessionEnv []string
+	Fullscreen bool // Claude with Fullscreen set; never Codex
+	Config     config.AssistantConfig
 }
 
 // PrepareAgent sets up a profile for an agent launch — the profile directory,
@@ -42,15 +45,7 @@ func PrepareAgent(cfg *config.Config, ports *process.PortAllocator, ws *data.Wor
 		return PreparedAgent{}, err
 	}
 
-	// Build environment
-	env := []string{
-		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root()),
-		fmt.Sprintf("WORKSPACE_NAME=%s", ws.Name),
-		"LINES=",   // Unset to force ioctl usage
-		"COLUMNS=", // Unset to force ioctl usage
-		"COLORTERM=truecolor",
-	}
-	env = append(env, workspacePortEnv(ports, ws)...)
+	agentEnv := agentSessionEnv(ports, ws)
 
 	var profileDir string
 	if agentType == AgentClaude && ws.Profile != "" {
@@ -74,7 +69,7 @@ func PrepareAgent(cfg *config.Config, ports *process.PortAllocator, ws *data.Wor
 	// The pane starts in ws.Root(), which is the cwd Claude Code encodes into
 	// its transcript directory.
 	opts.Cwd = ws.Root()
-	agentCommand := buildAgentCommand(agentType, assistantCfg.Command, sessionName, profileDir, opts)
+	agentCommand := envAssignments(agentEnv) + buildAgentCommand(agentType, assistantCfg.Command, sessionName, profileDir, opts)
 
 	// Create terminal with agent command, falling back to shell on exit
 	shell := os.Getenv("SHELL")
@@ -90,7 +85,8 @@ func PrepareAgent(cfg *config.Config, ports *process.PortAllocator, ws *data.Wor
 	return PreparedAgent{
 		SessionName: sessionName,
 		Command:     fullCommand,
-		Env:         env,
+		Env:         agentClientEnv(),
+		SessionEnv:  append(workspaceIdentityEnv(ws), agentEnv...),
 		Fullscreen:  agentType == AgentClaude && opts.Fullscreen,
 		Config:      assistantCfg,
 	}, nil

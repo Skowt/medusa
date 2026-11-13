@@ -194,8 +194,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// Fullscreen mark and the CLAUDE_CODE_NO_FLICKER env var must agree: both
 	// are gated on agentType == AgentClaude, matching buildAgentCommand's gate.
 	tags.Fullscreen = p.Fullscreen
-	termCommand := tmux.ClientCommandWithTags(p.SessionName, ws.Root(), p.Command, tmux.DefaultOptions(), tags)
-	term, err := NewWithSize(termCommand, ws.Root(), p.Env, rows, cols)
+	term, err := NewWithSize(agentClientCommand(p, ws.Root(), tags), ws.Root(), p.Env, rows, cols)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create terminal: %w", err)
 	}
@@ -225,15 +224,12 @@ func (m *AgentManager) CreateViewerWithTags(ws *data.Workspace, command string, 
 	if err := tmux.EnsureAvailable(); err != nil {
 		return nil, err
 	}
-	// Build environment
 	env := []string{
-		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root()),
-		fmt.Sprintf("WORKSPACE_NAME=%s", ws.Name),
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 	}
 
-	termCommand := tmux.ClientCommandWithTags(sessionName, ws.Root(), command, tmux.DefaultOptions(), tags)
+	termCommand := tmux.ClientCommandWithEnv(sessionName, ws.Root(), command, tmux.DefaultOptions(), tags, workspaceIdentityEnv(ws))
 	logging.Info("CreateViewerWithTags: termCommand=%s", termCommand)
 	term, err := NewWithSize(termCommand, ws.Root(), env, rows, cols)
 	if err != nil {
