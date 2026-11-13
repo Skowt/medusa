@@ -75,7 +75,7 @@ func (d Deps) StartAgent(ws *data.Workspace, l Launch, prompt string) (StartedAg
 	if err != nil {
 		return StartedAgent{}, err
 	}
-	prepared, err := pty.PrepareAgent(d.Config, nil, ws, agentType, sessionName, opts)
+	prepared, err := pty.PrepareAgent(d.Config, d.Ports, ws, agentType, sessionName, opts)
 	if err != nil {
 		return StartedAgent{}, err
 	}

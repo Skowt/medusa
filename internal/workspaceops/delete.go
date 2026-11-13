@@ -11,8 +11,9 @@ import (
 
 // Delete removes what medusa made for a workspace — its worktrees, their
 // branches and its root directory — and then its metadata and registry entry.
-// It returns a warning when branches could not be deleted. It does not touch
-// tmux; callers kill the workspace's sessions first.
+// It frees the workspace's port and returns a warning when branches could not
+// be deleted. It does not touch tmux; callers kill the workspace's sessions
+// first.
 func (d Deps) Delete(ws *data.Workspace) (branchWarning string) {
 	// Only worktrees medusa made are removed. A workspace pointed straight
 	// at a repo's own checkout owns neither the directory nor the branch, so
@@ -36,6 +37,7 @@ func (d Deps) Delete(ws *data.Workspace) (branchWarning string) {
 
 	_ = d.Store.Delete(ws.ID())
 	_ = d.Registry.RemoveWorkspace(string(ws.ID()))
+	d.releasePort(ws)
 	return branchWarning
 }
 

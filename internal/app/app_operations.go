@@ -12,6 +12,7 @@ import (
 	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
@@ -106,6 +107,8 @@ func (a *App) loadWorkspaces() tea.Cmd {
 			}
 		}
 
+		a.workspaceOps().SyncPorts(workspaces)
+
 		// Phase B: detect directory orphans (directory exists but no metadata)
 		if a.config != nil && a.config.Paths.WorkspacesRoot != "" {
 			knownRoots := make(map[string]bool)
@@ -197,7 +200,17 @@ func (a *App) workspaceOps() workspaceops.Deps {
 		Registry: a.registry,
 		Store:    a.workspaces,
 		Recents:  a.recents,
+		Ports:    a.scriptPorts(),
 	}
+}
+
+// scriptPorts is the allocator the setup/run scripts and agents share, or nil
+// in an App built without a script runner.
+func (a *App) scriptPorts() *process.PortAllocator {
+	if a.scripts == nil {
+		return nil
+	}
+	return a.scripts.Ports()
 }
 
 // copyIgnoredFilesCmd copies gitignored files from source repos into the workspace worktrees.
