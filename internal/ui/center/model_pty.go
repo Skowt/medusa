@@ -328,7 +328,7 @@ func (m *Model) startPTYReader(wtID string, tab *Tab) tea.Cmd {
 	gen := tab.output.Generation()
 
 	safego.Go("center.pty_reader", func() {
-		defer m.markPTYReaderStopped(tab)
+		defer m.markPTYReaderStopped(tab, cancel)
 		runPTYReader(term, msgCh, cancel, wtID, tabID, &tab.ptyHeartbeat)
 	})
 	safego.Go("center.pty_forward", func() {
@@ -374,11 +374,15 @@ func (m *Model) stopPTYReader(tab *Tab) {
 	atomic.StoreInt64(&tab.ptyHeartbeat, 0)
 }
 
-func (m *Model) markPTYReaderStopped(tab *Tab) {
+func (m *Model) markPTYReaderStopped(tab *Tab, cancel chan struct{}) {
 	if tab == nil {
 		return
 	}
 	tab.mu.Lock()
+	if tab.readerCancel != cancel {
+		tab.mu.Unlock()
+		return
+	}
 	tab.readerActive = false
 	tab.ptyMsgCh = nil
 	tab.mu.Unlock()
