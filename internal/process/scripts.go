@@ -59,6 +59,14 @@ func NewScriptRunner(portStart, portRange int) *ScriptRunner {
 	}
 }
 
+// Ports returns the shared port allocator, so other components (the agent
+// launcher) hand the workspace the SAME WORKSPACE_PORT the setup/run scripts
+// see — a second allocator would number workspaces differently and the agent's
+// port would not match the one its DB container was started on.
+func (r *ScriptRunner) Ports() *PortAllocator {
+	return r.portAllocator
+}
+
 // LoadConfig loads the workspace configuration from the repo
 func (r *ScriptRunner) LoadConfig(repoPath string) (*WorkspaceConfig, error) {
 	configPath := filepath.Join(repoPath, ".medusa", configFilename)

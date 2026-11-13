@@ -448,6 +448,9 @@ func New(version, commit, date string) (*App, error) {
 	// emit binary is resolved once; when missing (e.g. `go run` dev builds
 	// without `make build`), legacy shell hooks are injected instead.
 	_ = config.InjectHooksIntoAllProfiles(cfg.Paths.ProfilesRoot, cfg.Paths.HooksDir, config.ResolveHookEmitBinary())
+	// Share the ScriptRunner's port allocator with the agent launcher so agents
+	// receive the same WORKSPACE_PORT the setup/run scripts use.
+	app.center.AgentManager().SetPortAllocator(scripts.Ports())
 	app.initHooksServer()
 
 	// Initialize focus state on all components (dashboard is the default focus)

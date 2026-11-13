@@ -10,6 +10,7 @@ import (
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/logging"
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/shellutil"
 	"github.com/Skowt/medusa/internal/tmux"
 )
@@ -149,6 +150,10 @@ type AgentManager struct {
 	config *config.Config
 	mu     sync.Mutex
 	agents map[data.WorkspaceID][]*Agent
+	// ports is the shared allocator; when set, agents get WORKSPACE_PORT in
+	// their env so a session can point tools (e.g. a per-workspace test DB) at
+	// the same port the setup/run scripts use. Nil in hand-built managers.
+	ports *process.PortAllocator
 }
 
 // NewAgentManager creates a new agent manager
@@ -159,9 +164,30 @@ func NewAgentManager(cfg *config.Config) *AgentManager {
 	}
 }
 
+// SetPortAllocator wires the shared port allocator so launched agents receive
+// WORKSPACE_PORT. Pass the ScriptRunner's own allocator (Ports()); a separate
+// one would hand out ports that don't match the scripts'.
+func (m *AgentManager) SetPortAllocator(p *process.PortAllocator) {
+	m.ports = p
+}
+
+// workspacePortEnv returns the WORKSPACE_PORT / WORKSPACE_PORT_RANGE assignments
+// for ws, or nil when no allocator is wired. It reads the allocator by
+// workspace ID, the key the script env uses, so both see the same port.
+func workspacePortEnv(ports *process.PortAllocator, ws *data.Workspace) []string {
+	if ports == nil || ws == nil {
+		return nil
+	}
+	port, rangeEnd := ports.PortRange(string(ws.ID()))
+	return []string{
+		fmt.Sprintf("WORKSPACE_PORT=%d", port),
+		fmt.Sprintf("WORKSPACE_PORT_RANGE=%d-%d", port, rangeEnd),
+	}
+}
+
 // CreateAgentWithTags creates a new agent for the given workspace with tmux tags.
 func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentType, sessionName string, rows, cols uint16, tags tmux.SessionTags, opts AgentOptions) (*Agent, error) {
-	p, err := PrepareAgent(m.config, ws, agentType, sessionName, opts)
+	p, err := PrepareAgent(m.config, m.ports, ws, agentType, sessionName, opts)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/tmux"
 )
 
@@ -24,7 +25,9 @@ type PreparedAgent struct {
 // PrepareAgent sets up a profile for an agent launch — the profile directory,
 // the pre-trusted worktree, a Codex tab's CODEX_HOME — and builds the command
 // line. It is the part of starting an agent that does not need a terminal.
-func PrepareAgent(cfg *config.Config, ws *data.Workspace, agentType AgentType, sessionName string, opts AgentOptions) (PreparedAgent, error) {
+// ports, when set, is the allocator the setup/run scripts read, so the agent's
+// WORKSPACE_PORT matches theirs.
+func PrepareAgent(cfg *config.Config, ports *process.PortAllocator, ws *data.Workspace, agentType AgentType, sessionName string, opts AgentOptions) (PreparedAgent, error) {
 	if isAgentAssistant(agentType) && ws.Profile == "" {
 		return PreparedAgent{}, fmt.Errorf("cannot start %s agent without a profile (workspace %q)", agentType, ws.Name)
 	}
@@ -47,6 +50,7 @@ func PrepareAgent(cfg *config.Config, ws *data.Workspace, agentType AgentType, s
 		"COLUMNS=", // Unset to force ioctl usage
 		"COLORTERM=truecolor",
 	}
+	env = append(env, workspacePortEnv(ports, ws)...)
 
 	var profileDir string
 	if agentType == AgentClaude && ws.Profile != "" {

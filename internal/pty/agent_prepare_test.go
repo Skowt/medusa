@@ -31,7 +31,7 @@ func prepareTestConfig(t *testing.T) *config.Config {
 func TestPrepareAgentRequiresAProfile(t *testing.T) {
 	cfg := prepareTestConfig(t)
 	ws := &data.Workspace{Name: "ws"}
-	if _, err := PrepareAgent(cfg, ws, AgentClaude, "s", AgentOptions{}); err == nil {
+	if _, err := PrepareAgent(cfg, nil, ws, AgentClaude, "s", AgentOptions{}); err == nil {
 		t.Fatal("PrepareAgent started a Claude agent with no profile")
 	}
 }
@@ -42,7 +42,7 @@ func TestPrepareAgentBuildsTheFullClaudeLaunch(t *testing.T) {
 	ws := data.NewCheckoutWorkspace("ws", "main", root)
 	ws.Profile = "Work"
 
-	p, err := PrepareAgent(cfg, ws, AgentClaude, "medusa-ws-1", AgentOptions{
+	p, err := PrepareAgent(cfg, nil, ws, AgentClaude, "medusa-ws-1", AgentOptions{
 		ClaudeSessionID:   "sess-1",
 		Fullscreen:        true,
 		InitialPromptFile: "/tmp/p",
@@ -74,7 +74,7 @@ func TestPrepareAgentNeverMarksCodexFullscreen(t *testing.T) {
 	cfg := prepareTestConfig(t)
 	ws := data.NewCheckoutWorkspace("ws", "main", t.TempDir())
 	ws.Profile = "Work"
-	p, err := PrepareAgent(cfg, ws, AgentCodex, "s", AgentOptions{Fullscreen: true})
+	p, err := PrepareAgent(cfg, nil, ws, AgentCodex, "s", AgentOptions{Fullscreen: true})
 	if err != nil {
 		t.Fatalf("PrepareAgent: %v", err)
 	}
