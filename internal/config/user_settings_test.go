@@ -98,6 +98,26 @@ func TestUISettingsFullscreenRoundTrip(t *testing.T) {
 	}
 }
 
+// Chrome is opt-in, unlike Fullscreen: it adds tools to every session's
+// context, so an absent last_chrome reads as off. A stored value of either
+// polarity wins on reload.
+func TestUISettingsChromeDefaultsOffAndSticks(t *testing.T) {
+	if defaultUISettings().LastChrome || loadUISettings(filepath.Join(t.TempDir(), "config.json")).LastChrome {
+		t.Error("LastChrome should default to off")
+	}
+	for _, stored := range []bool{true, false} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		in := defaultUISettings()
+		in.LastChrome = stored
+		if err := saveUISettings(path, in); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+		if got := loadUISettings(path).LastChrome; got != stored {
+			t.Errorf("LastChrome after reload = %v, want %v", got, stored)
+		}
+	}
+}
+
 func TestUISettingsIDERoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 

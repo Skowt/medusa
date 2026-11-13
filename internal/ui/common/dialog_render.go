@@ -16,6 +16,7 @@ const (
 	dialogIDCheckbox1   = "checkbox-1"
 	dialogIDCheckbox2   = "checkbox-2"
 	dialogIDCheckbox3   = "checkbox-3"
+	dialogIDCheckbox4   = "checkbox-4"
 	dialogIDSelectField = "select"
 	dialogIDSelectLeft  = "select-left"
 	dialogIDSelectRight = "select-right"
@@ -172,6 +173,13 @@ func (d *Dialog) buildInput(b *LineBuilder) {
 	if d.checkbox3Label != "" {
 		b.Blank()
 		d.appendCheckbox(b, dialogIDCheckbox3, d.checkbox3Label, d.checkbox3Value, d.checkbox3Focused, false, d.checkbox3Desc)
+	}
+	// Checkbox 4 sits directly under checkbox 3: both are launch options.
+	if d.checkbox4Label != "" {
+		if d.checkbox3Label == "" {
+			b.Blank()
+		}
+		d.appendCheckbox(b, dialogIDCheckbox4, d.checkbox4Label, d.checkbox4Value, d.checkbox4Focused, false, d.checkbox4Desc)
 	}
 	b.Blank()
 	d.appendInputButtons(b)
@@ -392,7 +400,7 @@ func (d *Dialog) helpText() string {
 		if d.hasSelect() {
 			return "↑/↓: navigate • ←/→: change mode • space: toggle • enter: confirm • esc: cancel"
 		}
-		if d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "" {
+		if d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "" || d.checkbox4Label != "" {
 			return "↑/↓: navigate • space: toggle • enter: confirm • esc: cancel"
 		}
 		return "enter: confirm • esc: cancel • click OK/Cancel"

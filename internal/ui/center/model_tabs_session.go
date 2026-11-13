@@ -106,6 +106,7 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 	claudeSessionID := tab.ClaudeSessionID
 	scriptFullCmd := tab.ScriptFullCmd
 	fullscreen := tab.Fullscreen
+	chrome := tab.Chrome
 	tab.mu.Unlock()
 	if !detached {
 		return nil
@@ -153,7 +154,7 @@ func (m *Model) ReattachTabByID(wsID string, tabID TabID) tea.Cmd {
 		} else {
 			tags.Type = "agent"
 			tags.Assistant = assistant
-			agent, err = m.agentManager.CreateAgentWithTags(ws, appPty.AgentType(assistant), sessionName, uint16(termHeight), uint16(termWidth), tags, appPty.AgentOptions{Fullscreen: fullscreen})
+			agent, err = m.agentManager.CreateAgentWithTags(ws, appPty.AgentType(assistant), sessionName, uint16(termHeight), uint16(termWidth), tags, appPty.AgentOptions{Fullscreen: fullscreen, Chrome: chrome})
 		}
 		if err != nil {
 			return ptyTabReattachFailed{
@@ -427,6 +428,7 @@ func (m *Model) addPlaceholderTab(ws *data.Workspace, info data.TabInfo, detache
 		AllowUnsandboxedCommands: info.AllowUnsandboxedCommands,
 		PermissionMode:           info.PermissionMode,
 		Fullscreen:               info.Fullscreen,
+		Chrome:                   info.Chrome,
 		FrameRendering:           frameRendering,
 		CodexSandbox:             info.CodexSandbox,
 		CodexAuto:                info.CodexAuto,

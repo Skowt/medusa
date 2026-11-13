@@ -21,6 +21,7 @@ func (m *Model) updateLaunchAgent(msg messages.LaunchAgent) (*Model, tea.Cmd) {
 		AllowUnsandboxedCommands: msg.AllowUnsandboxedCommands,
 		PermissionMode:           msg.PermissionMode,
 		Fullscreen:               msg.Fullscreen,
+		Chrome:                   msg.Chrome,
 		CodexSandbox:             msg.CodexSandbox,
 		CodexAuto:                msg.CodexAuto,
 	})

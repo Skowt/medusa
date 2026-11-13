@@ -18,6 +18,7 @@ type UISettings struct {
 	LastAllowUnsandboxedCommands bool              // Last state of "allow unsandboxed commands" checkbox
 	LastPermissionMode           string            // Last selected starting mode (default "auto")
 	LastFullscreen               bool              // Last state of "Fullscreen TUI" checkbox (default on)
+	LastChrome                   bool              // Last state of "Chrome" checkbox (default off)
 	LastCreateWorktree           bool              // Last state of "Create a git worktree" checkbox in New Workspace (default on)
 	LastAssistant                string            // Assistant the New Tab dialog opens on (claude, codex); fallback for profiles with no entry below
 	LastAssistantByProfile       map[string]string // Assistant last launched under each profile, keyed by profile name
@@ -82,6 +83,7 @@ func loadUISettings(path string) UISettings {
 			LastAllowUnsandboxedCommands *bool             `json:"last_allow_unsandboxed_commands"`
 			LastPermissionMode           *string           `json:"last_permission_mode"`
 			LastFullscreen               *bool             `json:"last_fullscreen"`
+			LastChrome                   *bool             `json:"last_chrome"`
 			LastCreateWorktree           *bool             `json:"last_create_worktree"`
 			LastAssistant                *string           `json:"last_assistant"`
 			LastAssistantByProfile       map[string]string `json:"last_assistant_by_profile"`
@@ -138,6 +140,9 @@ func loadUISettings(path string) UISettings {
 	}
 	if raw.UI.LastFullscreen != nil {
 		settings.LastFullscreen = *raw.UI.LastFullscreen
+	}
+	if raw.UI.LastChrome != nil {
+		settings.LastChrome = *raw.UI.LastChrome
 	}
 	if raw.UI.LastCreateWorktree != nil {
 		settings.LastCreateWorktree = *raw.UI.LastCreateWorktree
@@ -230,6 +235,7 @@ func saveUISettings(path string, settings UISettings) error {
 	ui["last_allow_unsandboxed_commands"] = settings.LastAllowUnsandboxedCommands
 	ui["last_permission_mode"] = settings.LastPermissionMode
 	ui["last_fullscreen"] = settings.LastFullscreen
+	ui["last_chrome"] = settings.LastChrome
 	ui["last_create_worktree"] = settings.LastCreateWorktree
 	ui["last_assistant"] = settings.LastAssistant
 	ui["last_assistant_by_profile"] = settings.LastAssistantByProfile

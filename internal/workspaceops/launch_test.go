@@ -15,6 +15,7 @@ func savedUI() config.UISettings {
 		LastAssistantByProfile:       map[string]string{"Work": AssistantCodex},
 		LastPermissionMode:           "plan",
 		LastFullscreen:               true,
+		LastChrome:                   true,
 		LastIsolated:                 true,
 		LastAllowUnsandboxedCommands: true,
 		LastCodexSandbox:             pty.CodexSandboxReadOnly,
@@ -36,6 +37,7 @@ func TestResolveLaunchFallsBackToTheGlobalAssistant(t *testing.T) {
 		Assistant:                AssistantClaude,
 		PermissionMode:           "plan",
 		Fullscreen:               true,
+		Chrome:                   true,
 		Isolated:                 true,
 		AllowUnsandboxedCommands: true,
 	}

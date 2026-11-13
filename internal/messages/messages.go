@@ -304,6 +304,7 @@ type LaunchAgent struct {
 	AllowUnsandboxedCommands bool   // only meaningful when Isolated is true
 	PermissionMode           string // claude --permission-mode value (acceptEdits, plan, auto, bypassPermissions)
 	Fullscreen               bool   // run Claude's fullscreen renderer (CLAUDE_CODE_NO_FLICKER=1)
+	Chrome                   bool   // Claude in Chrome integration (--chrome / --no-chrome)
 	CodexSandbox             string // codex --sandbox policy
 	CodexAuto                bool   // codex --approve-for-me
 }

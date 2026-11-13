@@ -31,6 +31,7 @@ type SessionTags struct {
 	Assistant   string
 	CreatedAt   int64 // Unix seconds for fresh create/restart; may be zero for reattach.
 	Fullscreen  bool  // Claude fullscreen renderer; enables tmux mouse + writes @medusa_fullscreen.
+	Chrome      bool  // Claude in Chrome; writes @medusa_chrome so an adopted tab relaunches with --chrome.
 }
 
 const tmuxCommandTimeout = 5 * time.Second

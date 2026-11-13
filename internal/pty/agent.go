@@ -25,6 +25,9 @@ type AgentOptions struct {
 	// CLAUDE_CODE_NO_FLICKER (1 on, 0 off) and marks the tmux session
 	// accordingly. It is always passed explicitly: see buildAgentCommand.
 	Fullscreen bool
+	// Chrome enables Claude in Chrome via --chrome, and --no-chrome when false.
+	// Like Fullscreen it is always passed explicitly: see chromeFlag.
+	Chrome bool
 	// Cwd is the directory the agent runs in (the tmux pane's start
 	// directory). claudeSessionArgs needs it to tell whether the worktree has
 	// any conversation to continue when the recorded session id has none;
@@ -68,7 +71,7 @@ func buildAgentCommand(agentType AgentType, command, sessionName, profileDir str
 		cmd += " --permission-mode " + shellutil.Quote(opts.PermissionMode)
 	}
 	if agentType == AgentClaude {
-		cmd += " --enable-auto-mode"
+		cmd += " --enable-auto-mode" + chromeFlag(opts.Chrome)
 	}
 	if opts.Isolated && agentType == AgentClaude {
 		cmd += " --settings " + shellutil.Quote(config.ClaudeSandboxSettingsJSON(opts.AllowUnsandboxedCommands))
@@ -92,6 +95,17 @@ func initialPromptArg(opts AgentOptions) string {
 	}
 	file := shellutil.Quote(opts.InitialPromptFile)
 	return ` -- "$(cat ` + file + `; rm -f ` + file + `)"`
+}
+
+// chromeFlag states the Chrome integration in both directions. The profile's
+// .claude.json carries claudeInChromeDefaultEnabled, which Claude uses when
+// neither flag is given, so omitting the flag for an unchecked tab could not
+// turn Chrome off.
+func chromeFlag(enabled bool) string {
+	if enabled {
+		return " --chrome"
+	}
+	return " --no-chrome"
 }
 
 func noFlickerValue(fullscreen bool) string {
@@ -168,6 +182,7 @@ func (m *AgentManager) CreateAgentWithTags(ws *data.Workspace, agentType AgentTy
 	// Fullscreen mark and the CLAUDE_CODE_NO_FLICKER env var must agree: both
 	// are gated on agentType == AgentClaude, matching buildAgentCommand's gate.
 	tags.Fullscreen = p.Fullscreen
+	tags.Chrome = p.Chrome
 	termCommand := tmux.ClientCommandWithTags(p.SessionName, ws.Root(), p.Command, tmux.DefaultOptions(), tags)
 	term, err := NewWithSize(termCommand, ws.Root(), p.Env, rows, cols)
 	if err != nil {

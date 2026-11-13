@@ -38,6 +38,7 @@ type DialogResult struct {
 	CheckboxValue  bool   // Value of checkbox if dialog had one
 	Checkbox2Value bool   // Value of second checkbox if dialog had one
 	Checkbox3Value bool   // Value of third checkbox if dialog had one
+	Checkbox4Value bool   // Value of fourth checkbox if dialog had one
 	SelectValue    string // Value of select slot 0 if the dialog had one (DialogInput)
 	Select2Value   string // Value of select slot 1 if the dialog had one (DialogInput)
 	Select3Value   string // Value of select slot 2 if the dialog had one (DialogInput)
@@ -93,7 +94,7 @@ type Dialog struct {
 	height          int
 	showKeymapHints bool
 
-	// Checkboxes (for DialogInput). All three slots share the same shape;
+	// Checkboxes (for DialogInput). All four slots share the same shape;
 	// hit regions are owned by the LineBuilder produced via build().
 	checkboxLabel    string
 	checkboxValue    bool
@@ -104,11 +105,15 @@ type Dialog struct {
 	checkbox3Label   string
 	checkbox3Value   bool
 	checkbox3Focused bool
+	checkbox4Label   string
+	checkbox4Value   bool
+	checkbox4Focused bool
 
 	// Optional muted description rendered under each checkbox (DialogInput only)
 	checkboxDesc  string
 	checkbox2Desc string
 	checkbox3Desc string
+	checkbox4Desc string
 
 	// When true, checkbox 2 is disabled (rendered muted, unclickable, not
 	// togglable by space/enter) whenever checkbox 1 is unchecked. Used for
@@ -215,6 +220,7 @@ func (d *Dialog) Show() {
 	d.checkboxFocused = false
 	d.checkbox2Focused = false
 	d.checkbox3Focused = false
+	d.checkbox4Focused = false
 	for i := range d.sel {
 		d.sel[i].focused = false
 	}
@@ -279,10 +285,11 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 	checkboxVal := d.checkboxValue
 	checkbox2Val := d.checkbox2Value
 	checkbox3Val := d.checkbox3Value
+	checkbox4Val := d.checkbox4Value
 	selectVal := d.SelectValue()
 	select2Val := d.Select2Value()
 	select3Val := d.Select3Value()
-	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v select=%s select2=%s select3=%s", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val, selectVal, select2Val, select3Val)
+	logging.Info("Dialog submit input: id=%s value=%s confirmed=%v checkbox=%v checkbox2=%v checkbox3=%v checkbox4=%v select=%s select2=%s select3=%s", id, value, confirmed, checkboxVal, checkbox2Val, checkbox3Val, checkbox4Val, selectVal, select2Val, select3Val)
 	return func() tea.Msg {
 		return DialogResult{
 			ID:             id,
@@ -291,6 +298,7 @@ func (d *Dialog) submitInput(confirmed bool) tea.Cmd {
 			CheckboxValue:  checkboxVal,
 			Checkbox2Value: checkbox2Val,
 			Checkbox3Value: checkbox3Val,
+			Checkbox4Value: checkbox4Val,
 			SelectValue:    selectVal,
 			Select2Value:   select2Val,
 			Select3Value:   select3Val,
@@ -361,11 +369,11 @@ func (d *Dialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			}
 			switch {
 			case hit(selectRegionID(dialogIDSelectLeft, slot)):
-				d.setFocus(4 + slot)
+				d.setFocus(focusSlotSelectBase + slot)
 				return d.cycleSelect(slot, -1)
 			case hit(selectRegionID(dialogIDSelectRight, slot)),
 				hit(selectRegionID(dialogIDSelectField, slot)):
-				d.setFocus(4 + slot)
+				d.setFocus(focusSlotSelectBase + slot)
 				return d.cycleSelect(slot, +1)
 			}
 		}
@@ -380,6 +388,9 @@ func (d *Dialog) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			return nil
 		case d.checkbox3Label != "" && hit(dialogIDCheckbox3):
 			d.checkbox3Value = !d.checkbox3Value
+			return nil
+		case d.checkbox4Label != "" && hit(dialogIDCheckbox4):
+			d.checkbox4Value = !d.checkbox4Value
 			return nil
 		case hit(dialogIDOK):
 			return d.submitInput(true)

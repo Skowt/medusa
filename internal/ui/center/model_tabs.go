@@ -46,12 +46,13 @@ func nextAssistantName(assistant string, tabs []*Tab) string {
 
 // agentTabOptions carries the per-tab launch settings from the New Tab dialog
 // (or a restore) down to the agent. Claude reads the sandbox/permission/
-// fullscreen fields and Codex the three codex ones; each ignores the other's.
+// fullscreen/chrome fields and Codex the three codex ones; each ignores the other's.
 type agentTabOptions struct {
 	Isolated                 bool
 	AllowUnsandboxedCommands bool
 	PermissionMode           string
 	Fullscreen               bool
+	Chrome                   bool
 	CodexSandbox             string
 	CodexAuto                bool
 	// LaunchSessionName is not a launch flag. It rides along so a tab restored
@@ -68,6 +69,7 @@ func agentTabOptionsFromTab(tab *Tab) agentTabOptions {
 		AllowUnsandboxedCommands: tab.AllowUnsandboxedCommands,
 		PermissionMode:           tab.PermissionMode,
 		Fullscreen:               tab.Fullscreen,
+		Chrome:                   tab.Chrome,
 		CodexSandbox:             tab.CodexSandbox,
 		CodexAuto:                tab.CodexAuto,
 		LaunchSessionName:        tab.LaunchSessionName,
@@ -81,6 +83,7 @@ func agentTabOptionsFromTabInfo(info data.TabInfo) agentTabOptions {
 		AllowUnsandboxedCommands: info.AllowUnsandboxedCommands,
 		PermissionMode:           info.PermissionMode,
 		Fullscreen:               info.Fullscreen,
+		Chrome:                   info.Chrome,
 		CodexSandbox:             info.CodexSandbox,
 		CodexAuto:                info.CodexAuto,
 		LaunchSessionName:        info.LaunchSessionName,
@@ -104,6 +107,7 @@ func (o agentTabOptions) forAssistant(assistant string) agentTabOptions {
 		AllowUnsandboxedCommands: o.AllowUnsandboxedCommands,
 		PermissionMode:           o.PermissionMode,
 		Fullscreen:               o.Fullscreen && appPty.AgentType(assistant) == appPty.AgentClaude,
+		Chrome:                   o.Chrome && appPty.AgentType(assistant) == appPty.AgentClaude,
 		LaunchSessionName:        o.LaunchSessionName,
 	}
 }
@@ -116,6 +120,7 @@ func (o agentTabOptions) agentOptions() appPty.AgentOptions {
 		AllowUnsandboxedCommands: o.AllowUnsandboxedCommands,
 		PermissionMode:           o.PermissionMode,
 		Fullscreen:               o.Fullscreen,
+		Chrome:                   o.Chrome,
 		CodexSandbox:             o.CodexSandbox,
 		CodexAuto:                o.CodexAuto,
 	}
@@ -317,6 +322,7 @@ func (m *Model) handlePtyTabCreated(msg ptyTabCreateResult) tea.Cmd {
 		AllowUnsandboxedCommands: msg.Options.AllowUnsandboxedCommands,
 		PermissionMode:           msg.Options.PermissionMode,
 		Fullscreen:               msg.Options.Fullscreen,
+		Chrome:                   msg.Options.Chrome,
 		FrameRendering:           frameRendering,
 		CodexSandbox:             msg.Options.CodexSandbox,
 		CodexAuto:                msg.Options.CodexAuto,

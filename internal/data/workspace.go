@@ -87,6 +87,7 @@ type TabInfo struct {
 	AllowUnsandboxedCommands bool   `json:"allow_unsandboxed_commands,omitempty"`
 	PermissionMode           string `json:"permission_mode,omitempty"`
 	Fullscreen               bool   `json:"fullscreen,omitempty"` // Claude launched in fullscreen TUI mode.
+	Chrome                   bool   `json:"chrome,omitempty"`     // Claude launched with --chrome.
 	CodexSandbox             string `json:"codex_sandbox,omitempty"`
 	CodexAuto                bool   `json:"codex_auto,omitempty"`
 	// ScriptFullCmd is the env-prefixed shell command for script tabs,

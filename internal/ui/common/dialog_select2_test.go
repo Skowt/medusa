@@ -137,7 +137,7 @@ func TestFocusRingCoversBothSelects(t *testing.T) {
 		d.advanceFocus(+1)
 		seen[d.currentFocusIdx()] = true
 	}
-	for _, slot := range []int{1, 4, 5} { // checkbox 1, select 0, select 1
+	for _, slot := range []int{1, focusSlotSelectBase, focusSlotSelectBase + 1} { // checkbox 1, select 0, select 1
 		if !seen[slot] {
 			t.Errorf("focus ring never reached slot %d (seen %v)", slot, seen)
 		}
@@ -149,7 +149,7 @@ func TestFocusRingSkipsDisabledSelect(t *testing.T) {
 	d.SetSelectDisabled(1, true)
 	for i := 0; i < focusSlotCount*2; i++ {
 		d.advanceFocus(+1)
-		if d.currentFocusIdx() == 5 {
+		if d.currentFocusIdx() == focusSlotSelectBase+1 {
 			t.Fatal("focus ring reached disabled select")
 		}
 	}

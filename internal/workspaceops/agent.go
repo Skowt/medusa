@@ -64,6 +64,7 @@ func (d Deps) StartAgent(ws *data.Workspace, l Launch, prompt string) (StartedAg
 		opts.AllowUnsandboxedCommands = l.AllowUnsandboxedCommands
 		opts.PermissionMode = l.PermissionMode
 		opts.Fullscreen = l.Fullscreen
+		opts.Chrome = l.Chrome
 	case pty.AgentCodex:
 		// Codex mints its own session id and reports it on SessionStart.
 		opts.CodexSandbox = l.CodexSandbox
@@ -86,6 +87,7 @@ func (d Deps) StartAgent(ws *data.Workspace, l Launch, prompt string) (StartedAg
 		Assistant:   l.Assistant,
 		CreatedAt:   time.Now().Unix(),
 		Fullscreen:  prepared.Fullscreen,
+		Chrome:      prepared.Chrome,
 	}
 	if err := tmux.StartDetachedSession(prepared.SessionName, ws.Root(), prepared.Command, prepared.Env, tmuxOpts, tags); err != nil {
 		return StartedAgent{}, err
@@ -102,6 +104,7 @@ func (d Deps) StartAgent(ws *data.Workspace, l Launch, prompt string) (StartedAg
 		AllowUnsandboxedCommands: opts.AllowUnsandboxedCommands,
 		PermissionMode:           opts.PermissionMode,
 		Fullscreen:               prepared.Fullscreen,
+		Chrome:                   prepared.Chrome,
 		CodexSandbox:             opts.CodexSandbox,
 		CodexAuto:                opts.CodexAuto,
 	}

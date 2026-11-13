@@ -19,6 +19,7 @@ type Launch struct {
 	AllowUnsandboxedCommands bool
 	PermissionMode           string
 	Fullscreen               bool
+	Chrome                   bool
 	CodexSandbox             string
 	CodexAuto                bool
 }
@@ -64,6 +65,7 @@ func ResolveLaunch(ui config.UISettings, profile string, o LaunchOverrides) Laun
 	if o.Fullscreen != nil {
 		l.Fullscreen = *o.Fullscreen
 	}
+	l.Chrome = ui.LastChrome
 	return l
 }
 

@@ -46,6 +46,10 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 				d.checkbox3Value = !d.checkbox3Value
 				return d, nil
 			}
+			if d.dtype == DialogInput && d.checkbox4Label != "" && d.checkbox4Focused {
+				d.checkbox4Value = !d.checkbox4Value
+				return d, nil
+			}
 			// Otherwise let space pass through to text input
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
@@ -60,6 +64,10 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 			}
 			if d.dtype == DialogInput && d.checkbox3Label != "" && d.checkbox3Focused {
 				d.checkbox3Value = !d.checkbox3Value
+				return d, nil
+			}
+			if d.dtype == DialogInput && d.checkbox4Label != "" && d.checkbox4Focused {
+				d.checkbox4Value = !d.checkbox4Value
 				return d, nil
 			}
 			switch d.dtype {
@@ -146,7 +154,7 @@ func (d *Dialog) Update(msg tea.Msg) (*Dialog, tea.Cmd) {
 	}
 
 	// Update text input if applicable (skip when checkbox is focused)
-	if d.dtype == DialogInput && !d.checkboxFocused && !d.checkbox2Focused && !d.checkbox3Focused {
+	if d.dtype == DialogInput && !d.checkboxFocused && !d.checkbox2Focused && !d.checkbox3Focused && !d.checkbox4Focused {
 		// Transform incoming text if transform function is set
 		if d.inputTransform != nil {
 			msg = d.transformInputMsg(msg)

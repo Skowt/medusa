@@ -63,8 +63,8 @@ func (a *App) showNewTabDialogWithCodexValues(assistant, codexMode, codexSandbox
 }
 
 // configureClaudeTabFields adds the Claude-only fields: a "Starting Mode"
-// select wired to claude --permission-mode, the sandbox pair, and the
-// fullscreen renderer toggle.
+// select wired to claude --permission-mode, the sandbox pair, the fullscreen
+// renderer toggle, and Claude in Chrome.
 func (a *App) configureClaudeTabFields() {
 	a.dialog.SetSelect2("Starting Mode:", permissionModeOptions(), workspaceops.DefaultPermissionMode(a.config.UI.LastPermissionMode))
 	a.dialog.SetCheckbox("Sandboxed", a.config.UI.LastIsolated)
@@ -74,6 +74,8 @@ func (a *App) configureClaudeTabFields() {
 	a.dialog.SetCheckbox2RequiresFirst(true)
 	a.dialog.SetCheckbox3("Fullscreen TUI", a.config.UI.LastFullscreen)
 	a.dialog.SetCheckboxDescription(3, "Runs Claude in its fullscreen renderer and forwards the mouse to Claude. Requires Claude Code v2.1.89+.")
+	a.dialog.SetCheckbox4("Chrome", a.config.UI.LastChrome)
+	a.dialog.SetCheckboxDescription(4, "Launches Claude with Claude in Chrome (--chrome) so it can drive your browser. Off passes --no-chrome. Adds tools to every session's context.")
 }
 
 // configureCodexTabFields adds the Codex-only fields. Codex sandboxes natively
@@ -126,10 +128,12 @@ func (a *App) newTabLaunchFromDialog(ws *data.Workspace, result common.DialogRes
 		launch.AllowUnsandboxedCommands = result.Checkbox2Value
 		launch.PermissionMode = workspaceops.DefaultPermissionMode(result.Select2Value)
 		launch.Fullscreen = result.Checkbox3Value
+		launch.Chrome = result.Checkbox4Value
 		a.config.UI.LastIsolated = launch.Isolated
 		a.config.UI.LastAllowUnsandboxedCommands = launch.AllowUnsandboxedCommands
 		a.config.UI.LastPermissionMode = launch.PermissionMode
 		a.config.UI.LastFullscreen = launch.Fullscreen
+		a.config.UI.LastChrome = launch.Chrome
 	}
 	_ = a.config.SaveUISettings()
 	return launch
@@ -152,6 +156,7 @@ func (a *App) lastUsedLaunch(ws *data.Workspace, assistant string) messages.Laun
 		AllowUnsandboxedCommands: l.AllowUnsandboxedCommands,
 		PermissionMode:           l.PermissionMode,
 		Fullscreen:               l.Fullscreen,
+		Chrome:                   l.Chrome,
 		CodexSandbox:             l.CodexSandbox,
 		CodexAuto:                l.CodexAuto,
 	}
