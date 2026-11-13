@@ -41,9 +41,13 @@ func workspaceIdentityEnv(ws *data.Workspace) []string {
 var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // agentSessionEnv returns the vars the agent itself must see: the workspace
-// port.
-func agentSessionEnv(ports *process.PortAllocator, ws *data.Workspace) []string {
-	return workspacePortEnv(ports, ws)
+// port and the workspace profile's medusa-profile.json env, expanded against
+// the same workspace env the setup scripts get.
+func agentSessionEnv(ports *process.PortAllocator, profilesRoot string, ws *data.Workspace) []string {
+	env := workspacePortEnv(ports, ws)
+	builder := process.NewEnvBuilder(ports)
+	builder.SetProfilesRoot(profilesRoot)
+	return append(env, builder.ProfileEnv(ws)...)
 }
 
 // envAssignments renders env as a `K='v' ` prefix for the agent command.

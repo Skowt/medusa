@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/tmux"
 )
 
@@ -345,5 +346,35 @@ func TestNewFromInsideAWorktreeUsesTheMainRepo(t *testing.T) {
 	out, _ := cmd.Output()
 	if !strings.Contains(string(out), child.Root) {
 		t.Fatalf("child worktree is not registered with the main repo:\n%s", out)
+	}
+}
+
+// The CLI must run the profile's scripts as the TUI does: setup on the
+// workspace's own port, teardown while the worktree still exists.
+func TestNewAndDeleteRunProfileScripts(t *testing.T) {
+	home := cliHome(t)
+	repo := cliRepo(t)
+	marks := t.TempDir()
+	profileDir := filepath.Join(home, "profiles", defaultProfile)
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	profile := `{"setup": ["echo $WORKSPACE_PORT > ` + marks + `/setup"],
+		"teardown": ["test -d \"$MEDUSA_WORKSPACE_ROOT\" && echo $WORKSPACE_PORT > ` + marks + `/teardown"]}`
+	if err := os.WriteFile(filepath.Join(profileDir, process.ProfileConfigFilename), []byte(profile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := cli(t, "", "ws", "new", "scripted", "--repo", repo, "--from-current", "--no-agent"); r.code != 0 {
+		t.Fatalf("new: code %d stderr %q", r.code, r.stderr)
+	}
+	if r := cli(t, "", "ws", "delete", "scripted", "--yes"); r.code != 0 {
+		t.Fatalf("delete: code %d stderr %q", r.code, r.stderr)
+	}
+	for _, step := range []string{"setup", "teardown"} {
+		got, err := os.ReadFile(filepath.Join(marks, step))
+		if err != nil || strings.TrimSpace(string(got)) != "6200" {
+			t.Errorf("profile %s saw WORKSPACE_PORT %q (%v), want 6200 with the worktree present", step, got, err)
+		}
 	}
 }

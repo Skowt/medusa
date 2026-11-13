@@ -19,7 +19,7 @@ type PreparedAgent struct {
 	Command     string   // agent command, then a reset and a login shell
 	Env         []string // client process env: terminal settings only
 	// SessionEnv is set on the tmux session (new-session -e): the workspace
-	// identity and port. It must never ride on Env — see agentClientEnv.
+	// identity, port and profile env. It must never ride on Env — see agentClientEnv.
 	SessionEnv []string
 	Fullscreen bool // Claude with Fullscreen set; never Codex
 	Config     config.AssistantConfig
@@ -45,7 +45,7 @@ func PrepareAgent(cfg *config.Config, ports *process.PortAllocator, ws *data.Wor
 		return PreparedAgent{}, err
 	}
 
-	agentEnv := agentSessionEnv(ports, ws)
+	agentEnv := agentSessionEnv(ports, cfg.Paths.ProfilesRoot, ws)
 
 	var profileDir string
 	if agentType == AgentClaude && ws.Profile != "" {

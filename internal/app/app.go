@@ -340,6 +340,7 @@ func New(version, commit, date string) (*App, error) {
 	workspaces := data.NewWorkspaceStore(cfg.Paths.MetadataRoot)
 	recents := data.NewRecentsStore(cfg.Paths.RecentsPath)
 	scripts := process.NewScriptRunner(cfg.PortStart, cfg.PortRangeSize)
+	scripts.SetProfilesRoot(cfg.Paths.ProfilesRoot)
 
 	// Create status manager (callback will be nil, we use it for caching only)
 	statusManager := git.NewStatusManager(nil)

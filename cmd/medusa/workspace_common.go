@@ -39,6 +39,7 @@ func loadWorkspaceEnv() (*workspaceEnv, error) {
 		return nil, err
 	}
 	scripts := process.NewScriptRunner(cfg.PortStart, cfg.PortRangeSize)
+	scripts.SetProfilesRoot(cfg.Paths.ProfilesRoot)
 	return &workspaceEnv{
 		cfg: cfg,
 		deps: workspaceops.Deps{
@@ -47,6 +48,7 @@ func loadWorkspaceEnv() (*workspaceEnv, error) {
 			Store:    data.NewWorkspaceStore(cfg.Paths.MetadataRoot),
 			Recents:  data.NewRecentsStore(cfg.Paths.RecentsPath),
 			Ports:    scripts.Ports(),
+			Teardown: scripts,
 		},
 		scripts: scripts,
 	}, nil

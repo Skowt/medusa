@@ -21,4 +21,13 @@ type Deps struct {
 	// assigns a new workspace its port from it and Delete frees it. Nil skips
 	// both.
 	Ports *process.PortAllocator
+	// Teardown runs a workspace's archive and profile teardown scripts before
+	// Delete removes it. Nil skips them.
+	Teardown Teardown
+}
+
+// Teardown runs the scripts that clean up after a workspace.
+// process.ScriptRunner is the implementation.
+type Teardown interface {
+	RunTeardown(ws *data.Workspace) []error
 }
