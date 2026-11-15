@@ -45,6 +45,7 @@ func TestPrepareAgentBuildsTheFullClaudeLaunch(t *testing.T) {
 	p, err := PrepareAgent(cfg, ws, AgentClaude, "medusa-ws-1", AgentOptions{
 		ClaudeSessionID:   "sess-1",
 		Fullscreen:        true,
+		Chrome:            true,
 		InitialPromptFile: "/tmp/p",
 	})
 	if err != nil {
@@ -62,8 +63,8 @@ func TestPrepareAgentBuildsTheFullClaudeLaunch(t *testing.T) {
 			t.Errorf("command missing %q\n%s", want, p.Command)
 		}
 	}
-	if !p.Fullscreen || p.SessionName != "medusa-ws-1" {
-		t.Errorf("prepared = %+v, want fullscreen session medusa-ws-1", p)
+	if !p.Fullscreen || !p.Chrome || p.SessionName != "medusa-ws-1" {
+		t.Errorf("prepared = %+v, want fullscreen chrome session medusa-ws-1", p)
 	}
 	if !containsEnv(p.Env, "WORKSPACE_ROOT="+root) {
 		t.Errorf("env %v lacks WORKSPACE_ROOT", p.Env)
@@ -74,12 +75,12 @@ func TestPrepareAgentNeverMarksCodexFullscreen(t *testing.T) {
 	cfg := prepareTestConfig(t)
 	ws := data.NewCheckoutWorkspace("ws", "main", t.TempDir())
 	ws.Profile = "Work"
-	p, err := PrepareAgent(cfg, ws, AgentCodex, "s", AgentOptions{Fullscreen: true})
+	p, err := PrepareAgent(cfg, ws, AgentCodex, "s", AgentOptions{Fullscreen: true, Chrome: true})
 	if err != nil {
 		t.Fatalf("PrepareAgent: %v", err)
 	}
-	if p.Fullscreen {
-		t.Fatal("a Codex tab was marked fullscreen")
+	if p.Fullscreen || p.Chrome {
+		t.Fatal("a Codex tab was marked fullscreen or chrome")
 	}
 }
 

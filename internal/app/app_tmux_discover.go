@@ -39,7 +39,7 @@ func (a *App) discoverWorkspaceTabsFromTmux(ws *data.Workspace) tea.Cmd {
 			"@medusa_workspace": wsID,
 			"@medusa_type":      "agent",
 		}
-		rows, err := tmux.SessionsWithTags(match, []string{"@medusa_assistant", "@medusa_fullscreen"}, opts)
+		rows, err := tmux.SessionsWithTags(match, []string{"@medusa_assistant", "@medusa_fullscreen", "@medusa_chrome"}, opts)
 		if err != nil {
 			logging.Warn("tmux session discovery failed: %v", err)
 			return nil
@@ -66,6 +66,7 @@ func (a *App) discoverWorkspaceTabsFromTmux(ws *data.Workspace) tea.Cmd {
 				SessionName: row.Name,
 				Status:      "running",
 				Fullscreen:  strings.TrimSpace(row.Tags["@medusa_fullscreen"]) == "1",
+				Chrome:      strings.TrimSpace(row.Tags["@medusa_chrome"]) == "1",
 			})
 		}
 		if len(tabs) == 0 {

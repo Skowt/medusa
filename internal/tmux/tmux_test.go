@@ -271,7 +271,7 @@ func TestClientCommandWithTags(t *testing.T) {
 
 func TestClientCommandFullscreenSession(t *testing.T) {
 	opts := Options{ServerName: "s", ConfigPath: "/dev/null", HideStatus: true, DisableMouse: true, DefaultTerminal: "xterm-256color"}
-	fs := ClientCommandWithTags("sess", "/tmp", "claude", opts, SessionTags{WorkspaceID: "ws", TabID: "t", Type: "agent", Assistant: "claude", Fullscreen: true})
+	fs := ClientCommandWithTags("sess", "/tmp", "claude", opts, SessionTags{WorkspaceID: "ws", TabID: "t", Type: "agent", Assistant: "claude", Fullscreen: true, Chrome: true})
 	if !strings.Contains(fs, "mouse on") {
 		t.Errorf("fullscreen session must enable mouse: %s", fs)
 	}
@@ -281,13 +281,16 @@ func TestClientCommandFullscreenSession(t *testing.T) {
 	if !strings.Contains(fs, "@medusa_fullscreen 1") {
 		t.Errorf("fullscreen session must set @medusa_fullscreen tag: %s", fs)
 	}
+	if !strings.Contains(fs, "@medusa_chrome 1") {
+		t.Errorf("chrome session must set @medusa_chrome tag: %s", fs)
+	}
 
 	classic := ClientCommandWithTags("sess", "/tmp", "claude", opts, SessionTags{WorkspaceID: "ws", TabID: "t", Type: "agent", Assistant: "claude", Fullscreen: false})
 	if !strings.Contains(classic, "mouse off") {
 		t.Errorf("classic session must disable mouse: %s", classic)
 	}
-	if strings.Contains(classic, "@medusa_fullscreen") {
-		t.Errorf("classic session must not set fullscreen tag: %s", classic)
+	if strings.Contains(classic, "@medusa_fullscreen") || strings.Contains(classic, "@medusa_chrome") {
+		t.Errorf("classic session must not set fullscreen or chrome tags: %s", classic)
 	}
 }
 

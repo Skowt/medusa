@@ -90,7 +90,7 @@ func appendHyperlinkFeature(settings *strings.Builder, base string) {
 }
 
 func appendSessionTags(settings *strings.Builder, base, session string, tags SessionTags) {
-	if tags.WorkspaceID == "" && tags.TabID == "" && tags.Type == "" && tags.Assistant == "" && tags.CreatedAt == 0 && !tags.Fullscreen {
+	if tags.WorkspaceID == "" && tags.TabID == "" && tags.Type == "" && tags.Assistant == "" && tags.CreatedAt == 0 && !tags.Fullscreen && !tags.Chrome {
 		return
 	}
 	fmt.Fprintf(settings, "%s set-option -t %s @medusa 1 2>/dev/null; ", base, session)
@@ -111,6 +111,9 @@ func appendSessionTags(settings *strings.Builder, base, session string, tags Ses
 	}
 	if tags.Fullscreen {
 		fmt.Fprintf(settings, "%s set-option -t %s @medusa_fullscreen 1 2>/dev/null; ", base, session)
+	}
+	if tags.Chrome {
+		fmt.Fprintf(settings, "%s set-option -t %s @medusa_chrome 1 2>/dev/null; ", base, session)
 	}
 }
 

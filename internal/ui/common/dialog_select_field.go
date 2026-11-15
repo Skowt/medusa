@@ -124,7 +124,7 @@ func (d *Dialog) Select3Value() string {
 // the user back on the cycler they just moved.
 func (d *Dialog) FocusSelect(slot int) *Dialog {
 	if slot >= 0 && slot < selectSlotCount && d.sel[slot].present() && !d.sel[slot].disabled {
-		d.setFocus(4 + slot)
+		d.setFocus(focusSlotSelectBase + slot)
 	}
 	return d
 }
@@ -155,7 +155,7 @@ func (d *Dialog) checkbox2Disabled() bool {
 }
 
 // SetCheckboxDescription attaches a muted multi-line description rendered
-// below the corresponding checkbox. idx is 1-based (1, 2, or 3).
+// below the corresponding checkbox. idx is 1-based (1 through 4).
 func (d *Dialog) SetCheckboxDescription(idx int, desc string) *Dialog {
 	switch idx {
 	case 1:
@@ -164,6 +164,8 @@ func (d *Dialog) SetCheckboxDescription(idx int, desc string) *Dialog {
 		d.checkbox2Desc = desc
 	case 3:
 		d.checkbox3Desc = desc
+	case 4:
+		d.checkbox4Desc = desc
 	}
 	return d
 }
@@ -248,22 +250,24 @@ func (d *Dialog) focusedSelectSlot() int {
 
 // Focus management for DialogInput. Slots are numbered:
 //
-//	0 = input, 1 = checkbox1, 2 = checkbox2, 3 = checkbox3,
-//	4 = select 0, 5 = select 1, 6 = select 2.
+//	0 = input, 1-4 = checkbox1-4, 5 = select 0, 6 = select 1, 7 = select 2.
 //
 // advanceFocus walks the slot ring, skipping slots whose field is absent.
-const focusSlotCount = 4 + selectSlotCount
+const (
+	focusSlotSelectBase = 5
+	focusSlotCount      = focusSlotSelectBase + selectSlotCount
+)
 
 // selectSlotForFocus maps a focus slot to its select slot, or -1.
 func selectSlotForFocus(idx int) int {
-	if idx < 4 || idx >= 4+selectSlotCount {
+	if idx < focusSlotSelectBase || idx >= focusSlotCount {
 		return -1
 	}
-	return idx - 4
+	return idx - focusSlotSelectBase
 }
 
 func (d *Dialog) hasFocusableFields() bool {
-	return d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "" || d.hasSelect()
+	return d.checkboxLabel != "" || d.checkbox2Label != "" || d.checkbox3Label != "" || d.checkbox4Label != "" || d.hasSelect()
 }
 
 func (d *Dialog) currentFocusIdx() int {
@@ -274,9 +278,11 @@ func (d *Dialog) currentFocusIdx() int {
 		return 2
 	case d.checkbox3Focused:
 		return 3
+	case d.checkbox4Focused:
+		return 4
 	}
 	if slot := d.focusedSelectSlot(); slot >= 0 {
-		return 4 + slot
+		return focusSlotSelectBase + slot
 	}
 	return 0
 }
@@ -291,6 +297,8 @@ func (d *Dialog) fieldExists(idx int) bool {
 		return d.checkbox2Label != ""
 	case 3:
 		return d.checkbox3Label != ""
+	case 4:
+		return d.checkbox4Label != ""
 	}
 	if slot := selectSlotForFocus(idx); slot >= 0 {
 		return d.sel[slot].present() && !d.sel[slot].disabled
@@ -302,6 +310,7 @@ func (d *Dialog) setFocus(idx int) {
 	d.checkboxFocused = idx == 1
 	d.checkbox2Focused = idx == 2
 	d.checkbox3Focused = idx == 3
+	d.checkbox4Focused = idx == 4
 	for i := range d.sel {
 		d.sel[i].focused = selectSlotForFocus(idx) == i
 	}

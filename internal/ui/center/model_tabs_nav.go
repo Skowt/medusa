@@ -151,6 +151,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 		allowUnsandboxed := tab.AllowUnsandboxedCommands
 		permMode := tab.PermissionMode
 		fullscreen := tab.Fullscreen
+		chrome := tab.Chrome
 		codexSandbox := tab.CodexSandbox
 		codexAuto := tab.CodexAuto
 		scriptFullCmd := tab.ScriptFullCmd
@@ -173,6 +174,7 @@ func (m *Model) GetTabsInfo() ([]data.TabInfo, int) {
 			AllowUnsandboxedCommands: allowUnsandboxed,
 			PermissionMode:           permMode,
 			Fullscreen:               fullscreen,
+			Chrome:                   chrome,
 			CodexSandbox:             codexSandbox,
 			CodexAuto:                codexAuto,
 			ScriptFullCmd:            scriptFullCmd,
@@ -202,6 +204,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 		allowUnsandboxed := tab.AllowUnsandboxedCommands
 		permMode := tab.PermissionMode
 		fullscreen := tab.Fullscreen
+		chrome := tab.Chrome
 		codexSandbox := tab.CodexSandbox
 		codexAuto := tab.CodexAuto
 		scriptFullCmd := tab.ScriptFullCmd
@@ -224,6 +227,7 @@ func (m *Model) GetTabsInfoForWorkspace(wsID string) ([]data.TabInfo, int) {
 			AllowUnsandboxedCommands: allowUnsandboxed,
 			PermissionMode:           permMode,
 			Fullscreen:               fullscreen,
+			Chrome:                   chrome,
 			CodexSandbox:             codexSandbox,
 			CodexAuto:                codexAuto,
 			ScriptFullCmd:            scriptFullCmd,

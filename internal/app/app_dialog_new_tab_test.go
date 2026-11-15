@@ -35,6 +35,7 @@ func TestNewTabLaunchFromDialogCodex(t *testing.T) {
 		Select2Value:   "auto",
 		Select3Value:   appPty.CodexSandboxReadOnly,
 		Checkbox3Value: true, // Claude's fullscreen box — absent from this dialog
+		Checkbox4Value: true, // Claude's Chrome box — likewise
 	})
 
 	if launch.Assistant != assistantCodex {
@@ -48,7 +49,7 @@ func TestNewTabLaunchFromDialogCodex(t *testing.T) {
 	}
 	// Claude's own fields must stay zero: a Codex tab launched with
 	// PermissionMode or Fullscreen set would pass flags codex rejects.
-	if launch.PermissionMode != "" || launch.Fullscreen || launch.Isolated {
+	if launch.PermissionMode != "" || launch.Fullscreen || launch.Chrome || launch.Isolated {
 		t.Errorf("Claude settings leaked into a Codex launch: %+v", launch)
 	}
 }
@@ -81,7 +82,8 @@ func TestCodexStartingModeRebuildPreservesSandbox(t *testing.T) {
 }
 
 func TestNewTabLaunchFromDialogClaude(t *testing.T) {
-	a := &App{config: testConfig(t)}
+	cfg := testConfig(t)
+	a := &App{config: cfg}
 
 	launch := a.newTabLaunchFromDialog(nil, common.DialogResult{
 		ID:             DialogCustomizeTab,
@@ -90,6 +92,7 @@ func TestNewTabLaunchFromDialogClaude(t *testing.T) {
 		CheckboxValue:  true,
 		Checkbox2Value: true,
 		Checkbox3Value: true,
+		Checkbox4Value: true,
 	})
 
 	if launch.Assistant != assistantClaude {
@@ -98,8 +101,11 @@ func TestNewTabLaunchFromDialogClaude(t *testing.T) {
 	if launch.PermissionMode != "plan" {
 		t.Errorf("permission mode = %q, want plan", launch.PermissionMode)
 	}
-	if !launch.Isolated || !launch.AllowUnsandboxedCommands || !launch.Fullscreen {
+	if !launch.Isolated || !launch.AllowUnsandboxedCommands || !launch.Fullscreen || !launch.Chrome {
 		t.Errorf("Claude checkboxes did not reach the launch: %+v", launch)
+	}
+	if !cfg.UI.LastChrome || !a.lastUsedLaunch(nil, assistantClaude).Chrome {
+		t.Error("Chrome did not stick for the next tab")
 	}
 	if launch.CodexSandbox != "" || launch.CodexAuto {
 		t.Errorf("Codex settings leaked into a Claude launch: %+v", launch)

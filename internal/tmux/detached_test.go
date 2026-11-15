@@ -23,7 +23,7 @@ func privateServer(t *testing.T) Options {
 
 func TestStartDetachedSessionCreatesATaggedSession(t *testing.T) {
 	opts := privateServer(t)
-	tags := SessionTags{WorkspaceID: "ws-1", TabID: "tab-1", Type: "agent", Assistant: "claude", CreatedAt: 42, Fullscreen: true}
+	tags := SessionTags{WorkspaceID: "ws-1", TabID: "tab-1", Type: "agent", Assistant: "claude", CreatedAt: 42, Fullscreen: true, Chrome: true}
 
 	if err := StartDetachedSession("medusa-x-1", t.TempDir(), "sleep 30", []string{"FOO=bar"}, opts, tags); err != nil {
 		t.Fatalf("StartDetachedSession: %v", err)
@@ -36,6 +36,7 @@ func TestStartDetachedSessionCreatesATaggedSession(t *testing.T) {
 		"@medusa_type":       "agent",
 		"@medusa_assistant":  "claude",
 		"@medusa_fullscreen": "1",
+		"@medusa_chrome":     "1",
 	} {
 		got, err := SessionTagValue("medusa-x-1", key, opts)
 		if err != nil || got != want {

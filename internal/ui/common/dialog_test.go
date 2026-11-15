@@ -189,3 +189,33 @@ func TestWordWrapStillWrapsOnWidth(t *testing.T) {
 		}
 	}
 }
+
+// The fourth checkbox is reachable by click and by the focus ring, and its
+// value reaches the result without touching checkbox 3.
+func TestDialogCheckbox4TogglesAndSubmits(t *testing.T) {
+	d := NewInputDialog("customize", "New Claude Tab", "")
+	d.SetInputHidden(true)
+	d.SetSelect("Assistant:", []SelectOption{{Value: "claude", Label: "Claude"}}, "claude")
+	d.SetCheckbox3("Fullscreen TUI", true)
+	d.SetCheckbox4("Chrome", false)
+	d.SetSize(120, 40)
+	d.Show()
+
+	_ = clickRegion(t, d, dialogIDCheckbox4)
+	if !d.Checkbox4Value() || !d.Checkbox3Value() {
+		t.Fatalf("click on checkbox 4: cb3=%v cb4=%v, want both on", d.Checkbox3Value(), d.Checkbox4Value())
+	}
+
+	for d.currentFocusIdx() != 4 {
+		d.advanceFocus(+1)
+	}
+	d.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if d.Checkbox4Value() {
+		t.Fatal("space on focused checkbox 4 must toggle it off")
+	}
+
+	res, ok := d.submitInput(true)().(DialogResult)
+	if !ok || res.Checkbox4Value || !res.Checkbox3Value {
+		t.Fatalf("result = %+v, want Checkbox3 on and Checkbox4 off", res)
+	}
+}

@@ -18,6 +18,7 @@ type PreparedAgent struct {
 	Command     string   // agent command, then a reset and a login shell
 	Env         []string // environment for the process that starts the session
 	Fullscreen  bool     // Claude with Fullscreen set; never Codex
+	Chrome      bool     // Claude with Chrome set; never Codex
 	Config      config.AssistantConfig
 }
 
@@ -88,6 +89,7 @@ func PrepareAgent(cfg *config.Config, ws *data.Workspace, agentType AgentType, s
 		Command:     fullCommand,
 		Env:         env,
 		Fullscreen:  agentType == AgentClaude && opts.Fullscreen,
+		Chrome:      agentType == AgentClaude && opts.Chrome,
 		Config:      assistantCfg,
 	}, nil
 }

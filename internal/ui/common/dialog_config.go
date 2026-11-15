@@ -84,6 +84,18 @@ func (d *Dialog) Checkbox3Value() bool {
 	return d.checkbox3Value
 }
 
+// SetCheckbox4 adds a fourth checkbox to the dialog (only for DialogInput).
+func (d *Dialog) SetCheckbox4(label string, defaultValue bool) *Dialog {
+	d.checkbox4Label = label
+	d.checkbox4Value = defaultValue
+	return d
+}
+
+// Checkbox4Value returns the current fourth checkbox state.
+func (d *Dialog) Checkbox4Value() bool {
+	return d.checkbox4Value
+}
+
 // SetInputHidden hides the text input field, useful for checkbox-only dialogs.
 func (d *Dialog) SetInputHidden(hidden bool) *Dialog {
 	d.inputHidden = hidden
