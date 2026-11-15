@@ -12,6 +12,7 @@ import (
 	"github.com/Skowt/medusa/internal/git"
 	"github.com/Skowt/medusa/internal/logging"
 	"github.com/Skowt/medusa/internal/messages"
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
@@ -106,6 +107,8 @@ func (a *App) loadWorkspaces() tea.Cmd {
 			}
 		}
 
+		a.workspaceOps().SyncPorts(workspaces)
+
 		// Phase B: detect directory orphans (directory exists but no metadata)
 		if a.config != nil && a.config.Paths.WorkspacesRoot != "" {
 			knownRoots := make(map[string]bool)
@@ -197,7 +200,27 @@ func (a *App) workspaceOps() workspaceops.Deps {
 		Registry: a.registry,
 		Store:    a.workspaces,
 		Recents:  a.recents,
+		Ports:    a.scriptPorts(),
+		Teardown: a.scriptTeardown(),
 	}
+}
+
+// scriptPorts is the allocator the setup/run scripts and agents share, or nil
+// in an App built without a script runner.
+func (a *App) scriptPorts() *process.PortAllocator {
+	if a.scripts == nil {
+		return nil
+	}
+	return a.scripts.Ports()
+}
+
+// scriptTeardown is the script runner as Deps.Teardown. A nil runner must
+// become a nil interface, not an interface holding a nil pointer.
+func (a *App) scriptTeardown() workspaceops.Teardown {
+	if a.scripts == nil {
+		return nil
+	}
+	return a.scripts
 }
 
 // copyIgnoredFilesCmd copies gitignored files from source repos into the workspace worktrees.
@@ -222,6 +245,7 @@ func (a *App) runSetupAsync(ws *data.Workspace) tea.Cmd {
 			return messages.WorkspaceSetupComplete{Workspace: ws}
 		}
 		if err := a.scripts.RunSetup(ws); err != nil {
+			logging.Error("Setup failed for workspace %s (profile %q): %v", ws.Name, ws.Profile, err)
 			return messages.WorkspaceSetupComplete{Workspace: ws, Err: err}
 		}
 		return messages.WorkspaceSetupComplete{Workspace: ws}
@@ -246,8 +270,13 @@ func (a *App) deleteWorkspace(ws *data.Workspace, silent ...bool) tea.Cmd {
 		a.goHome()
 	}
 
+	// Delete runs in the goroutine below; hand it a copy, since its teardown
+	// builds the script env from fields (ws.Env among them) the UI thread may
+	// still write to the live struct.
+	snap := data.SnapshotWorkspaceForSave(ws)
+
 	return func() tea.Msg {
-		branchWarning := a.workspaceOps().Delete(ws)
+		branchWarning := a.workspaceOps().Delete(snap)
 		return messages.WorkspaceDeleted{
 			Workspace:     ws,
 			BranchWarning: branchWarning,

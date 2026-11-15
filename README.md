@@ -139,8 +139,8 @@ medusa ws delete fix-login      # asks first
 medusa ws delete fix-login --yes
 ```
 
-`delete` stops the workspace's agents and removes the worktree and branch that
-medusa made. For a workspace over a repo's own checkout (`--no-worktree`), it
+`delete` stops the workspace's agents, runs its `archive` and profile
+`teardown` scripts, and removes the worktree and branch that medusa made. For a workspace over a repo's own checkout (`--no-worktree`), it
 never removes the repo. Without a terminal to ask on, `delete` needs `--yes`, so
 a script cannot delete a workspace by accident.
 
@@ -200,7 +200,7 @@ You can configure setup and run scripts per repository by creating a `.medusa/wo
 |---|---|---|
 | `setup-workspace` | `string[]` | Commands run sequentially when a workspace is created |
 | `run` | `string` or `object[]` | Dev server commands — one visible tab per entry. Launched automatically once `setup-workspace` finishes, or manually via Ctrl-a r |
-| `archive` | `string` | Command run when archiving a workspace |
+| `archive` | `string` | Command run when a workspace is deleted, before its worktree is removed (archiving in the dashboard keeps the worktree, so it does not run this) |
 
 The `run` field supports two formats:
 - **String**: `"run": "npm start"` — opens a single "dev server" tab
@@ -221,6 +221,28 @@ The following variables are injected into all script environments:
 
 Each workspace gets a unique port range starting from 6200 (configurable), incremented by 10 per workspace. Use `WORKSPACE_PORT` in your scripts to avoid port collisions when running multiple workspaces simultaneously.
 
+`WORKSPACE_PORT` / `WORKSPACE_PORT_RANGE` are also exported into each agent's shell, so an agent can point per-workspace services (e.g. an isolated test database) at its own port. The value matches the one the setup/run scripts see. The port is stored on the workspace record when first assigned, so it stays the same across medusa restarts; it is freed when the workspace is deleted.
+
+### Profile scripts
+
+A profile can add its own scripts and env to every workspace launched with it, via an optional `~/.medusa/profiles/<name>/medusa-profile.json`:
+
+```json
+{
+  "setup": ["podman run -d --name pg-$MEDUSA_WORKSPACE_NAME -p $WORKSPACE_PORT:5432 -e POSTGRES_PASSWORD=dev postgres:16"],
+  "teardown": ["podman rm -f pg-$MEDUSA_WORKSPACE_NAME"],
+  "env": {"POSTGRES_PORT": "$WORKSPACE_PORT"}
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `setup` | `string[]` | Run on workspace creation, after every repo's `setup-workspace`; a failure is reported like a repo setup failure |
+| `teardown` | `string[]` | Run on workspace delete, after the repos' `archive` scripts and before the worktree is removed. Each command is capped at 60s; failures are logged and never block the delete |
+| `env` | `object` | Extra variables for the scripts above, the repo scripts, and the agent session. Values expand `$VAR` against the workspace variables above, then the process environment. In scripts, a workspace's own `env` still wins |
+
+Commands run via `sh -c` from the primary worktree root with the environment above. Like `setup-workspace` and `archive`, they are skipped for a workspace over a repo's own checkout (`--no-worktree`); the `env` still applies there.
+
 ### When run commands fire
 
 Run commands fire once, automatically, as soon as `setup-workspace` finishes for a newly created workspace — each entry opens in its own visible tab. They're independent of agent tabs: setup-complete and agent-tab creation aren't ordered relative to each other, and a workspace can have any mix of agent tabs and script tabs (or none).
@@ -229,7 +251,7 @@ Press **Ctrl-a r** at any time to relaunch the run scripts for the active worksp
 
 ### Notes
 
-Each command runs from the workspace's primary worktree root; failures in `setup-workspace` abort workspace setup. Workspace metadata (not to be confused with the per-repo config file above) is tracked in `~/.medusa/workspaces.json`.
+Each command runs from the workspace's primary worktree root. A failing `setup-workspace` command stops that repo's remaining commands; the other repos and the profile's `setup` still run, and every failure is reported. Workspace metadata (not to be confused with the per-repo config file above) is tracked in `~/.medusa/workspaces.json`.
 
 ## Development
 

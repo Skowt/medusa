@@ -9,11 +9,16 @@ import (
 	"github.com/Skowt/medusa/internal/logging"
 )
 
-// Delete removes what medusa made for a workspace — its worktrees, their
-// branches and its root directory — and then its metadata and registry entry.
-// It returns a warning when branches could not be deleted. It does not touch
-// tmux; callers kill the workspace's sessions first.
+// Delete runs the workspace's teardown scripts, then removes what medusa made
+// for it — its worktrees, their branches and its root directory — and then its
+// metadata and registry entry.
+// It frees the workspace's port and returns a warning when branches could not
+// be deleted. It does not touch tmux; callers kill the workspace's sessions
+// first.
 func (d Deps) Delete(ws *data.Workspace) (branchWarning string) {
+	// Before the worktrees go: archive and teardown scripts run inside them.
+	d.runTeardown(ws)
+
 	// Only worktrees medusa made are removed. A workspace pointed straight
 	// at a repo's own checkout owns neither the directory nor the branch, so
 	// deleting it here would delete the user's repo — see RemovableWorktrees,
@@ -36,7 +41,22 @@ func (d Deps) Delete(ws *data.Workspace) (branchWarning string) {
 
 	_ = d.Store.Delete(ws.ID())
 	_ = d.Registry.RemoveWorkspace(string(ws.ID()))
+	d.releasePort(ws)
 	return branchWarning
+}
+
+// runTeardown runs the repos' archive scripts and the profile's teardown
+// commands. Failures are logged and never block the delete: a container that
+// outlives its workspace is a leak, but a workspace that cannot be deleted is
+// worse. A workspace over a repo's own checkout is skipped, as its setup is:
+// those scripts belong to a worktree medusa made, not to the user's repo.
+func (d Deps) runTeardown(ws *data.Workspace) {
+	if d.Teardown == nil || !ws.UsesWorktree() {
+		return
+	}
+	for _, err := range d.Teardown.RunTeardown(ws) {
+		logging.Error("Teardown failed for workspace %s (profile %q): %v", ws.Name, ws.Profile, err)
+	}
 }
 
 // RemovableWorktrees returns the specs for the worktrees of ws that git may

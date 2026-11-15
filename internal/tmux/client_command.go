@@ -17,22 +17,35 @@ func ClientCommand(sessionName, workDir, command string) string {
 }
 
 func ClientCommandWithOptions(sessionName, workDir, command string, opts Options) string {
-	return clientCommand(sessionName, workDir, command, opts, SessionTags{})
+	return clientCommand(sessionName, workDir, command, opts, SessionTags{}, nil)
 }
 
 func ClientCommandWithTags(sessionName, workDir, command string, opts Options, tags SessionTags) string {
-	return clientCommand(sessionName, workDir, command, opts, tags)
+	return clientCommand(sessionName, workDir, command, opts, tags, nil)
 }
 
-func clientCommand(sessionName, workDir, command string, opts Options, tags SessionTags) string {
+// ClientCommandWithEnv is ClientCommandWithTags plus env, KEY=VALUE pairs set
+// on the new session only (new-session -e), so every process in its panes —
+// including a shell the pane drops to later — sees them.
+//
+// Per-session vars must travel this way, never on the client process: the
+// client that happens to start the tmux server has its whole environment
+// copied into the server's global environment, which every later session on
+// that server inherits.
+func ClientCommandWithEnv(sessionName, workDir, command string, opts Options, tags SessionTags, env []string) string {
+	return clientCommand(sessionName, workDir, command, opts, tags, env)
+}
+
+func clientCommand(sessionName, workDir, command string, opts Options, tags SessionTags, env []string) string {
 	base := tmuxBase(opts)
 	session := shellutil.Quote(sessionName)
 	dir := shellutil.Quote(workDir)
 	cmd := shellutil.Quote(command)
 
-	// Use atomic new-session -Ad: creates if missing, attaches if exists (detaching other clients)
-	create := fmt.Sprintf("%s new-session -Ads %s -c %s sh -lc %s",
-		base, session, dir, cmd)
+	// Use atomic new-session -Ad: creates if missing, attaches if exists (detaching other clients).
+	// -e only applies on create; an existing session keeps the env it was created with.
+	create := fmt.Sprintf("%s new-session -Ads %s -c %s%s sh -lc %s",
+		base, session, dir, sessionEnvFlags(env), cmd)
 
 	settings := sessionSettings(base, session, opts, tags)
 
@@ -40,6 +53,19 @@ func clientCommand(sessionName, workDir, command string, opts Options, tags Sess
 	attach := fmt.Sprintf("%s attach -dt %s", base, session)
 
 	return fmt.Sprintf("%s && %s%s", create, settings, attach)
+}
+
+// sessionEnvFlags renders env as new-session `-e KEY=VALUE` flags. Entries
+// without a name are dropped: tmux rejects them and the session would not start.
+func sessionEnvFlags(env []string) string {
+	var b strings.Builder
+	for _, kv := range env {
+		if name, _, ok := strings.Cut(kv, "="); !ok || name == "" {
+			continue
+		}
+		b.WriteString(" -e " + shellutil.Quote(kv))
+	}
+	return b.String()
 }
 
 // sessionSettings returns the set-option commands that make a session behave

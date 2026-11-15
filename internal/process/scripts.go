@@ -3,12 +3,14 @@ package process
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Skowt/medusa/internal/data"
@@ -47,16 +49,36 @@ type ScriptRunner struct {
 	portAllocator *PortAllocator
 	envBuilder    *EnvBuilder
 	running       map[string]*exec.Cmd // workspace ID -> running process
+	profilesRoot  string
+	// teardownTimeout bounds each archive/teardown command; tests shorten it.
+	teardownTimeout time.Duration
 }
 
 // NewScriptRunner creates a new script runner
 func NewScriptRunner(portStart, portRange int) *ScriptRunner {
 	ports := NewPortAllocator(portStart, portRange)
 	return &ScriptRunner{
-		portAllocator: ports,
-		envBuilder:    NewEnvBuilder(ports),
-		running:       make(map[string]*exec.Cmd),
+		portAllocator:   ports,
+		envBuilder:      NewEnvBuilder(ports),
+		running:         make(map[string]*exec.Cmd),
+		teardownTimeout: TeardownCommandTimeout,
 	}
+}
+
+// SetProfilesRoot points the runner at ~/.medusa/profiles so each workspace's
+// profile scripts and env (medusa-profile.json) apply. Call it once at startup,
+// before any script runs.
+func (r *ScriptRunner) SetProfilesRoot(root string) {
+	r.profilesRoot = root
+	r.envBuilder.SetProfilesRoot(root)
+}
+
+// Ports returns the shared port allocator, so other components (the agent
+// launcher) hand the workspace the SAME WORKSPACE_PORT the setup/run scripts
+// see — a second allocator would number workspaces differently and the agent's
+// port would not match the one its DB container was started on.
+func (r *ScriptRunner) Ports() *PortAllocator {
+	return r.portAllocator
 }
 
 // LoadConfig loads the workspace configuration from the repo
@@ -108,33 +130,50 @@ func (r *ScriptRunner) LoadConfig(repoPath string) (*WorkspaceConfig, error) {
 
 // RunSetup runs the setup scripts for a workspace.
 // For multi-repo workspaces it loads each repo's .medusa/workspaces.json and
-// runs that repo's setup-workspace commands inside the matching worktree.
+// runs that repo's setup-workspace commands inside the matching worktree. The
+// profile's setup commands run last, so they can rely on the repos being set up.
+//
+// A repo's sequence stops at its first failing command (later commands usually
+// depend on earlier ones), but the other repos and the profile setup still run:
+// the profile's infrastructure (a DB container) is independent of any one
+// repo's install step. All failures are returned joined.
 func (r *ScriptRunner) RunSetup(ws *data.Workspace) error {
 	env := r.envBuilder.BuildEnv(ws)
 
+	var errs []error
 	for i, repo := range ws.Repos {
 		if i >= len(ws.Worktrees) {
 			break
 		}
-		config, err := r.LoadConfig(repo.Path)
-		if err != nil {
-			return err
-		}
-		worktreeRoot := ws.Worktrees[i].Root
-		for _, cmdStr := range config.SetupWorkspace {
-			cmd := exec.Command("sh", "-c", cmdStr)
-			cmd.Dir = worktreeRoot
-			cmd.Env = env
-
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("setup command failed in %s: %s: %s", repo.Name, cmdStr, stderr.String())
-			}
+		if err := r.runRepoSetup(repo, ws.Worktrees[i].Root, env); err != nil {
+			errs = append(errs, err)
 		}
 	}
+	if err := r.runProfileSetup(ws, env); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
 
+// runRepoSetup runs one repo's setup-workspace commands in its worktree,
+// stopping at the first failure.
+func (r *ScriptRunner) runRepoSetup(repo data.RepoRef, worktreeRoot string, env []string) error {
+	config, err := r.LoadConfig(repo.Path)
+	if err != nil {
+		return fmt.Errorf("load %s workspace config: %w", repo.Name, err)
+	}
+	for _, cmdStr := range config.SetupWorkspace {
+		cmd := exec.Command("sh", "-c", cmdStr)
+		cmd.Dir = worktreeRoot
+		cmd.Env = env
+
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("setup command failed in %s: %s: %s", repo.Name, cmdStr, stderr.String())
+		}
+	}
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -48,6 +49,19 @@ func TestStartDetachedSessionCreatesATaggedSession(t *testing.T) {
 	}
 	if n, err := SessionClientCount("medusa-x-1", opts); err != nil || n != 0 {
 		t.Fatalf("SessionClientCount = %d, %v; want 0 for a detached session", n, err)
+	}
+	// The env belongs to this session only. This call started the server, so
+	// env passed on the tmux process would have become every session's.
+	for _, scope := range []string{"-t", "-g"} {
+		args := []string{"-L", opts.ServerName, "show-environment", scope}
+		if scope == "-t" {
+			args = append(args, "medusa-x-1")
+		}
+		out, _ := exec.Command("tmux", append(args, "FOO")...).Output()
+		got := strings.TrimSpace(string(out))
+		if want := map[string]string{"-t": "FOO=bar", "-g": ""}[scope]; got != want {
+			t.Errorf("show-environment %s FOO = %q, want %q", scope, got, want)
+		}
 	}
 }
 

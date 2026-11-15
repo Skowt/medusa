@@ -340,6 +340,7 @@ func New(version, commit, date string) (*App, error) {
 	workspaces := data.NewWorkspaceStore(cfg.Paths.MetadataRoot)
 	recents := data.NewRecentsStore(cfg.Paths.RecentsPath)
 	scripts := process.NewScriptRunner(cfg.PortStart, cfg.PortRangeSize)
+	scripts.SetProfilesRoot(cfg.Paths.ProfilesRoot)
 
 	// Create status manager (callback will be nil, we use it for caching only)
 	statusManager := git.NewStatusManager(nil)
@@ -448,6 +449,9 @@ func New(version, commit, date string) (*App, error) {
 	// emit binary is resolved once; when missing (e.g. `go run` dev builds
 	// without `make build`), legacy shell hooks are injected instead.
 	_ = config.InjectHooksIntoAllProfiles(cfg.Paths.ProfilesRoot, cfg.Paths.HooksDir, config.ResolveHookEmitBinary())
+	// Share the ScriptRunner's port allocator with the agent launcher so agents
+	// receive the same WORKSPACE_PORT the setup/run scripts use.
+	app.center.AgentManager().SetPortAllocator(scripts.Ports())
 	app.initHooksServer()
 
 	// Initialize focus state on all components (dashboard is the default focus)

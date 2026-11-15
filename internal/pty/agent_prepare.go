@@ -7,6 +7,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/tmux"
 )
 
@@ -16,15 +17,20 @@ import (
 type PreparedAgent struct {
 	SessionName string
 	Command     string   // agent command, then a reset and a login shell
-	Env         []string // environment for the process that starts the session
-	Fullscreen  bool     // Claude with Fullscreen set; never Codex
-	Config      config.AssistantConfig
+	Env         []string // client process env: terminal settings only
+	// SessionEnv is set on the tmux session (new-session -e): the workspace
+	// identity, port and profile env. It must never ride on Env — see agentClientEnv.
+	SessionEnv []string
+	Fullscreen bool // Claude with Fullscreen set; never Codex
+	Config     config.AssistantConfig
 }
 
 // PrepareAgent sets up a profile for an agent launch — the profile directory,
 // the pre-trusted worktree, a Codex tab's CODEX_HOME — and builds the command
 // line. It is the part of starting an agent that does not need a terminal.
-func PrepareAgent(cfg *config.Config, ws *data.Workspace, agentType AgentType, sessionName string, opts AgentOptions) (PreparedAgent, error) {
+// ports, when set, is the allocator the setup/run scripts read, so the agent's
+// WORKSPACE_PORT matches theirs.
+func PrepareAgent(cfg *config.Config, ports *process.PortAllocator, ws *data.Workspace, agentType AgentType, sessionName string, opts AgentOptions) (PreparedAgent, error) {
 	if isAgentAssistant(agentType) && ws.Profile == "" {
 		return PreparedAgent{}, fmt.Errorf("cannot start %s agent without a profile (workspace %q)", agentType, ws.Name)
 	}
@@ -39,14 +45,7 @@ func PrepareAgent(cfg *config.Config, ws *data.Workspace, agentType AgentType, s
 		return PreparedAgent{}, err
 	}
 
-	// Build environment
-	env := []string{
-		fmt.Sprintf("WORKSPACE_ROOT=%s", ws.Root()),
-		fmt.Sprintf("WORKSPACE_NAME=%s", ws.Name),
-		"LINES=",   // Unset to force ioctl usage
-		"COLUMNS=", // Unset to force ioctl usage
-		"COLORTERM=truecolor",
-	}
+	agentEnv := agentSessionEnv(ports, cfg.Paths.ProfilesRoot, ws)
 
 	var profileDir string
 	if agentType == AgentClaude && ws.Profile != "" {
@@ -70,7 +69,7 @@ func PrepareAgent(cfg *config.Config, ws *data.Workspace, agentType AgentType, s
 	// The pane starts in ws.Root(), which is the cwd Claude Code encodes into
 	// its transcript directory.
 	opts.Cwd = ws.Root()
-	agentCommand := buildAgentCommand(agentType, assistantCfg.Command, sessionName, profileDir, opts)
+	agentCommand := envAssignments(agentEnv) + buildAgentCommand(agentType, assistantCfg.Command, sessionName, profileDir, opts)
 
 	// Create terminal with agent command, falling back to shell on exit
 	shell := os.Getenv("SHELL")
@@ -86,7 +85,8 @@ func PrepareAgent(cfg *config.Config, ws *data.Workspace, agentType AgentType, s
 	return PreparedAgent{
 		SessionName: sessionName,
 		Command:     fullCommand,
-		Env:         env,
+		Env:         agentClientEnv(),
+		SessionEnv:  append(workspaceIdentityEnv(ws), agentEnv...),
 		Fullscreen:  agentType == AgentClaude && opts.Fullscreen,
 		Config:      assistantCfg,
 	}, nil

@@ -21,7 +21,8 @@ func workspaceDeleteCommand() *command {
 		name:    "delete",
 		summary: "Delete a workspace, its worktree and its agent sessions",
 		usage:   "medusa workspace delete <name|id> [flags]",
-		long: "Stops the workspace's agents, removes the worktree and branch medusa made,\n" +
+		long: "Stops the workspace's agents, runs its archive and profile teardown\n" +
+			"scripts, removes the worktree and branch medusa made,\n" +
 			"and forgets the workspace. A workspace over a repo's own checkout never\n" +
 			"removes the repo. Asks first on a terminal; scripts must pass --yes.",
 		examples: []string{
