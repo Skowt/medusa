@@ -52,6 +52,13 @@ type VTerm struct {
 	// Origin mode (DECOM) - cursor positions are relative to scroll region.
 	OriginMode bool
 
+	// focusReporting is DEC mode 1004: the app reads focus-in/out reports.
+	focusReporting bool
+
+	// colorSchemeUpdates is DEC mode 2031: the client wants a "CSI ? 997 n"
+	// report whenever the color scheme changes.
+	colorSchemeUpdates bool
+
 	// mouseModes tracks which xterm mouse reporting modes the application
 	// has enabled (DECSET 1000/1002/1003). Used to decide whether scroll
 	// input belongs to the app (e.g. Claude Code after /tui fullscreen).
@@ -154,6 +161,12 @@ func New(width, height int) *VTerm {
 
 // SetDefaultColors supplies the host UI colors reported by OSC 10/11/12.
 func (v *VTerm) SetDefaultColors(fg, bg, cursor Color) {
+	scheme := v.colorScheme()
+	defer func() {
+		if v.colorSchemeUpdates && v.colorScheme() != scheme {
+			v.reportColorScheme()
+		}
+	}()
 	if !v.defaultForegroundModified {
 		v.DefaultForeground = fg
 	}

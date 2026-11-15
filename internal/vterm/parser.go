@@ -23,7 +23,12 @@ type Parser struct {
 	state parseState
 
 	// CSI sequence building
-	params          []int
+	params []int
+	// paramKinds runs parallel to params and records how each entry arrived:
+	// a parameter in its own right, or a colon sub-parameter of the one before
+	// it ("4:3", "38:2::r:g:b"). Only SGR reads it; every other CSI sees the
+	// same flat params as always.
+	paramKinds      []paramKind
 	paramBuf        strings.Builder
 	intermediate    byte
 	csiIntermediate byte
@@ -41,9 +46,10 @@ type Parser struct {
 // NewParser creates a new parser for the given VTerm
 func NewParser(vt *VTerm) *Parser {
 	return &Parser{
-		vt:     vt,
-		state:  stateGround,
-		params: make([]int, 0, 16),
+		vt:         vt,
+		state:      stateGround,
+		params:     make([]int, 0, 16),
+		paramKinds: make([]paramKind, 0, 16),
 	}
 }
 
@@ -150,6 +156,7 @@ func (p *Parser) parseEscape(b byte) {
 	case '[': // CSI
 		p.state = stateCSI
 		p.params = p.params[:0]
+		p.paramKinds = p.paramKinds[:0]
 		p.paramBuf.Reset()
 		p.intermediate = 0
 		p.csiIntermediate = 0

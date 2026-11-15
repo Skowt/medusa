@@ -24,7 +24,9 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			cmd = nil
 		}
 	}()
-	return a.update(msg)
+	model, cmd = a.update(msg)
+	a.syncAgentFocus()
+	return model, cmd
 }
 
 func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -35,6 +37,10 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyPressMsg, tea.KeyReleaseMsg, tea.MouseClickMsg, tea.MouseWheelMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg, tea.PasteMsg:
 			a.markInput()
 		}
+	}
+
+	if a.recordTerminalFocus(msg) {
+		return a, nil
 	}
 
 	// Dialog messages first: a result arrives after the dialog hid itself, and

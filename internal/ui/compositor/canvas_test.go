@@ -32,7 +32,7 @@ func TestCanvasRenderDoubleBuffer(t *testing.T) {
 
 func TestCanvasRenderSuppressesUnderlineOnBlankCells(t *testing.T) {
 	canvas := NewCanvas(3, 1)
-	style := vterm.Style{Underline: true}
+	style := vterm.Style{Underline: vterm.UnderlineSingle}
 	for x := 0; x < 3; x++ {
 		canvas.SetCell(x, 0, vterm.Cell{Rune: ' ', Width: 1, Style: style})
 	}

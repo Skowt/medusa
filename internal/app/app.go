@@ -234,6 +234,10 @@ type App struct {
 
 	// Terminal capabilities
 	keyboardEnhancements tea.KeyboardEnhancementsMsg
+	// terminalBlurred is true while medusa's own terminal window has lost
+	// focus (tea.BlurMsg). Zero means focused, which is also the only sane
+	// answer for a terminal that never reports focus at all.
+	terminalBlurred bool
 
 	// Perf tracking
 	lastInputAt         time.Time

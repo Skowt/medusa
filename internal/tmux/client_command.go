@@ -67,26 +67,41 @@ func sessionSettings(base, session string, opts Options, tags SessionTags) strin
 	fmt.Fprintf(&settings, "%s set-option -t %s -w monitor-activity on 2>/dev/null; ", base, session)
 	// Server option: forward terminal focus events so agents (e.g. Claude Code) can track focus.
 	fmt.Fprintf(&settings, "%s set-option -s focus-events on 2>/dev/null; ", base)
-	appendHyperlinkFeature(&settings, base)
+	appendClientFeatures(&settings, base)
 	appendSessionTags(&settings, base, session, tags)
 
 	return settings.String()
 }
 
-// appendHyperlinkFeature tells tmux that medusa's client understands OSC 8.
+// clientFeatures is what medusa's vterm -- the terminal this client really
+// is -- can draw, declared to tmux so it forwards each one instead of dropping
+// or downgrading it:
 //
-// tmux only forwards a pane's hyperlinks to clients whose terminal advertises
-// the "hyperlinks" feature. We attach with TERM=xterm-256color, whose terminfo
-// says nothing about hyperlinks, so tmux strips the URI and passes on only the
-// link text — leaving the outer terminal to guess a URL from that text (an MR
-// link like services/protos!1638 becomes http://services/protos!1638).
+//   - hyperlinks: OSC 8. Without it tmux strips the URI and passes on only the
+//     link text, leaving the outer terminal to guess a URL from that text (an
+//     MR link like services/protos!1638 became http://services/protos!1638).
+//   - RGB: 24-bit color. Without it tmux quantises truecolor to the 256-color
+//     cube; tmux grants it only when the client's own environment happens to
+//     carry COLORTERM=truecolor.
+//   - usstyle: curly, dotted, dashed and double underlines.
+//   - strikethrough.
 //
-// terminal-features is a server-wide array and this runs on every attach, so a
-// bare append would add a duplicate entry per tab; only append when absent.
-func appendHyperlinkFeature(settings *strings.Builder, base string) {
-	feature := ClientTerm + ":hyperlinks"
-	fmt.Fprintf(settings, "%s show-options -s terminal-features 2>/dev/null | grep -qF %s || %s set-option -sa terminal-features %s 2>/dev/null; ",
-		base, shellutil.Quote(feature), base, shellutil.Quote(","+feature))
+// tmux keys these by terminal name and learns nothing about medusa's vterm
+// from terminfo: TERM is xterm-256color (ClientTerm), whose entry says nothing
+// about any of them, and whatever tmux did find came from the outer terminal's
+// terminfo through an inherited TERMINFO_DIRS -- iTerm2's, say, which describes
+// iTerm2 rather than the vterm actually parsing the bytes.
+const clientFeatures = ClientTerm + ":hyperlinks:RGB:usstyle:strikethrough"
+
+// clientFeaturesIndex is the terminal-features slot medusa owns. Writing a
+// fixed slot is idempotent, which an append is not: this runs on every attach
+// against a server-wide array, and a check-then-append raced when several tabs
+// attached at once, leaving duplicate entries behind.
+const clientFeaturesIndex = 77
+
+func appendClientFeatures(settings *strings.Builder, base string) {
+	fmt.Fprintf(settings, "%s set-option -s %s %s 2>/dev/null; ",
+		base, shellutil.Quote(fmt.Sprintf("terminal-features[%d]", clientFeaturesIndex)), shellutil.Quote(clientFeatures))
 }
 
 func appendSessionTags(settings *strings.Builder, base, session string, tags SessionTags) {

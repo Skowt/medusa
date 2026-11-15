@@ -89,3 +89,27 @@ func TestBuildAgentCommandFullscreenEnvVar(t *testing.T) {
 		t.Errorf("default-mode launch must set CLAUDE_CODE_NO_FLICKER=0 to override a persisted tui setting: %s", off)
 	}
 }
+
+// TestBuildAgentCommandTerminalEnv guards the env that undoes Claude Code's
+// tmux pessimism: without it Claude clamps every color to the 256-color cube
+// under $TMUX, and prints ~~literal tildes~~ unless the tmux server happened to
+// inherit LC_TERMINAL=iTerm2. It must be on every Claude launch, fresh or
+// resumed, and on nothing else.
+func TestBuildAgentCommandTerminalEnv(t *testing.T) {
+	cfg := t.TempDir()
+	writeConversation(t, cfg, "proj", "id")
+	for name, cmd := range map[string]string{
+		"fresh":   buildAgentCommand(AgentClaude, "claude", "s", "/cfg", AgentOptions{ClaudeSessionID: "id"}),
+		"resume":  buildAgentCommand(AgentClaude, "claude", "s", cfg, AgentOptions{ClaudeSessionID: "id", Resume: true}),
+		"default": buildAgentCommand(AgentClaude, "claude", "s", "", AgentOptions{}),
+	} {
+		for _, want := range []string{"CLAUDE_CODE_TMUX_TRUECOLOR=1", "CLAUDE_CODE_FORCE_STRIKETHROUGH=1"} {
+			if !strings.Contains(cmd, want) {
+				t.Errorf("%s claude launch must set %s: %s", name, want, cmd)
+			}
+		}
+	}
+	if other := buildAgentCommand(AgentType("viewer"), "run.sh", "s", "", AgentOptions{}); strings.Contains(other, "CLAUDE_CODE_TMUX_TRUECOLOR") {
+		t.Errorf("non-claude launch must not carry Claude's terminal env: %s", other)
+	}
+}

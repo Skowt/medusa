@@ -67,11 +67,16 @@ type Tab struct {
 	// outputInFlight counts chunks handed to the tab actor and not yet
 	// parsed. While it is non-zero, no chunk may be parsed anywhere else, or
 	// it would land ahead of the ones still queued.
-	outputInFlight    atomic.Int32
-	flushScheduled    bool
-	lastOutputAt      time.Time
-	HookState         string
-	Unread            bool
+	outputInFlight atomic.Int32
+	flushScheduled bool
+	lastOutputAt   time.Time
+	HookState      string
+	Unread         bool
+	// focusSent is the focus state last reported to this tab's tmux client,
+	// valid only while focusTerm is still the tab's terminal (see
+	// model_agent_focus.go).
+	focusSent         bool
+	focusTerm         *appPty.Terminal
 	flushPendingSince time.Time
 	ptyRows           int
 	ptyCols           int

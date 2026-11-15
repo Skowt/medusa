@@ -22,8 +22,9 @@ func StyleToANSI(s Style) string {
 	if s.Italic {
 		b.WriteString(";3")
 	}
-	if s.Underline {
-		b.WriteString(";4")
+	if s.Underline != UnderlineNone {
+		b.WriteByte(';')
+		b.WriteString(underlineCode(s.Underline))
 	}
 	if s.Blink {
 		b.WriteString(";5")
@@ -81,7 +82,7 @@ func StyleToDeltaANSI(prev, next Style) string {
 	if prev.Italic && !next.Italic {
 		turningOff++
 	}
-	if prev.Underline && !next.Underline {
+	if prev.Underline != UnderlineNone && next.Underline == UnderlineNone {
 		turningOff++
 	}
 	if prev.Blink && !next.Blink {
@@ -110,8 +111,8 @@ func StyleToDeltaANSI(prev, next Style) string {
 		if next.Italic {
 			writeCode("3")
 		}
-		if next.Underline {
-			writeCode("4")
+		if next.Underline != UnderlineNone {
+			writeCode(underlineCode(next.Underline))
 		}
 		if next.Blink {
 			writeCode("5")
@@ -140,7 +141,7 @@ func StyleToDeltaANSI(prev, next Style) string {
 		if prev.Italic && !next.Italic {
 			writeCode("23")
 		}
-		if prev.Underline && !next.Underline {
+		if prev.Underline != UnderlineNone && next.Underline == UnderlineNone {
 			writeCode("24")
 		}
 		if prev.Blink && !next.Blink {
@@ -166,8 +167,8 @@ func StyleToDeltaANSI(prev, next Style) string {
 		if !prev.Italic && next.Italic {
 			writeCode("3")
 		}
-		if !prev.Underline && next.Underline {
-			writeCode("4")
+		if prev.Underline != next.Underline && next.Underline != UnderlineNone {
+			writeCode(underlineCode(next.Underline))
 		}
 		if !prev.Blink && next.Blink {
 			writeCode("5")
@@ -205,6 +206,16 @@ func StyleToDeltaANSI(prev, next Style) string {
 
 	b.WriteByte('m')
 	return b.String()
+}
+
+// underlineCode is the SGR parameter for an underline style. A single
+// underline keeps the plain "4" every terminal understands; the others need
+// the colon sub-parameter form ("4:3" is curly).
+func underlineCode(u UnderlineStyle) string {
+	if u <= UnderlineSingle {
+		return "4"
+	}
+	return "4:" + strconv.Itoa(int(u))
 }
 
 // writeColorToBuilder appends color codes to a strings.Builder.

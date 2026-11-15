@@ -6,6 +6,10 @@ func (p *Parser) executeDSR() {
 	if len(p.params) == 0 {
 		return
 	}
+	if p.intermediate == '?' && p.params[0] == 996 {
+		p.vt.reportColorScheme()
+		return
+	}
 
 	switch p.params[0] {
 	case 5: // Status report - respond "OK"
@@ -61,6 +65,10 @@ func (p *Parser) executeMode(set bool) {
 			}
 		case 2026: // Synchronized output
 			p.vt.setSynchronizedOutput(set)
+		case 1004: // Focus reporting: the app wants CSI I / CSI O
+			p.vt.focusReporting = set
+		case 2031: // Color-scheme change reports (see color_scheme.go)
+			p.vt.colorSchemeUpdates = set
 		case 2004: // Bracketed paste mode
 			// Ignore
 		}

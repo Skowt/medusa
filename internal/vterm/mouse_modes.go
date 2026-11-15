@@ -20,3 +20,10 @@ func (v *VTerm) setMouseMode(mode uint8, on bool) {
 func (v *VTerm) MouseReporting() bool {
 	return v.mouseModes != 0
 }
+
+// FocusReporting reports whether the application enabled focus reporting (DEC
+// mode 1004). For a center tab the application is the tmux client, which
+// enables it at attach when the server has focus-events on.
+func (v *VTerm) FocusReporting() bool {
+	return v.focusReporting
+}

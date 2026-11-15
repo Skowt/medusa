@@ -7,33 +7,10 @@ func (v *VTerm) putChar(r rune) {
 	lineY := v.CursorY
 	width := runewidth.RuneWidth(r)
 
-	// Combining characters (width 0) attach to previous cell
-	if width == 0 {
-		prevX := v.CursorX - 1
-		prevY := v.CursorY
-		if prevX < 0 && prevY > 0 {
-			prevY--
-			prevX = v.Width - 1
-		}
-		// Step back over a wide-char continuation cell to its base cell.
-		if prevY >= 0 && prevY < len(v.Screen) {
-			line := v.Screen[prevY]
-			if prevX > 0 && prevX < len(line) && line[prevX].Width == 0 {
-				prevX--
-			}
-		}
-		if prevY >= 0 && prevY < len(v.Screen) && prevX >= 0 && prevX < len(v.Screen[prevY]) {
-			cell := &v.Screen[prevY][prevX]
-			if cell.Rune != 0 { // never attach to a blank/continuation marker
-				base := cell.GraphemeCluster
-				if base == "" {
-					base = string(cell.Rune)
-				}
-				cell.GraphemeCluster = base + string(r)
-				v.markDirtyLine(prevY)
-			}
-		}
-		return // Don't advance cursor for combining chars
+	// Combining characters, joiners, variation selectors and emoji modifiers
+	// attach to the previous cell, exactly where tmux attaches them.
+	if v.mayCombine(r, width) && v.combineIntoPrevious(r, width) {
+		return
 	}
 
 	// Wide characters: if at last column, wrap first to avoid splitting

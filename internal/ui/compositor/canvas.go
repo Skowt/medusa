@@ -227,8 +227,8 @@ func (c *Canvas) Render() string {
 			}
 			style := cell.Style
 			// Prevent underline-on-spaces from rendering as scanlines.
-			if style.Underline && (cell.Rune == 0 || cell.Rune == ' ') {
-				style.Underline = false
+			if style.Underline != vterm.UnderlineNone && (cell.Rune == 0 || cell.Rune == ' ') {
+				style.Underline = vterm.UnderlineNone
 			}
 			if style != lastStyle {
 				// Use full style for first cell (after reset), delta for subsequent

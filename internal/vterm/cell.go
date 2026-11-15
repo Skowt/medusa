@@ -25,6 +25,20 @@ func ColorFromGoColor(c color.Color) Color {
 	return Color{Type: ColorRGB, Value: uint32(r>>8)<<16 | uint32(g>>8)<<8 | uint32(b>>8)}
 }
 
+// UnderlineStyle is the SGR 4 sub-parameter: none, single, double, curly,
+// dotted or dashed. Its zero value means "not underlined", so it costs a cell
+// no more than the bool it replaced.
+type UnderlineStyle uint8
+
+const (
+	UnderlineNone UnderlineStyle = iota
+	UnderlineSingle
+	UnderlineDouble
+	UnderlineCurly
+	UnderlineDotted
+	UnderlineDashed
+)
+
 // Style holds text styling attributes
 type Style struct {
 	Fg        Color
@@ -32,7 +46,7 @@ type Style struct {
 	Bold      bool
 	Dim       bool
 	Italic    bool
-	Underline bool
+	Underline UnderlineStyle
 	Blink     bool
 	Reverse   bool
 	Hidden    bool

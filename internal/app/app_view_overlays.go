@@ -159,6 +159,9 @@ func (a *App) renderErrorOverlay() string {
 }
 
 func (a *App) finalizeView(view tea.View) tea.View {
+	// Ask the terminal for focus reports; they drive which agents are told
+	// they are being watched (center.SyncAgentFocus).
+	view.ReportFocus = true
 	if a.pendingInputLatency {
 		perf.Record("input_latency", time.Since(a.lastInputAt))
 		a.pendingInputLatency = false

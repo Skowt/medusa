@@ -54,28 +54,47 @@ func (p *Parser) parseCSIParam(b byte) {
 	}
 }
 
+// paramKind says whether a CSI parameter stands alone or is a colon
+// sub-parameter of the one before it, and whether a sub-parameter was empty.
+// The distinction matters only to SGR: "4:3" is a curly underline, while
+// "4;3" is underline plus italic.
+type paramKind uint8
+
+const (
+	paramMain paramKind = iota
+	paramSub
+	paramSubEmpty
+)
+
 func (p *Parser) pushParam() {
-	if p.paramBuf.Len() > 0 {
-		s := p.paramBuf.String()
-		// Handle sub-parameters (colon-separated values like "38:2:255:128:0")
-		if strings.Contains(s, ":") {
-			parts := strings.Split(s, ":")
-			for _, part := range parts {
-				if part == "" {
-					p.params = append(p.params, 0)
-				} else {
-					val, _ := strconv.Atoi(part)
-					p.params = append(p.params, val)
-				}
-			}
-		} else {
-			val, _ := strconv.Atoi(s)
-			p.params = append(p.params, val)
-		}
-	} else {
-		p.params = append(p.params, 0)
-	}
+	s := p.paramBuf.String()
 	p.paramBuf.Reset()
+	if s == "" {
+		p.appendParam(0, paramMain)
+		return
+	}
+	if !strings.Contains(s, ":") {
+		val, _ := strconv.Atoi(s)
+		p.appendParam(val, paramMain)
+		return
+	}
+	// Colon sub-parameters ("38:2::255:128:0") stay in the flat list for the
+	// handlers that predate them, tagged so SGR can group them.
+	for i, part := range strings.Split(s, ":") {
+		kind := paramSub
+		if i == 0 {
+			kind = paramMain
+		} else if part == "" {
+			kind = paramSubEmpty
+		}
+		val, _ := strconv.Atoi(part)
+		p.appendParam(val, kind)
+	}
+}
+
+func (p *Parser) appendParam(val int, kind paramKind) {
+	p.params = append(p.params, val)
+	p.paramKinds = append(p.paramKinds, kind)
 }
 
 func (p *Parser) getParam(idx, def int) int {

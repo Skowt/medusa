@@ -269,7 +269,7 @@ func BenchmarkStyleToDeltaANSI(b *testing.B) {
 		},
 		{
 			name: "reset_needed",
-			prev: vterm.Style{Bold: true, Underline: true},
+			prev: vterm.Style{Bold: true, Underline: vterm.UnderlineSingle},
 			next: vterm.Style{},
 		},
 	}
@@ -304,7 +304,7 @@ func BenchmarkStyleToANSI(b *testing.B) {
 				Fg:        vterm.Color{Type: vterm.ColorRGB, Value: 0xFF0000},
 				Bg:        vterm.Color{Type: vterm.ColorRGB, Value: 0x0000FF},
 				Bold:      true,
-				Underline: true,
+				Underline: vterm.UnderlineSingle,
 			},
 		},
 	}

@@ -45,6 +45,26 @@ type AgentOptions struct {
 	InitialPromptFile string
 }
 
+// claudeTerminalEnv tells Claude Code what medusa's terminal can draw, where
+// its own detection gets it wrong inside tmux. Both are prefixed to the pane's
+// command rather than set on the client, because a pane inherits the tmux
+// server's environment and that server outlives any one medusa.
+//
+//   - CLAUDE_CODE_TMUX_TRUECOLOR: Claude clamps to 256 colors whenever $TMUX
+//     is set, on the assumption that tmux will not pass truecolor through.
+//     medusa's tmux client advertises RGB, so the clamp only costs fidelity:
+//     every theme color was quantised to the nearest cube entry (the prompt
+//     background 55,55,55 became palette 237; code spans 177,185,249 became
+//     palette 153).
+//   - CLAUDE_CODE_FORCE_STRIKETHROUGH: Claude renders ~~text~~ only for
+//     terminals it recognises, and inside tmux it recognises one only through
+//     variables leaked from the terminal that started the tmux server
+//     (LC_TERMINAL=iTerm2). Started from anything else, it printed the literal
+//     tildes, though the whole chain draws strikethrough.
+//
+// The tmux half (RGB, strikethrough) is tmux.clientFeatures.
+const claudeTerminalEnv = "CLAUDE_CODE_TMUX_TRUECOLOR=1 CLAUDE_CODE_FORCE_STRIKETHROUGH=1"
+
 // buildAgentCommand assembles the env-prefixed shell command for an agent.
 // It is pure: all filesystem side effects (profile dir setup, settings/hook
 // injection) are performed by the caller, which passes the resolved profileDir.
@@ -79,7 +99,7 @@ func buildAgentCommand(agentType AgentType, command, sessionName, profileDir str
 		// that setting wins whenever the env var is absent — so merely omitting
 		// the var for a default-mode tab would still launch fullscreen once any
 		// session in that profile had ever run /tui fullscreen.
-		cmd = "CLAUDE_CODE_NO_FLICKER=" + noFlickerValue(opts.Fullscreen) + " " + cmd
+		cmd = "CLAUDE_CODE_NO_FLICKER=" + noFlickerValue(opts.Fullscreen) + " " + claudeTerminalEnv + " " + cmd
 	}
 	return cmd + initialPromptArg(opts)
 }

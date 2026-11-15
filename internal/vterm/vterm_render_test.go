@@ -8,7 +8,7 @@ import (
 
 func TestRenderSuppressesUnderlineOnBlankCells(t *testing.T) {
 	vt := New(5, 1)
-	vt.CurrentStyle.Underline = true
+	vt.CurrentStyle.Underline = UnderlineSingle
 	vt.Write([]byte("     "))
 
 	out := vt.Render()
@@ -28,7 +28,7 @@ func TestStyleToDeltaANSIPreservesBoldWhenTurningOffDim(t *testing.T) {
 
 func TestRenderKeepsUnderlineForText(t *testing.T) {
 	vt := New(2, 1)
-	vt.CurrentStyle.Underline = true
+	vt.CurrentStyle.Underline = UnderlineSingle
 	vt.Write([]byte("A "))
 
 	out := vt.Render()

@@ -150,6 +150,66 @@ clamps to an empty buffer and default-mode tabs cannot scroll at all.
 Regression cover: `internal/e2e/default_scroll_e2e_test.go` (default mode must
 scroll) and `internal/e2e/fullscreen_scroll_e2e_test.go` (fullscreen must not).
 
+### Rich-text fidelity
+
+What an agent prints reaches the screen through four hands — the agent, tmux,
+the vterm, ultraviolet — and each can silently downgrade it. The agent and tmux
+both decide from what they are *told* the terminal can do, and neither is told
+the truth by default: the terminal tmux talks to is medusa's vterm, not the
+user's iTerm2.
+
+1. **The agent clamps itself under tmux.** Claude Code limits colour to the
+   256-colour cube whenever `$TMUX` is set, and renders `~~strikethrough~~`
+   only for terminals it recognises — inside tmux, only via `LC_TERMINAL`
+   leaked from whatever terminal started the tmux server. `claudeTerminalEnv`
+   (`internal/pty/agent.go`) sets `CLAUDE_CODE_TMUX_TRUECOLOR=1` and
+   `CLAUDE_CODE_FORCE_STRIKETHROUGH=1` on the pane command — not the client
+   env, which a pane never sees, since the tmux server outlives medusa.
+2. **tmux forwards only what the client advertises.** `clientFeatures` declares
+   `hyperlinks:RGB:usstyle:strikethrough` for `ClientTerm`. Without it tmux
+   took capabilities from the outer terminal's terminfo through an inherited
+   `TERMINFO_DIRS` (iTerm2's), and with none — CI, or any other terminal —
+   quantised truecolor to the cube and dropped styled underlines.
+   `rich_text_e2e_test.go` strips the outer terminal's identity for this reason.
+3. **The vterm must keep colon sub-parameters grouped.** `4:3` is a curly
+   underline; read flat it is underline + italic. tmux writes underline colour
+   as `58::2::r::g::b`, whose empty fields read flat as full resets that wiped
+   the colours set just before. `Parser.paramKinds` tags sub-parameters for SGR
+   only; every other CSI sees the old flat list. `Style.Underline` is a one-byte
+   `UnderlineStyle`, so a cell stays 56 bytes; underline *colour* is parsed and
+   dropped (no room for a third colour, and no agent has been seen using one).
+4. **Palette colours stay palette references.** `compositor.ansiColor` returns
+   `ansi.BasicColor`/`IndexedColor`, so ultraviolet emits `31`/`94`/`38;5;n` and
+   the outer terminal applies the user's palette. It used to resolve them to RGB
+   from a hard-coded table, overriding the user's theme for every ANSI colour
+   an agent printed (Claude's link colour is `94`).
+
+**Grapheme widths follow tmux, not Unicode** (`internal/vterm/grapheme.go`).
+tmux positions the cursor from its own width for each cell; where the vterm
+disagrees, the rest of the row lands in the wrong columns. tmux joins a
+skin-tone modifier only onto a supplementary-plane emoji, chains *any* run of
+regional indicators into one cell, and widens a variation selector's base even
+when it is ASCII. `grapheme_width_e2e_test.go` asks real tmux for the answer.
+
+**Agents are told about focus and colour scheme.** Claude enables focus
+reporting (1004) and colour-scheme reports (2031), and tmux relays both from
+its client — the tab's PTY, which reported neither. With no focus reports tmux
+treats a client as focused forever, so every agent believed it was watched:
+Claude's away-recap never generated and `PushNotification` never fired.
+`center.SyncAgentFocus` runs after every update (`App.Update`) and sends
+`CSI I`/`CSI O` on change, once the vterm has seen tmux enable 1004 (before
+that the PTY may belong to the shell). Medusa asks its own terminal for focus
+reports (`view.ReportFocus`), and `tea.FocusMsg`/`BlurMsg` are recorded before
+any overlay can swallow them. A theme switch that flips dark/light is pushed as
+`CSI ? 997 ; 1|2 n` (`vterm/color_scheme.go`); tmux learns the initial scheme
+from the vterm's OSC 11 reply, but never re-asks.
+
+Deliberately not done: tmux's `sync` feature (it wraps nearly every redraw in
+BSU/ESU, each of which freezes a full-screen copy in the vterm, and no tearing
+was shown that it would fix), `overline` (ultraviolet cannot emit it), and
+passthrough of OSC 9/9;4/7501 and kitty graphics (medusa's own activity system
+covers notifications; images would need a graphics layer in the vterm).
+
 ### Key forwarding
 
 `common.KeyToBytes` (`internal/ui/common/keys.go`) is the single encoder from a
@@ -196,9 +256,11 @@ as `http://services/protos!1638`.
    terminal advertises the `hyperlinks` feature. Medusa attaches with
    `TERM=xterm-256color` (`tmux.ClientTerm`, consumed by `pty.NewWithSize`),
    whose terminfo says nothing about hyperlinks, so tmux strips the URI unless
-   `terminal-features` advertises it (`appendHyperlinkFeature` in
+   `terminal-features` advertises it (`clientFeatures` in
    `internal/tmux/client_command.go`). That option is a server-wide array set on
-   every attach, so the append is guarded — a bare append duplicates per tab.
+   every attach, so medusa writes one fixed slot (`terminal-features[77]`) —
+   an append duplicates per tab, and a check-then-append raced when tabs
+   attached together.
 2. **The vterm must keep it.** `Parser.executeOSC` parses `OSC 8 ; params ; URI`
    and `VTerm.CurrentLink` rides onto each written cell as `Cell.Link`, an
    interned ID (scrollback holds `MaxScrollback × width` cells, so a URI string

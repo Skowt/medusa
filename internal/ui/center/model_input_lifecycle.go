@@ -60,6 +60,10 @@ func (m *Model) updatePtyTabReattachResult(msg ptyTabReattachResult) (*Model, te
 	if tab.Terminal == nil {
 		tab.Terminal = newThemedVTerm(cols, rows)
 		createdTerminal = true
+	} else {
+		// A new tmux client is about to attach to this vterm; what the old
+		// one enabled no longer holds (see SyncAgentFocus).
+		tab.Terminal.ResetClientModes()
 	}
 	if tab.Terminal != nil {
 		// The tmux client this vterm reads from enters the alt screen at attach

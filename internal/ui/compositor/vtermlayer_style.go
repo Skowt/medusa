@@ -6,30 +6,10 @@ import (
 	"image/color"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Skowt/medusa/internal/vterm"
 )
-
-// ansiPalette is the standard ANSI color palette (0-15).
-// Colors 0-7 are standard, 8-15 are bright variants.
-var ansiPalette = []color.RGBA{
-	{0, 0, 0, 255},       // 0: Black
-	{205, 49, 49, 255},   // 1: Red
-	{13, 188, 121, 255},  // 2: Green
-	{229, 229, 16, 255},  // 3: Yellow
-	{36, 114, 200, 255},  // 4: Blue
-	{188, 63, 188, 255},  // 5: Magenta
-	{17, 168, 205, 255},  // 6: Cyan
-	{229, 229, 229, 255}, // 7: White
-	{102, 102, 102, 255}, // 8: Bright Black
-	{241, 76, 76, 255},   // 9: Bright Red
-	{35, 209, 139, 255},  // 10: Bright Green
-	{245, 245, 67, 255},  // 11: Bright Yellow
-	{59, 142, 234, 255},  // 12: Bright Blue
-	{214, 112, 214, 255}, // 13: Bright Magenta
-	{41, 184, 219, 255},  // 14: Bright Cyan
-	{255, 255, 255, 255}, // 15: Bright White
-}
 
 // vtermStyleToUV converts a vterm.Style to ultraviolet's Style.
 func vtermStyleToUV(s vterm.Style) uv.Style {
@@ -64,10 +44,7 @@ func vtermStyleToUV(s vterm.Style) uv.Style {
 	}
 	uvStyle.Attrs = attrs
 
-	// Handle underline
-	if s.Underline {
-		uvStyle.Underline = uv.UnderlineSingle
-	}
+	uvStyle.Underline = vtermUnderlineToUV(s.Underline)
 
 	return uvStyle
 }
@@ -79,7 +56,7 @@ func vtermColorToUV(c vterm.Color) color.Color {
 		return nil
 	case vterm.ColorIndexed:
 		// Use ANSI indexed colors
-		return ansiColor(c.Value)
+		return ansiColor(int(c.Value))
 	case vterm.ColorRGB:
 		// Extract RGB components
 		r := uint8((c.Value >> 16) & 0xFF)
@@ -90,43 +67,34 @@ func vtermColorToUV(c vterm.Color) color.Color {
 	return nil
 }
 
-// ansiColor returns an indexed ANSI color.
-// Uses ultraviolet's BasicColor for 0-15, ExtendedColor for 16-255.
-type ansiColor uint32
-
-func (c ansiColor) RGBA() (r, g, b, a uint32) {
-	idx := uint32(c)
-	if idx < 16 {
-		col := ansiPalette[idx]
-		return uint32(col.R) * 257, uint32(col.G) * 257, uint32(col.B) * 257, 65535
+// vtermUnderlineToUV maps an SGR 4 underline style onto ultraviolet's, which
+// re-emits the styled forms ("4:3" curly and so on) to the outer terminal.
+func vtermUnderlineToUV(u vterm.UnderlineStyle) uv.Underline {
+	switch u {
+	case vterm.UnderlineSingle:
+		return uv.UnderlineSingle
+	case vterm.UnderlineDouble:
+		return uv.UnderlineDouble
+	case vterm.UnderlineCurly:
+		return uv.UnderlineCurly
+	case vterm.UnderlineDotted:
+		return uv.UnderlineDotted
+	case vterm.UnderlineDashed:
+		return uv.UnderlineDashed
 	}
+	return uv.UnderlineNone
+}
 
-	// For 16-255: compute from 6x6x6 color cube or grayscale
-	if idx < 232 {
-		// 6x6x6 color cube (indices 16-231)
-		idx -= 16
-		rVal := (idx / 36) % 6
-		gVal := (idx / 6) % 6
-		bVal := idx % 6
-
-		// Each component is 0, 95, 135, 175, 215, or 255
-		rLevel := uint32(0)
-		if rVal > 0 {
-			rLevel = uint32(55 + rVal*40)
-		}
-		gLevel := uint32(0)
-		if gVal > 0 {
-			gLevel = uint32(55 + gVal*40)
-		}
-		bLevel := uint32(0)
-		if bVal > 0 {
-			bLevel = uint32(55 + bVal*40)
-		}
-
-		return rLevel * 257, gLevel * 257, bLevel * 257, 65535
+// ansiColor returns a palette color by index, typed so that ultraviolet emits
+// it as a palette reference ("31", "91", "38;5;n") rather than as RGB.
+//
+// The outer terminal owns the palette. Resolving an index to RGB here (which
+// this once did, against a hard-coded VS Code-like table) painted every ANSI
+// color an agent printed -- link blue, diff red and green, the ANSI themes --
+// in medusa's guess at the palette instead of the user's own.
+func ansiColor(idx int) color.Color {
+	if idx >= 0 && idx < 16 {
+		return ansi.BasicColor(idx)
 	}
-
-	// Grayscale (indices 232-255)
-	gray := uint32(8 + (idx-232)*10)
-	return gray * 257, gray * 257, gray * 257, 65535
+	return ansi.IndexedColor(idx & 0xff)
 }
