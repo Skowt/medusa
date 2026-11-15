@@ -12,6 +12,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/workspaceops"
 )
 
@@ -23,6 +24,9 @@ const defaultProfile = "Default"
 type workspaceEnv struct {
 	cfg  *config.Config
 	deps workspaceops.Deps
+	// scripts shares its port allocator with deps, so the setup scripts and
+	// the agent see the port Create stored on the workspace.
+	scripts *process.ScriptRunner
 }
 
 func loadWorkspaceEnv() (*workspaceEnv, error) {
@@ -34,6 +38,7 @@ func loadWorkspaceEnv() (*workspaceEnv, error) {
 	if err := cfg.Paths.EnsureDirectories(); err != nil {
 		return nil, err
 	}
+	scripts := process.NewScriptRunner(cfg.PortStart, cfg.PortRangeSize)
 	return &workspaceEnv{
 		cfg: cfg,
 		deps: workspaceops.Deps{
@@ -41,7 +46,9 @@ func loadWorkspaceEnv() (*workspaceEnv, error) {
 			Registry: data.NewRegistry(cfg.Paths.RegistryPath),
 			Store:    data.NewWorkspaceStore(cfg.Paths.MetadataRoot),
 			Recents:  data.NewRecentsStore(cfg.Paths.RecentsPath),
+			Ports:    scripts.Ports(),
 		},
+		scripts: scripts,
 	}, nil
 }
 

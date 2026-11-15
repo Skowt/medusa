@@ -177,7 +177,9 @@ func (d Deps) register(ws *data.Workspace, req CreateRequest, rollback func()) e
 		ws.Group = req.Group
 	}
 
+	d.assignPort(ws)
 	if err := d.Store.Save(ws); err != nil {
+		d.releasePort(ws)
 		if rollback != nil {
 			rollback()
 		}

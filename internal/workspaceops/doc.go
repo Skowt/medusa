@@ -8,6 +8,7 @@ package workspaceops
 import (
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/process"
 )
 
 // Deps are the stores an operation reads and writes.
@@ -16,4 +17,8 @@ type Deps struct {
 	Registry *data.Registry
 	Store    *data.WorkspaceStore
 	Recents  *data.RecentsStore
+	// Ports is the allocator the setup/run scripts and agents read. Create
+	// assigns a new workspace its port from it and Delete frees it. Nil skips
+	// both.
+	Ports *process.PortAllocator
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Skowt/medusa/internal/config"
 	"github.com/Skowt/medusa/internal/data"
+	"github.com/Skowt/medusa/internal/process"
 )
 
 func prepareTestConfig(t *testing.T) *config.Config {
@@ -31,7 +32,7 @@ func prepareTestConfig(t *testing.T) *config.Config {
 func TestPrepareAgentRequiresAProfile(t *testing.T) {
 	cfg := prepareTestConfig(t)
 	ws := &data.Workspace{Name: "ws"}
-	if _, err := PrepareAgent(cfg, ws, AgentClaude, "s", AgentOptions{}); err == nil {
+	if _, err := PrepareAgent(cfg, nil, ws, AgentClaude, "s", AgentOptions{}); err == nil {
 		t.Fatal("PrepareAgent started a Claude agent with no profile")
 	}
 }
@@ -42,7 +43,7 @@ func TestPrepareAgentBuildsTheFullClaudeLaunch(t *testing.T) {
 	ws := data.NewCheckoutWorkspace("ws", "main", root)
 	ws.Profile = "Work"
 
-	p, err := PrepareAgent(cfg, ws, AgentClaude, "medusa-ws-1", AgentOptions{
+	p, err := PrepareAgent(cfg, process.NewPortAllocator(6200, 10), ws, AgentClaude, "medusa-ws-1", AgentOptions{
 		ClaudeSessionID:   "sess-1",
 		Fullscreen:        true,
 		InitialPromptFile: "/tmp/p",
@@ -57,6 +58,7 @@ func TestPrepareAgentBuildsTheFullClaudeLaunch(t *testing.T) {
 		"--session-id 'sess-1'",
 		`-- "$(cat '/tmp/p'`,
 		"exec ", // drops to a shell when the agent exits
+		"WORKSPACE_PORT='6200' ",
 	} {
 		if !strings.Contains(p.Command, want) {
 			t.Errorf("command missing %q\n%s", want, p.Command)
@@ -65,8 +67,12 @@ func TestPrepareAgentBuildsTheFullClaudeLaunch(t *testing.T) {
 	if !p.Fullscreen || p.SessionName != "medusa-ws-1" {
 		t.Errorf("prepared = %+v, want fullscreen session medusa-ws-1", p)
 	}
-	if !containsEnv(p.Env, "WORKSPACE_ROOT="+root) {
-		t.Errorf("env %v lacks WORKSPACE_ROOT", p.Env)
+	// Workspace vars ride on the session; on the client they would leak into
+	// the tmux server's global env if this launch starts the server.
+	for _, kv := range []string{"WORKSPACE_ROOT=" + root, "WORKSPACE_PORT=6200"} {
+		if !containsEnv(p.SessionEnv, kv) || containsEnv(p.Env, kv) {
+			t.Errorf("%s must be in the session env only: session %v, client %v", kv, p.SessionEnv, p.Env)
+		}
 	}
 }
 
@@ -74,7 +80,7 @@ func TestPrepareAgentNeverMarksCodexFullscreen(t *testing.T) {
 	cfg := prepareTestConfig(t)
 	ws := data.NewCheckoutWorkspace("ws", "main", t.TempDir())
 	ws.Profile = "Work"
-	p, err := PrepareAgent(cfg, ws, AgentCodex, "s", AgentOptions{Fullscreen: true})
+	p, err := PrepareAgent(cfg, nil, ws, AgentCodex, "s", AgentOptions{Fullscreen: true})
 	if err != nil {
 		t.Fatalf("PrepareAgent: %v", err)
 	}

@@ -3,7 +3,6 @@ package tmux
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -19,14 +18,18 @@ const detachedStartTimeout = 10 * time.Second
 // same options and tags the TUI's client command sets, so the TUI can later
 // attach to it as an ordinary tab. It fails if a session with that name
 // already exists, rather than attaching to it as the client command would.
+//
+// env is set on the session (new-session -e), never on the tmux process: if
+// that process starts the server, its environment becomes the server's global
+// environment and every later session inherits it.
 func StartDetachedSession(sessionName, workDir, command string, env []string, opts Options, tags SessionTags) error {
 	if err := EnsureAvailable(); err != nil {
 		return err
 	}
 	base := tmuxBase(opts)
 	session := shellutil.Quote(sessionName)
-	create := fmt.Sprintf("%s new-session -ds %s -c %s sh -lc %s",
-		base, session, shellutil.Quote(workDir), shellutil.Quote(command))
+	create := fmt.Sprintf("%s new-session -ds %s -c %s%s sh -lc %s",
+		base, session, shellutil.Quote(workDir), sessionEnvFlags(env), shellutil.Quote(command))
 	// The settings are "; "-separated, so "create && settings" would gate only
 	// the first of them and report the last one's status. Stop on a failed
 	// create instead — a duplicate name must be an error, not a silent no-op.
@@ -36,7 +39,6 @@ func StartDetachedSession(sessionName, workDir, command string, env []string, op
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", script)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), env...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("starting tmux session %s: %w: %s", sessionName, err, strings.TrimSpace(string(out)))
 	}

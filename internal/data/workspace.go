@@ -134,6 +134,11 @@ type Workspace struct {
 
 	// Environment
 	Env map[string]string `json:"env"`
+	// Port is the WORKSPACE_PORT base allocated to this workspace, persisted so
+	// it survives medusa restarts: services started on it (a per-workspace DB
+	// container) and the agent's WORKSPACE_PORT must keep agreeing. 0 = not yet
+	// allocated.
+	Port int `json:"port,omitempty"`
 
 	// UI state
 	OpenTabs       []TabInfo `json:"open_tabs,omitempty"`

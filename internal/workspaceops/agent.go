@@ -75,7 +75,7 @@ func (d Deps) StartAgent(ws *data.Workspace, l Launch, prompt string) (StartedAg
 	if err != nil {
 		return StartedAgent{}, err
 	}
-	prepared, err := pty.PrepareAgent(d.Config, ws, agentType, sessionName, opts)
+	prepared, err := pty.PrepareAgent(d.Config, d.Ports, ws, agentType, sessionName, opts)
 	if err != nil {
 		return StartedAgent{}, err
 	}
@@ -87,7 +87,7 @@ func (d Deps) StartAgent(ws *data.Workspace, l Launch, prompt string) (StartedAg
 		CreatedAt:   time.Now().Unix(),
 		Fullscreen:  prepared.Fullscreen,
 	}
-	if err := tmux.StartDetachedSession(prepared.SessionName, ws.Root(), prepared.Command, prepared.Env, tmuxOpts, tags); err != nil {
+	if err := tmux.StartDetachedSession(prepared.SessionName, ws.Root(), prepared.Command, prepared.SessionEnv, tmuxOpts, tags); err != nil {
 		return StartedAgent{}, err
 	}
 	promptHandedOver = true

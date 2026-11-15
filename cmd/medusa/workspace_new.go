@@ -9,7 +9,6 @@ import (
 
 	"github.com/Skowt/medusa/internal/data"
 	"github.com/Skowt/medusa/internal/hooks"
-	"github.com/Skowt/medusa/internal/process"
 	"github.com/Skowt/medusa/internal/pty"
 	"github.com/Skowt/medusa/internal/validation"
 	"github.com/Skowt/medusa/internal/workspaceops"
@@ -192,8 +191,7 @@ func runWorkspaceNew(c *cliContext, f *newFlags, args []string) error {
 	}
 	if ws.UsesWorktree() {
 		_, _ = fmt.Fprintln(progress, "Running setup scripts")
-		scripts := process.NewScriptRunner(env.cfg.PortStart, env.cfg.PortRangeSize)
-		if err := scripts.RunSetup(ws); err != nil {
+		if err := env.scripts.RunSetup(ws); err != nil {
 			res.SetupWarning = err.Error()
 			_, _ = fmt.Fprintln(progress, "Warning:", err)
 		}

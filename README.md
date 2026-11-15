@@ -221,6 +221,8 @@ The following variables are injected into all script environments:
 
 Each workspace gets a unique port range starting from 6200 (configurable), incremented by 10 per workspace. Use `WORKSPACE_PORT` in your scripts to avoid port collisions when running multiple workspaces simultaneously.
 
+`WORKSPACE_PORT` / `WORKSPACE_PORT_RANGE` are also exported into each agent's shell, so an agent can point per-workspace services (e.g. an isolated test database) at its own port. The value matches the one the setup/run scripts see. The port is stored on the workspace record when first assigned, so it stays the same across medusa restarts; it is freed when the workspace is deleted.
+
 ### When run commands fire
 
 Run commands fire once, automatically, as soon as `setup-workspace` finishes for a newly created workspace — each entry opens in its own visible tab. They're independent of agent tabs: setup-complete and agent-tab creation aren't ordered relative to each other, and a workspace can have any mix of agent tabs and script tabs (or none).
